@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Palatino, "Palatino Linotype", Georgia, serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  --color-ink: #140c10;
+  --color-panel: #24161c;
+  --color-paper: #f4e4c8;
+  --color-blood: #c4373a;
+  --color-brass: #e0b15a;
+  --color-moon: #9fd4d8;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
+}
+
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.safe-bot {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.sprocket {
+  background-image: radial-gradient(circle at 14px 12px, transparent 5px, #0c0709 5.5px);
+  background-size: 100% 28px;
+  box-shadow: inset 22px 0 0 #0c0709, inset -22px 0 0 #0c0709;
+}
+
+@media (pointer: fine) and (min-width: 960px) {
+  .touch-dock {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}
