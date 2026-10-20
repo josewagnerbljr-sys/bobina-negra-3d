@@ -78,7 +78,7 @@ export function Bobina() {
   }
 
   return (
-    <main className="sprocket relative h-dvh overflow-hidden bg-ink font-sans text-paper">
+    <main className="sprocket relative h-dvh select-none overflow-hidden bg-ink font-sans text-paper" onContextMenu={(e) => e.preventDefault()}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" aria-hidden />
       <div className="safe-top pointer-events-none absolute inset-0 flex flex-col">
         {(playing || snap.screen === "pause" || snap.screen === "dead" || snap.screen === "levelup") && (
@@ -526,15 +526,23 @@ function Pad({
     <button
       type="button"
       aria-label={label}
-      className="grid min-h-14 min-w-14 place-items-center rounded-md border border-paper/30 bg-panel/90 px-2 text-paper"
+      className="grid min-h-14 min-w-14 touch-none select-none place-items-center rounded-md border border-paper/30 bg-panel/90 px-2 text-paper"
+      style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "none" }}
       onPointerDown={(e) => {
         e.preventDefault();
+        // mantém o dedo "preso" ao botão mesmo se escorregar para fora
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* sem suporte: segue sem captura */
+        }
         onDown(true);
       }}
       onPointerUp={() => onDown(false)}
-      onPointerLeave={() => onDown(false)}
       onPointerCancel={() => onDown(false)}
+      onLostPointerCapture={() => onDown(false)}
       onContextMenu={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
     >
       {children}
     </button>
