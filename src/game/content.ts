@@ -633,6 +633,35 @@ function segFinale(sk: Sketch) {
   sk.exitC = x + 14;
 }
 
+/** quanto mais fundo o rolo, mais monstros: espalha reforços pelo chão da fase */
+function addCrowd(sk: Sketch, i: number, world: number, boss: boolean, rng: () => number) {
+  const extra = Math.floor(i * 0.6) + (i >= 10 ? 1 : 0);
+  if (extra <= 0) return;
+  const pools = [POOLS[world] ?? POOLS[0]!, POOLS[(world + 4) % 5]!, POOLS[(world + 1) % 5]!];
+  const cands: number[] = [];
+  const end = sk.cols - (boss ? 46 : 20);
+  for (let c = sk.spawnC + 10; c < end; c++) {
+    if (sk.get(c, GROUND) !== Tile.Solid) continue;
+    if (sk.get(c, GROUND - 1) !== Tile.Air || sk.get(c, GROUND - 2) !== Tile.Air) continue;
+    if (sk.get(c - 1, GROUND) !== Tile.Solid || sk.get(c + 1, GROUND) !== Tile.Solid) continue;
+    cands.push(c);
+  }
+  for (let k = cands.length - 1; k > 0; k--) {
+    const j = Math.floor(rng() * (k + 1));
+    [cands[k], cands[j]] = [cands[j]!, cands[k]!];
+  }
+  let placed = 0;
+  for (const c of cands) {
+    if (placed >= extra) break;
+    if (sk.ents.some((e) => Math.abs(e.c - c) < 3)) continue;
+    const pool = pools[i >= 6 && rng() < 0.4 ? 1 + Math.floor(rng() * 2) : 0]!;
+    const kind = pool[Math.floor(rng() * pool.length)] ?? "imp";
+    const fly = kind === "balloon" || kind === "wraith";
+    sk.ent(kind, c, fly ? GROUND - 4 : GROUND);
+    placed += 1;
+  }
+}
+
 function fixEnts(sk: Sketch) {
   for (const e of sk.ents) {
     const def = ENT[e.kind];
@@ -681,6 +710,7 @@ export function buildLevel(index: number): Level {
   }
   if (boss) segArena(sk);
   else segFinale(sk);
+  addCrowd(sk, i, world, boss, rng);
   fixEnts(sk);
   return {
     index: i,
@@ -699,3 +729,71 @@ export function buildLevel(index: number): Level {
 export function reelWorld(index0: number) {
   return WORLDS[Math.floor(index0 / 5)] ?? WORLDS[0]!;
 }
+
+/* Cada fase de um mundo ganha um clima próprio (entardecer, noite funda, névoa, chefe...). */
+const STAGE_TINT: { c: string; k: number }[][] = [
+  [{ c: "#000000", k: 0 }, { c: "#ff7a3a", k: 0.2 }, { c: "#2a4fa0", k: 0.24 }, { c: "#7a2aa0", k: 0.22 }, { c: "#a01820", k: 0.3 }],
+  [{ c: "#000000", k: 0 }, { c: "#3a8a9a", k: 0.22 }, { c: "#5a3a8a", k: 0.24 }, { c: "#8a8a4a", k: 0.18 }, { c: "#8a1a3a", k: 0.28 }],
+  [{ c: "#000000", k: 0 }, { c: "#ff5a1a", k: 0.22 }, { c: "#aa2a0a", k: 0.26 }, { c: "#3a3a5a", k: 0.24 }, { c: "#ffaa30", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#8aca3a", k: 0.2 }, { c: "#1a5a8a", k: 0.24 }, { c: "#aa5ac0", k: 0.22 }, { c: "#3aaa6a", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#c0a050", k: 0.22 }, { c: "#3a4a9a", k: 0.24 }, { c: "#9a3a6a", k: 0.22 }, { c: "#e0d0ff", k: 0.2 }],
+];
+
+function mixHex(a: string, b: string, k: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  const o = pa.map((v, i) => Math.round(v + (pb[i]! - v) * k));
+  return "#" + o.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+export function themedWorld(world: number, stage: number): WorldDef {
+  const base = WORLDS[world] ?? WORLDS[0]!;
+  const t = STAGE_TINT[world]?.[stage % 5];
+  if (!t || t.k === 0) return base;
+  const m = (c: string, k = 1) => mixHex(c, t.c, t.k * k);
+  return {
+    ...base,
+    sky0: m(base.sky0, 0.8),
+    sky1: m(base.sky1),
+    sky2: m(base.sky2, 1.2),
+    hill: m(base.hill, 0.8),
+    hill2: m(base.hill2),
+    ground: m(base.ground, 0.5),
+    groundDark: m(base.groundDark, 0.5),
+    fog: m(base.fog, 0.9),
+    accent: m(base.accent, 0.4),
+  };
+}
+
+/* ---- poderes novos: 2 unitários, 1 em área comum, 1 super em área ---- */
+export const SKILL_LV = [2, 3, 4, 6];
+export const SKILL_CD = [1.4, 2.2, 3.4, 18];
+export const SKILL_KEYS = ["U", "I", "O", "P"];
+export const SKILL_KINDS = ["Unitário", "Unitário", "Área", "Super área"];
+
+export const SKILLS: Record<HeroId, { name: string; color: string; text: string }[]> = {
+  ivo: [
+    { name: "Bala de Prata", color: "#d8dce8", text: "Projétil que persegue o alvo mais próximo." },
+    { name: "Garra do Lobo", color: "#e0b15a", text: "Investida cortante: atravessa o espaço e rasga um alvo." },
+    { name: "Estouro de Palco", color: "#ff9a4a", text: "Onda de choque em volta; empurra e fere todos perto." },
+    { name: "Noite de Lua Cheia", color: "#f4e4c8", text: "Uivo em tela inteira: fere todos os monstros visíveis." },
+  ],
+  lena: [
+    { name: "Dardo Sanguíneo", color: "#ff3a4a", text: "Dardo de tinta que caça o alvo mais próximo." },
+    { name: "Mordida Sombria", color: "#c4373a", text: "Salta em sombra e crava num alvo à frente." },
+    { name: "Revoada", color: "#b06ad0", text: "Morcegos em espiral ferem tudo em volta." },
+    { name: "Eclipse Carmesim", color: "#ff2a5a", text: "A tela escurece e sangra: dano enorme em todos os visíveis." },
+  ],
+  osso: [
+    { name: "Osso Teleguiado", color: "#f1ead8", text: "Osso que gira atrás do alvo mais próximo." },
+    { name: "Pancada de Cajado", color: "#9fd4d8", text: "Avanço com cajado fantoche: golpe pesado em um alvo." },
+    { name: "Dança dos Fios", color: "#c8c2b4", text: "Fios cortam todos que estão por perto." },
+    { name: "Grande Final", color: "#9fd4d8", text: "Aplausos fatais: dano enorme em todos os monstros visíveis." },
+  ],
+  syl: [
+    { name: "Flecha Caçadora", color: "#d2e39a", text: "Flecha que curva até o alvo mais próximo." },
+    { name: "Corte Ágil", color: "#9bd46a", text: "Rolamento cortante: atravessa e fere um alvo." },
+    { name: "Chuva de Folhas", color: "#6aaa48", text: "Folhas afiadas em volta ferem todos perto." },
+    { name: "Floresta Viva", color: "#d2ff7a", text: "Raízes e luz da mata atingem todos os monstros visíveis." },
+  ],
+};

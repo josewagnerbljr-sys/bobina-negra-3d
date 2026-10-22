@@ -56,7 +56,7 @@ export type Screen =
 
 export type Line = { who: string; text: string };
 
-export type Action = "left" | "right" | "down" | "jump" | "attack" | "form";
+export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4";
 
 export type LevelEnt = { kind: Kind; c: number; foot: number };
 
@@ -107,7 +107,10 @@ export type Snap = {
   best: number;
   hint: boolean;
   progress: number;
+  skills: SkillSnap[];
 };
+
+export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean };
 
 export const EMPTY_STATS: Stats = { vit: 0, impeto: 0, folego: 0, passo: 0, mira: 0 };
 

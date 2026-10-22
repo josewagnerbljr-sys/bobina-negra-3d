@@ -218,27 +218,34 @@ function buildBackdrop(g: Geo, glow: Geo, level: Level, world: WorldDef, pal: Pa
   // piso corrido atrás da pista
   addBox(g, x0, -2, -70, x1, ROWS - GROUND - 0.001, -1.05, mix3(pal.hill, pal.groundDark, 0.5), { px: false, nx: false, py: true, pz: false, ny: false });
 
+  // meio-plano: peças pequenas logo atrás da pista, a cada poucos tiles
+  const stage = level.index % 5;
+  for (let x = x0 + 4; x < x1; x += 7 + rnd() * (9 - stage)) {
+    midProp(g, glow, w, x, -2.2 - rnd() * 1.6, 0.8 + rnd() * 0.5 + stage * 0.05, rnd, pal);
+  }
+
+  const dm = [1, 0.8, 1.15, 0.9, 1.3][stage]!; // densidade do fundo muda por nível
   const layers = [
-    { z: -7, dens: 11, scale: 0.8, col: mix3(pal.hill2, pal.fog, 0.1), jit: 3 },
-    { z: -17, dens: 8, scale: 1.2, col: mix3(pal.hill2, pal.fog, 0.35), jit: 5 },
-    { z: -32, dens: 12, scale: 1.8, col: mix3(pal.hill, pal.fog, 0.55), jit: 8 },
-    { z: -52, dens: 16, scale: 2.8, col: mix3(pal.hill, pal.fog, 0.75), jit: 14 },
+    { z: -7, dens: 11 * dm, scale: 0.8, col: mix3(pal.hill2, pal.fog, 0.1), jit: 3 },
+    { z: -17, dens: 8 * dm, scale: 1.2, col: mix3(pal.hill2, pal.fog, 0.35), jit: 5 },
+    { z: -32, dens: 12 * dm, scale: 1.8, col: mix3(pal.hill, pal.fog, 0.55), jit: 8 },
+    { z: -52, dens: 16 * dm, scale: 2.8, col: mix3(pal.hill, pal.fog, 0.75), jit: 14 },
   ];
   for (const L of layers) {
     for (let x = x0; x < x1; x += L.dens * (0.7 + rnd() * 0.6)) {
       const z = L.z - rnd() * L.jit;
       const s = L.scale * (0.7 + rnd() * 0.7);
-      prop(g, glow, w, x, z, s, rnd, L.col, pal, L.z);
+      prop(g, glow, w, x, z, s, rnd, L.col, pal, L.z, level.index % 5);
     }
   }
 }
 
-function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd: () => number, col: Vec3, pal: Palette, layerZ: number) {
+function propLegacy(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd: () => number, col: Vec3, pal: Palette, layerZ: number, force: number) {
   const gy = ROWS - GROUND - 0.05; // topo do chão
   const near = layerZ > -10;
   const tint = (c: Vec3, k = 0.25) => mix3(col, c, near ? k : k * 0.5);
   if (w === 0) {
-    const pick = rnd();
+    const pick = force < 0 ? rnd() : [0.2, 0.72, 0.95][force]!;
     if (pick < 0.55) {
       // tenda de circo
       addCone(g, x, gy, z, 2.2 * s, 2.2 * s, 2.0 * s, 10, tint(pal.accent, 0.3));
@@ -268,7 +275,7 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
       addBox(g, x - 0.3 * s, gy, z - 0.2, x + 0.3 * s, gy + R + 1.4 * s, z + 0.2, tint([0.3, 0.2, 0.2], 0.3));
     }
   } else if (w === 1) {
-    const pick = rnd();
+    const pick = force < 0 ? rnd() : [0.2, 0.72, 0.95][force]!;
     if (pick < 0.5) {
       // arco de pedra
       const hh = (5 + rnd() * 2) * s;
@@ -289,7 +296,7 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
       for (let k = 0; k < 6; k++) addSphere(g, x + (rnd() - 0.5) * 3 * s, gy + 0.3 * s + rnd() * 0.5, z + rnd(), 0.45 * s, 6, 5, tint([0.9, 0.88, 0.8], 0.25));
     }
   } else if (w === 2) {
-    const pick = rnd();
+    const pick = force < 0 ? rnd() : [0.2, 0.72, 0.95][force]!;
     if (pick < 0.42) {
       // chaminé
       const hh = (7 + rnd() * 5) * s;
@@ -318,7 +325,7 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
       addBox(g, x - 0.35 * s, gy, z - 0.3, x + 0.35 * s, gy + 5 * s, z + 0.3, tint([0.3, 0.26, 0.26], 0.2));
     }
   } else if (w === 3) {
-    const pick = rnd();
+    const pick = force < 0 ? rnd() : [0.2, 0.72, 0.95][force]!;
     if (pick < 0.7) {
       const hh = (4 + rnd() * 3) * s;
       addCone(g, x, gy, z, 0.5 * s, 0.38 * s, hh, 7, tint([0.3, 0.2, 0.14], 0.3));
@@ -331,7 +338,7 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
       for (let k = 0; k < 5; k++) addSphere(g, x + (rnd() - 0.5) * 3 * s, gy + 0.6 * s, z + (rnd() - 0.5) * 2, 0.9 * s, 7, 5, tint([0.25, 0.4, 0.25], 0.3));
     }
   } else {
-    const pick = rnd();
+    const pick = force < 0 ? rnd() : [0.2, 0.72, 0.95][force]!;
     if (pick < 0.55) {
       // estante de livros
       const hh = (6 + rnd() * 3) * s;
@@ -361,4 +368,212 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
       addSphere(glow, x, gy + 4.3 * s, z, 0.5 * s, 8, 6, mix3(pal.trim, [1, 1, 1], 0.3));
     }
   }
+}
+
+
+/* --------------------------------------------------------- novos elementos */
+
+type Ctx = { g: Geo; glow: Geo; x: number; z: number; s: number; rnd: () => number; col: Vec3; pal: Palette; gy: number; tint: (c: Vec3, k?: number) => Vec3 };
+
+const NEW_PROPS: ((c: Ctx) => void)[][] = [
+  // 0 · Carnaval de Verniz
+  [
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // carrossel
+      addCone(g, x, gy, z, 2.6 * s, 2.6 * s, 0.35 * s, 14, tint(pal.trim, 0.3));
+      addCone(g, x, gy + 0.35 * s, z, 0.25 * s, 0.25 * s, 3.2 * s, 8, tint(pal.accent, 0.4));
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        addCone(g, x + Math.cos(a) * 2.2 * s, gy + 0.35 * s, z + Math.sin(a) * 2.2 * s, 0.07 * s, 0.07 * s, 3.0 * s, 5, tint(pal.trim, 0.5));
+        addSphere(g, x + Math.cos(a) * 2.2 * s, gy + (1.1 + (k % 2) * 0.5) * s, z + Math.sin(a) * 2.2 * s, 0.34 * s, 6, 5, tint(k % 2 ? [0.95, 0.9, 0.8] : pal.accent, 0.4));
+        addSphere(glow, x + Math.cos(a) * 2.7 * s, gy + 3.45 * s, z + Math.sin(a) * 2.7 * s, 0.12 * s, 4, 3, k % 2 ? pal.trim : [1, 0.9, 0.7]);
+      }
+      addCone(g, x, gy + 3.5 * s, z, 3.0 * s, 0, 1.6 * s, 14, tint(pal.accent, 0.45));
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // varal de bandeirolas entre dois mastros
+      const h = 5.2 * s;
+      for (const sx of [-1, 1]) addCone(g, x + sx * 3.4 * s, gy, z, 0.14 * s, 0.1 * s, h, 6, tint([0.3, 0.2, 0.2], 0.3));
+      for (let k = 0; k <= 10; k++) {
+        const u = k / 10;
+        const px = x - 3.4 * s + u * 6.8 * s;
+        const py = gy + h - Math.sin(u * Math.PI) * 0.9 * s;
+        addCone(g, px, py - 0.5 * s, z, 0.22 * s, 0, 0.5 * s, 4, tint(k % 3 === 0 ? pal.accent : k % 3 === 1 ? pal.trim : [0.3, 0.5, 0.85], 0.55));
+        addSphere(glow, px, py, z + 0.05, 0.08 * s, 4, 3, [1, 0.9, 0.6]);
+      }
+    },
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      // canhão de palco + fogos congelados no céu
+      addCone(g, x, gy, z, 0.9 * s, 0.9 * s, 0.5 * s, 8, tint([0.25, 0.2, 0.2], 0.3));
+      const barrel = newGeo();
+      addCone(barrel, 0, 0, 0, 0.5 * s, 0.4 * s, 2.4 * s, 9, tint(pal.trim, 0.35));
+      bake(g, barrel, [x, gy + 0.5 * s, z], [0, 0, -0.9]);
+      const cx = x + 3.5 * s;
+      const cy = gy + (10 + rnd() * 5) * s;
+      const cc = [pal.accent, pal.trim, [0.4, 0.7, 1] as Vec3][Math.floor(rnd() * 3)]!;
+      for (let k = 0; k < 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        for (let r = 1; r <= 2; r++) addSphere(glow, cx + Math.cos(a) * r * 0.9 * s, cy + Math.sin(a) * r * 0.9 * s, z, (0.22 - r * 0.05) * s, 4, 3, cc);
+      }
+      addSphere(glow, cx, cy, z, 0.35 * s, 5, 4, [1, 0.95, 0.8]);
+    },
+  ],
+  // 1 · Catacumbas de Medula
+  [
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      // colunas com velas
+      const hh = (5.5 + rnd() * 2) * s;
+      for (const sx of [-1, 1]) {
+        addCone(g, x + sx * 1.4 * s, gy, z, 0.5 * s, 0.42 * s, hh, 8, tint(pal.trim, 0.14));
+        addBox(g, x + sx * 1.4 * s - 0.7 * s, gy + hh, z - 0.7 * s, x + sx * 1.4 * s + 0.7 * s, gy + hh + 0.35 * s, z + 0.7 * s, tint(pal.trim, 0.22));
+        addSphere(glow, x + sx * 1.4 * s, gy + hh + 0.8 * s, z, 0.22 * s, 5, 4, [1, 0.75, 0.35]);
+      }
+    },
+    ({ g, x, z, s, tint, pal, gy }) => {
+      // fileira de sarcófagos
+      for (let k = 0; k < 3; k++) {
+        const bx = x + k * 2.6 * s;
+        addBox(g, bx, gy, z - 0.8 * s, bx + 2.0 * s, gy + 1.0 * s, z + 0.8 * s, tint(pal.trim, 0.1), { ny: false });
+        addBox(g, bx - 0.1 * s, gy + 1.0 * s, z - 0.9 * s, bx + 2.1 * s, gy + 1.25 * s, z + 0.9 * s, tint(pal.trim, 0.2), { ny: false });
+        addBox(g, bx + 0.9 * s, gy + 1.25 * s, z - 0.08, bx + 1.1 * s, gy + 1.9 * s, z + 0.08, tint(pal.accent, 0.4));
+        addBox(g, bx + 0.7 * s, gy + 1.55 * s, z - 0.08, bx + 1.3 * s, gy + 1.7 * s, z + 0.08, tint(pal.accent, 0.4));
+      }
+    },
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      // cristais da medula
+      for (let k = 0; k < 7; k++) {
+        const c = newGeo();
+        const hh = (1.6 + rnd() * 2.4) * s;
+        addCone(c, 0, 0, 0, 0.38 * s, 0, hh, 5, tint(pal.accent, 0.55));
+        bake(g, c, [x + (rnd() - 0.5) * 3 * s, gy - 0.05, z + (rnd() - 0.5) * 1.5], [0, rnd() * 3, (rnd() - 0.5) * 0.6]);
+        addSphere(glow, x + (rnd() - 0.5) * 3 * s, gy + hh * 0.7, z + 0.1, 0.16 * s, 4, 3, pal.accent);
+      }
+    },
+  ],
+  // 2 · Forja dos Golens
+  [
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // fornalha com boca em brasa
+      addBox(g, x - 2.2 * s, gy, z - 1.5 * s, x + 2.2 * s, gy + 3.6 * s, z + 1.5 * s, tint([0.28, 0.22, 0.2], 0.2), { ny: false });
+      addBox(glow, x - 1.0 * s, gy + 0.4 * s, z + 1.5 * s, x + 1.0 * s, gy + 2.0 * s, z + 1.55 * s, [1, 0.45, 0.12], { px: false, nx: false, py: false, ny: false, pz: true });
+      addCone(g, x, gy + 3.6 * s, z, 1.0 * s, 0.7 * s, 3.2 * s, 8, tint([0.25, 0.2, 0.2], 0.2));
+      addSphere(glow, x, gy + 6.9 * s, z, 0.45 * s, 5, 4, pal.trim);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // guindaste com corrente e gancho
+      addBox(g, x - 0.3 * s, gy, z - 0.3 * s, x + 0.3 * s, gy + 9 * s, z + 0.3 * s, tint([0.3, 0.26, 0.24], 0.25));
+      addBox(g, x - 0.3 * s, gy + 8.6 * s, z - 0.25, x + 4.4 * s, gy + 9.1 * s, z + 0.25, tint([0.3, 0.26, 0.24], 0.25));
+      for (let k = 0; k < 6; k++) addSphere(g, x + 3.8 * s, gy + (8.4 - k * 0.45) * s, z, 0.14 * s, 5, 4, tint([0.4, 0.36, 0.34], 0.2));
+      addCone(g, x + 3.8 * s, gy + 5.5 * s, z, 0.4 * s, 0.1 * s, 0.7 * s, 6, tint(pal.trim, 0.4));
+      addSphere(glow, x + 3.8 * s, gy + 5.3 * s, z, 0.18 * s, 4, 3, pal.trim);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // poço de lava no fundo
+      addBox(glow, x - 4.5 * s, gy + 0.02, z - 1.5, x + 4.5 * s, gy + 0.08, z + 1.5, mix3(pal.trim, [1, 0.3, 0.05], 0.5), { px: false, nx: false, ny: false, pz: false, py: true });
+      for (let k = 0; k < 4; k++) addSphere(glow, x + (k - 1.5) * 2.2 * s, gy + 0.5 * s + (k % 2) * 0.5, z, 0.22 * s, 4, 3, [1, 0.6, 0.2]);
+      addCone(g, x - 4.8 * s, gy, z, 0.5 * s, 0.3 * s, 1.1 * s, 6, tint([0.22, 0.18, 0.18], 0.2));
+      addCone(g, x + 4.8 * s, gy, z, 0.5 * s, 0.3 * s, 1.3 * s, 6, tint([0.22, 0.18, 0.18], 0.2));
+    },
+  ],
+  // 3 · Mata Cega
+  [
+    ({ g, x, z, s, rnd, tint, pal, gy }) => {
+      // árvore retorcida
+      const hh = (5 + rnd() * 3) * s;
+      const tr = newGeo();
+      addCone(tr, 0, 0, 0, 0.7 * s, 0.35 * s, hh, 7, tint([0.28, 0.2, 0.15], 0.3));
+      bake(g, tr, [x, gy - 0.1, z], [0, 0, 0.08]);
+      for (let k = 0; k < 3; k++) {
+        const br = newGeo();
+        addCone(br, 0, 0, 0, 0.22 * s, 0.1 * s, 2.4 * s, 5, tint([0.28, 0.2, 0.15], 0.3));
+        bake(g, br, [x, gy + hh * (0.5 + k * 0.17), z], [0, k * 2.1, (k % 2 ? 1 : -1) * 1.0]);
+      }
+      addSphere(g, x - 0.6 * s, gy + hh + 0.5 * s, z, 1.7 * s, 8, 6, tint(pal.accent, 0.45));
+      addSphere(g, x + 1.1 * s, gy + hh - 0.4 * s, z, 1.3 * s, 8, 6, tint([0.2, 0.42, 0.24], 0.4));
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // tronco observador: olhos acesos
+      addCone(g, x, gy, z, 1.3 * s, 0.95 * s, 6 * s, 9, tint([0.25, 0.18, 0.14], 0.3));
+      addSphere(glow, x - 0.35 * s, gy + 4.1 * s, z + 0.85 * s, 0.22 * s, 5, 4, [1, 0.95, 0.6]);
+      addSphere(glow, x + 0.35 * s, gy + 4.1 * s, z + 0.85 * s, 0.22 * s, 5, 4, [1, 0.95, 0.6]);
+      addSphere(g, x, gy + 6.4 * s, z, 2.1 * s, 8, 6, tint(pal.accent, 0.4));
+    },
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      // ruínas cobertas de musgo e vagalumes
+      for (let k = 0; k < 3; k++) {
+        const hh = (1.5 + rnd() * 3) * s;
+        addBox(g, x + k * 1.9 * s, gy, z - 0.5 * s, x + k * 1.9 * s + 0.9 * s, gy + hh, z + 0.5 * s, tint([0.5, 0.5, 0.46], 0.2), { ny: false });
+        addSphere(g, x + k * 1.9 * s + 0.4 * s, gy + hh, z, 0.55 * s, 6, 4, tint(pal.accent, 0.4));
+      }
+      for (let k = 0; k < 6; k++) addSphere(glow, x + rnd() * 5 * s, gy + (1 + rnd() * 3) * s, z + rnd() - 0.5, 0.07 * s, 4, 3, [0.85, 1, 0.5]);
+    },
+  ],
+  // 4 · Arquivo do Contrato
+  [
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // pilar com pergaminho e runa
+      addBox(g, x - 0.8 * s, gy, z - 0.8 * s, x + 0.8 * s, gy + 7 * s, z + 0.8 * s, tint([0.3, 0.24, 0.22], 0.2));
+      addBox(g, x - 1.1 * s, gy + 7 * s, z - 1.1 * s, x + 1.1 * s, gy + 7.4 * s, z + 1.1 * s, tint(pal.trim, 0.25));
+      const sc = newGeo();
+      addCone(sc, 0, -0.9 * s, 0, 0.22 * s, 0.22 * s, 1.8 * s, 8, tint([0.95, 0.9, 0.78], 0.3));
+      bake(g, sc, [x, gy + 5 * s, z + 0.95 * s], [0, 0, 0.35]);
+      addSphere(glow, x, gy + 3.2 * s, z + 0.9 * s, 0.3 * s, 5, 4, pal.accent);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // ampulheta gigante
+      for (const sy of [0, 1]) {
+        addCone(g, x, gy + 1.0 * s + sy * 2.6 * s, z, sy ? 0.12 * s : 1.5 * s, sy ? 1.5 * s : 0.12 * s, 2.6 * s, 10, tint(pal.accent, 0.35));
+      }
+      addBox(g, x - 1.9 * s, gy + 0.7 * s, z - 1.0 * s, x + 1.9 * s, gy + 1.0 * s, z + 1.0 * s, tint(pal.trim, 0.3));
+      addBox(g, x - 1.9 * s, gy + 6.2 * s, z - 1.0 * s, x + 1.9 * s, gy + 6.5 * s, z + 1.0 * s, tint(pal.trim, 0.3));
+      addSphere(glow, x, gy + 1.6 * s, z, 0.6 * s, 6, 5, [1, 0.85, 0.5]);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      // lustre pendurado
+      const top = ROWS + 6;
+      addCone(g, x, top - 4.2 * s, z, 0.05 * s, 0.05 * s, 4.2 * s, 4, tint([0.3, 0.25, 0.22], 0.3));
+      addCone(g, x, top - 4.6 * s, z, 1.6 * s, 1.6 * s, 0.22 * s, 14, tint(pal.trim, 0.4));
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        addSphere(glow, x + Math.cos(a) * 1.5 * s, top - 4.2 * s, z + Math.sin(a) * 1.5 * s, 0.14 * s, 4, 3, [1, 0.88, 0.55]);
+      }
+      void gy;
+    },
+  ],
+];
+
+/** peças no meio-plano (perto da pista, atrás dela): dão profundidade sem cobrir o herói */
+function midProp(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd: () => number, pal: Palette) {
+  const gy = ROWS - GROUND - 0.02;
+  const tint = (c: Vec3, k = 0.3) => mix3(mix3(pal.hill2, pal.fog, 0.15), c, k);
+  if (w === 0) {
+    addCone(g, x, gy, z, 0.1 * s, 0.1 * s, 2.6 * s, 6, tint([0.3, 0.2, 0.2], 0.5));
+    addCone(g, x, gy + 2.6 * s, z, 0.42 * s, 0, 0.5 * s, 5, tint(rnd() < 0.5 ? pal.accent : pal.trim, 0.6));
+    addSphere(glow, x, gy + 2.2 * s, z + 0.12, 0.09 * s, 4, 3, pal.trim);
+  } else if (w === 1) {
+    addBox(g, x - 0.35 * s, gy, z - 0.3 * s, x + 0.35 * s, gy + 2.6 * s, z + 0.3 * s, tint(pal.trim, 0.2));
+    addSphere(glow, x, gy + 2.9 * s, z + 0.1, 0.12 * s, 4, 3, [1, 0.72, 0.3]);
+  } else if (w === 2) {
+    addBox(g, x - 0.18 * s, gy, z - 0.18 * s, x + 0.18 * s, gy + 3.2 * s, z + 0.18 * s, tint([0.3, 0.26, 0.24], 0.4));
+    addSphere(glow, x, gy + 3.35 * s, z + 0.1, 0.16 * s, 4, 3, [1, 0.5, 0.15]);
+  } else if (w === 3) {
+    addCone(g, x, gy, z, 0.28 * s, 0.18 * s, 3.2 * s, 6, tint([0.28, 0.2, 0.15], 0.4));
+    addSphere(g, x, gy + 3.4 * s, z, 0.85 * s, 7, 5, tint(pal.accent, 0.5));
+  } else {
+    addBox(g, x - 0.7 * s, gy, z - 0.3 * s, x + 0.7 * s, gy + 2.6 * s, z + 0.3 * s, tint([0.28, 0.2, 0.15], 0.3));
+    addBox(g, x - 0.6 * s, gy + 0.2 * s, z + 0.3 * s, x + 0.6 * s, gy + 0.5 * s, z + 0.4 * s, tint(pal.accent, 0.5), { px: false, nx: false, py: false, ny: false, pz: true });
+    addBox(g, x - 0.6 * s, gy + 1.4 * s, z + 0.3 * s, x + 0.6 * s, gy + 1.7 * s, z + 0.4 * s, tint(pal.trim, 0.5), { px: false, nx: false, py: false, ny: false, pz: true });
+  }
+}
+
+function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd: () => number, col: Vec3, pal: Palette, layerZ: number, variant: number) {
+  const gy = ROWS - GROUND - 0.05;
+  const near = layerZ > -10;
+  const tint = (c: Vec3, k = 0.25) => mix3(col, c, near ? k : k * 0.5);
+  // 6 tipos por mundo (3 clássicos + 3 novos); cada nível favorece um subconjunto diferente
+  const kinds = 6;
+  const bias = [0, 2, 4, 1, 3][variant % 5]!;
+  const k = Math.floor((rnd() * 0.65 + (bias / kinds) * 0.35 + (rnd() < 0.4 ? rnd() * 0.5 : 0)) * kinds) % kinds;
+  if (k < 3) propLegacy(g, glow, w, x, z, s, rnd, col, pal, layerZ, k);
+  else NEW_PROPS[w]![k - 3]!({ g, glow, x, z, s, rnd, col, pal, gy, tint });
 }

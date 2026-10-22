@@ -10,12 +10,17 @@ import {
   prologue,
   REEL_NAMES,
   reelWorld,
+  SKILLS,
+  SKILL_CD,
+  SKILL_KEYS,
+  SKILL_KINDS,
+  SKILL_LV,
   transformLine,
   UPGRADES,
   worldIntro,
   WORLDS,
 } from "./content";
-import { createRenderer, type Paint, type Spark } from "./render3d";
+import { createRenderer, type Fx, type Paint, type Spark } from "./render3d";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
 import {
   GROUND,
@@ -74,6 +79,7 @@ type Shot = Body & {
   foe: boolean;
   pierce: number;
   hit: Set<Actor>;
+  home?: Actor | null;
 };
 
 export type Runtime = {
@@ -206,6 +212,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   const renderer = createRenderer(canvas);
   let attract: Level = buildLevel(Math.floor(Math.random() * 5) * 5);
   renderer.setAttract(attract);
+  audio.setWorld(attract.world);
   let alive = true;
   let save: Save = loadSave() ?? emptySave("ivo");
   let hasSave = loadSave() !== null;
@@ -266,6 +273,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     jump: false,
     attack: false,
     form: false,
+    s1: false,
+    s2: false,
+    s3: false,
+    s4: false,
   };
   let prevJump = false;
   let prevForm = false;
@@ -292,6 +303,99 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   };
 
   const qaBoot = typeof location !== "undefined" && new URLSearchParams(location.search).has("qa");
+
+  /* ---- poderes novos ---- */
+  const allSkills = qaBoot || (typeof location !== "undefined" && new URLSearchParams(location.search).has("all"));
+  let fx: Fx[] = [];
+  let skillCd = [0, 0, 0, 0];
+  let prevSkill = [false, false, false, false];
+  const wantSkill = [false, false, false, false];
+  let dashT = 0;
+  let flashT = 0;
+
+  function skillUnlocked(i: number) {
+    return allSkills || save.level >= SKILL_LV[i]!;
+  }
+
+  function hurtFoe(a: Actor, dmg: number, color: string) {
+    if (a.dead || a.ally || a.kind === "candle") return;
+    a.hp -= dmg;
+    a.hurt = 0.14;
+    burst(a.x + a.w / 2, a.y + a.h / 2, color, 8, 140);
+    audio.hit();
+    if (a.hp <= 0) killActor(a);
+  }
+
+  function foesNear(cx: number, cy: number, rx: number, ry: number) {
+    return actors.filter((a) => !a.dead && !a.ally && a.kind !== "candle" && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry);
+  }
+
+  function useSkill(i: number) {
+    if (!level || screen !== "play" || !skillUnlocked(i) || skillCd[i]! > 0) return;
+    const def = SKILLS[save.hero][i]!;
+    const cx = player.x + player.w / 2;
+    const cy = player.y + player.h / 2;
+    const cdMul = Math.max(0.6, 1 - 0.04 * save.stats.folego);
+    skillCd[i] = SKILL_CD[i]! * cdMul;
+    atkT = 0.3;
+    audio.skill(i);
+    if (i === 0) {
+      // unitário perseguidor
+      let best: Actor | null = null;
+      let bd = 640;
+      for (const a of actors) {
+        if (a.dead || a.ally || a.kind === "candle") continue;
+        const d = Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy);
+        const front = (a.x + a.w / 2 - cx) * player.facing > -60;
+        if (front && d < bd) {
+          bd = d;
+          best = a;
+        }
+      }
+      shots.push({
+        x: cx - 9 + player.facing * 14,
+        y: cy - 9,
+        w: 18,
+        h: 18,
+        vx: player.facing * 420,
+        vy: -90,
+        life: 1.7,
+        color: def.color,
+        dmg: 3.4 * dmgMul(),
+        foe: false,
+        pierce: 0,
+        hit: new Set(),
+        home: best,
+      });
+      fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.35, color: def.color, r: 40, dir: player.facing });
+    } else if (i === 1) {
+      dashT = 0.17;
+      iframe = Math.max(iframe, 0.3);
+      fx.push({ kind: "slash", x: cx, y: cy, t: 0, max: 0.3, color: def.color, r: 150, dir: player.facing });
+    } else if (i === 2) {
+      const R = 175;
+      fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: def.color, r: R, dir: 0 });
+      for (const a of foesNear(cx, cy, R, R * 0.8)) {
+        hurtFoe(a, 2.1 * dmgMul(), def.color);
+        if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * 30;
+      }
+      for (const sh of shots) if (sh.foe && Math.hypot(sh.x - cx, sh.y - cy) < R) sh.life = 0;
+      shake = 6;
+    } else {
+      // super especial: tela inteira
+      const hit = foesNear(cx, cy, 560, 380);
+      fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: def.color, r: 640, dir: 0 });
+      for (const a of hit) {
+        fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: def.color, r: 0, dir: 0 });
+        hurtFoe(a, 7.5 * dmgMul(), def.color);
+      }
+      for (const sh of shots) if (sh.foe) sh.life = 0;
+      shake = 16;
+      hitStop = 0.14;
+      flashT = 1;
+      iframe = Math.max(iframe, 0.6);
+    }
+  }
 
   function maxHp() {
     return Math.min(10, 5 + save.stats.vit);
@@ -361,6 +465,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       best: level ? (save.best[level.index] ?? 0) : 0,
       hint: hint && screen === "play" && reelTime < 9,
       progress: level ? Math.max(0, Math.min(1, (player.x + player.w) / (level.cols * TILE))) : 0,
+      skills: SKILLS[save.hero].map((d, i) => ({ name: d.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]!, lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) })),
     };
   }
 
@@ -440,8 +545,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     hint = index0 === 0;
     formT = 0;
     iframe = 1;
+    skillCd = [0, 0, 0, 0];
+    dashT = 0;
+    fx = [];
     bossAlive = actors.some((a) => a.boss);
     audio.setWorld(level.world);
+    audio.setBoss(level.boss);
     const mark = level.tiles;
     for (let i = 0; i < mark.length; i++) {
       if (mark[i] === 5) {
@@ -536,7 +645,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const hero = save.hero;
     const formed = formT > 0;
     const color = heroById(hero).accent;
-    audio.shot();
+    audio.shot(save.hero);
     if (hero === "ivo" && formed) {
       fire("player", { ...player, x: player.x + player.facing * 8 }, player.facing, 280, 1.7 * dmgMul(), "#e0b15a", 0, 0);
       shots[shots.length - 1]!.w = 28;
@@ -587,6 +696,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     shotCd = Math.max(0, shotCd - dt);
     atkT = Math.max(0, atkT - dt);
     formCd = Math.max(0, formCd - dt);
+    skillCd = skillCd.map((c) => Math.max(0, c - dt));
     coyote = Math.max(0, coyote - dt);
     buffer = Math.max(0, buffer - dt);
     cutLock = Math.max(0, cutLock - dt);
@@ -600,6 +710,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     prevJump = hold.jump;
     prevForm = hold.form;
     if (hold.attack) playerAttack();
+    for (let k = 0; k < 4; k++) {
+      if (wantSkill[k] || (hold.s[k] && !prevSkill[k])) useSkill(k);
+      wantSkill[k] = false;
+      prevSkill[k] = hold.s[k]!;
+    }
 
     if (formT > 0) {
       formT -= dt;
@@ -623,6 +738,24 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (Math.abs(delta) <= accel) player.vx = target;
     else player.vx += Math.sign(delta) * accel;
     if (move !== 0) player.facing = move;
+    if (dashT > 0) {
+      dashT -= dt;
+      player.vx = player.facing * 1150;
+      const dmgDash = 4.6 * dmgMul();
+      const sd = SKILLS[save.hero][1]!;
+      for (const a of actors) {
+        if (a.dead || a.ally || a.kind === "candle") continue;
+        if (player.x + player.w + 16 > a.x && player.x - 16 < a.x + a.w && player.y + player.h > a.y && player.y < a.y + a.h) {
+          hurtFoe(a, dmgDash, sd.color);
+          fx.push({ kind: "wave", x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0, max: 0.4, color: sd.color, r: 70, dir: 0 });
+          shake = 8;
+          hitStop = 0.08;
+          dashT = 0;
+          player.vx = player.facing * 200;
+          break;
+        }
+      }
+    }
     player.phase += dt * (4 + Math.abs(player.vx) / 50);
 
     const bat = formed && save.hero === "lena";
@@ -636,6 +769,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (skull && hold.jump) player.vy -= 640 * dt;
     if (player.vy > TERM) player.vy = TERM;
     if (bat) player.vy = Math.max(-300, Math.min(360, player.vy));
+    if (dashT > 0) player.vy = 0;
 
     const canGround = wasGround || coyote > 0;
     const elfAir = formed && save.hero === "syl" && airJumps > 0;
@@ -790,6 +924,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     for (let i = shots.length - 1; i >= 0; i--) {
       const s = shots[i]!;
       s.life -= dt;
+      if (s.home && !s.home.dead) {
+        const tx = s.home.x + s.home.w / 2 - (s.x + s.w / 2);
+        const ty = s.home.y + s.home.h / 2 - (s.y + s.h / 2);
+        const d = Math.hypot(tx, ty) || 1;
+        const sp = 520;
+        const k = 1 - Math.exp(-9 * dt);
+        s.vx += ((tx / d) * sp - s.vx) * k;
+        s.vy += ((ty / d) * sp - s.vy) * k;
+      }
+      if (s.home) burst(s.x + s.w / 2, s.y + s.h / 2, s.color, 1, 30);
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       const tc = Math.floor((s.x + s.w / 2) / TILE);
@@ -928,6 +1072,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       jump: touch.jump || down("Space") || down("KeyW") || down("ArrowUp"),
       attack: touch.attack || down("KeyJ") || down("KeyZ"),
       form: touch.form || down("KeyK") || down("KeyL") || down("ShiftLeft"),
+      s: [touch.s1 || down("KeyU"), touch.s2 || down("KeyI"), touch.s3 || down("KeyO"), touch.s4 || down("KeyP")],
     };
   }
 
@@ -1009,6 +1154,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       level: playing ? level : attract,
       camX,
       camY,
+      focus: playing ? { x: player.x + player.w / 2, y: player.y + player.h / 2, vy: player.vy, facing: player.facing, grounded: wasGround } : null,
       shake,
       t: clock,
       playing,
@@ -1018,6 +1164,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       exit: playing && door ? { x: door.x, y: door.y, w: door.w, h: door.h, open } : null,
       lit,
       attractHero: selected,
+      fx,
+      flash: flashT,
     });
 
     if (screen === "cast" || screen === "title") {
@@ -1044,6 +1192,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       s.vy += 400 * dt;
     }
     for (let i = sparks.length - 1; i >= 0; i--) if (sparks[i]!.life <= 0) sparks.splice(i, 1);
+    for (const f of fx) f.t += dt;
+    fx = fx.filter((f) => f.t < f.max);
+    flashT = Math.max(0, flashT - dt * 1.6);
 
     if (screen === "play") {
       acc += dt;
@@ -1063,7 +1214,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       audio.setMusic(true);
     } else {
       acc = 0;
-      audio.setMusic(screen !== "title" && screen !== "help");
+      audio.setMusic(true, screen === "title" || screen === "help" || screen === "cast" ? "menu" : "play");
       player.phase += dt * 3;
     }
     audio.tick();
@@ -1284,6 +1435,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       touch[action] = down;
       if (down && action === "jump") wantJump = true;
       if (down && action === "form") wantForm = true;
+      if (down && (action === "s1" || action === "s2" || action === "s3" || action === "s4")) wantSkill[Number(action[1]) - 1] = true;
       if (down) audio.unlock();
     },
     backTitle() {
@@ -1309,8 +1461,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const idx = Math.max(0, Math.min(24, Number(q.get("qa")) || 0));
     loadLevel(idx);
     const at = Number(q.get("at"));
-    if (q.has("at") && level) {
-      const col = at < 0 ? level.cols + at : at;
+    const lv = level as Level | null;
+    if (q.has("at") && lv) {
+      const col = at < 0 ? lv.cols + at : at;
       player.x = col * TILE;
       player.y = (GROUND - 1) * TILE;
       camX = Math.max(0, player.x - 200);

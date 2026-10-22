@@ -5,7 +5,7 @@ import type { HeroId, Kind } from "../game/types";
 /* Grafo de cena minúsculo: cada Node é um grupo (pos/rot/scl) que pode ter uma
    primitiva desenhada com `size`. Os filhos herdam só o grupo (não o size). */
 
-type Prim = "cube" | "sphere" | "cone" | "cyl";
+type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring";
 
 export class Node {
   prim: Prim | null = null;
@@ -29,6 +29,12 @@ export class Node {
 }
 
 const INK: Vec3 = [0.078, 0.031, 0.047];
+
+function mix(a: string, b: string, k: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return "#" + pa.map((v, i) => Math.round(v + (pb[i]! - v) * k).toString(16).padStart(2, "0")).join("");
+}
 
 function G(x = 0, y = 0, z = 0): Node {
   const n = new Node();
@@ -139,7 +145,7 @@ export function buildHero(id: HeroId): Model {
   hair.baseColor = hair.color;
 
   const aura = P("sphere", [1.1, 1.5, 1.1], hex(def.accent), [0, 0.55, 0]);
-  aura.alpha = 0.22;
+  aura.alpha = 0.07;
   aura.ink = false;
   aura.emis = hex(def.accent).map((v) => v * 0.6) as Vec3;
   aura.visible = false;
@@ -223,6 +229,122 @@ export function buildHero(id: HeroId): Model {
     }
   }
 
+  /* ---- acabamento comum: pescoço, nariz, sobrancelhas ---- */
+  body.add(P("cyl", [0.1, 0.09, 0.1], skin, [0, 0.71, 0]));
+  head.add(P("cone", [0.055, 0.07, 0.055], mix(skin, "#8a4a3a", 0.25), [0, -0.025, 0.175], [Math.PI / 2, 0, 0]));
+  for (const sx of [-1, 1]) head.add(P("cube", [0.075, 0.02, 0.03], def.hair, [sx * 0.075, 0.085, 0.15], [0, 0, -sx * 0.12]));
+  const gold = "#e0b15a";
+
+  if (id === "ivo") {
+    body.add(P("cube", [0.3, 0.28, 0.05], cloth, [0, 0.36, -0.15], [0.2, 0, 0]));
+    for (let i = 0; i < 3; i++) body.add(glow(P("sphere", [0.032, 0.032, 0.03], gold, [0, 0.64 - i * 0.075, 0.152]), 0.5));
+    for (const sx of [-1, 1]) {
+      body.add(P("sphere", [0.12, 0.06, 0.12], gold, [sx * 0.2, 0.72, 0]));
+      head.add(P("cone", [0.045, 0.11, 0.04], "#24160f", [sx * 0.085, -0.095, 0.16], [0, 0, sx * 1.2]));
+    }
+    body.add(P("cyl", [0.31, 0.04, 0.26], "#6b4a2f", [0, 0.47, 0]));
+    body.add(P("cube", [0.07, 0.06, 0.03], gold, [0, 0.47, 0.135]));
+    // forma de lobo: juba, garras, presas, olhos acesos
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      const m = P("cone", [0.11, 0.2, 0.09], i % 2 ? "#6a6f7a" : "#8d929c", [Math.cos(a) * 0.2, 0.7, Math.sin(a) * 0.17], [Math.sin(a) * 1.0, 0, -Math.cos(a) * 1.0]);
+      m.visible = false;
+      body.add(m);
+      formNodes.push(m);
+    }
+    for (const sx of [-1, 1]) {
+      for (let k = -1; k <= 1; k++) {
+        const claw = P("cone", [0.03, 0.1, 0.03], "#f4efe4", [k * 0.045, -0.37, 0.04], [Math.PI, 0, 0]);
+        claw.visible = false;
+        parts[sx < 0 ? "armL" : "armR"]!.add(claw);
+        formNodes.push(claw);
+      }
+      const fang = P("cone", [0.03, 0.08, 0.03], "#fffaf0", [sx * 0.045, -0.115, 0.27], [Math.PI, 0, 0]);
+      const eye = glow(P("sphere", [0.05, 0.06, 0.04], "#ffd34a", [sx * 0.075, 0.0, 0.2]), 1);
+      fang.visible = false;
+      eye.visible = false;
+      head.add(fang, eye);
+      formNodes.push(fang, eye);
+    }
+  } else if (id === "lena") {
+    parts.cape!.add(P("cube", [0.38, 0.5, 0.02], "#c4373a", [0, 0, 0.03]));
+    body.add(P("cone", [0.4, 0.26, 0.4], cloth, [0, 0.43, 0]));
+    const pony = G(0, 0.04, -0.2);
+    for (let i = 0; i < 3; i++) pony.add(P("sphere", [0.12 - i * 0.025, 0.12 - i * 0.025, 0.12 - i * 0.025], def.hair, [0, -0.07 * i, -0.04 * i]));
+    head.add(pony);
+    parts.pony = pony;
+    for (const sx of [-1, 1]) {
+      body.add(P("cone", [0.12, 0.22, 0.06], "#2a1a38", [sx * 0.12, 0.76, -0.12], [0, 0, -sx * 0.3]));
+      head.add(P("cone", [0.06, 0.12, 0.05], skin, [sx * 0.19, 0.01, 0], [0, 0, -sx * 1.3]));
+      const eye = glow(P("sphere", [0.05, 0.06, 0.04], "#ff3a4a", [sx * 0.075, 0.0, 0.2]), 1);
+      eye.visible = false;
+      head.add(eye);
+      formNodes.push(eye);
+      const wing = parts[sx < 0 ? "wingL" : "wingR"]!;
+      for (let k = 0; k < 3; k++) wing.add(P("cube", [0.52, 0.026, 0.035], "#2a1a38", [sx * 0.3, 0.12 - k * 0.1, 0.015], [0, 0, sx * (0.15 + k * 0.16)]));
+    }
+  } else if (id === "osso") {
+    body.add(P("cube", [0.3, 0.3, 0.05], cloth, [0, 0.34, -0.14], [0.18, 0, 0]));
+    for (const sx of [-1, 1]) body.add(P("cone", [0.07, 0.1, 0.05], def.accent, [sx * 0.055, 0.7, 0.14], [0, 0, sx * 1.57]));
+    body.add(glow(P("sphere", [0.04, 0.04, 0.03], def.accent, [0, 0.7, 0.15]), 0.6));
+    parts.armL!.add(P("cyl", [0.03, 0.62, 0.03], "#6b4a2f", [0, -0.3, 0.09]));
+    parts.armL!.add(P("sphere", [0.07, 0.07, 0.07], gold, [0, 0.01, 0.09]));
+    body.add(P("cube", [0.52, 0.022, 0.03], "#6b4a2f", [0, 1.27, 0.02]));
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI - 0.15;
+      const fl = glow(P("cone", [0.09, 0.26, 0.07], def.accent, [Math.cos(a) * 0.17, 0.2 + Math.sin(a) * 0.14, -0.02], [0, 0, Math.cos(a) * -0.8]), 0.9);
+      fl.visible = false;
+      head.add(fl);
+      formNodes.push(fl);
+    }
+  } else if (id === "syl") {
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      body.add(P("cone", [0.09, 0.17, 0.05], i % 2 ? "#4a8a3a" : "#6aaa48", [Math.cos(a) * 0.17, 0.39, Math.sin(a) * 0.14], [Math.PI, 0, 0]));
+    }
+    head.add(P("cone", [0.04, 0.22, 0.02], "#c4373a", [0.15, 0.3, -0.05], [0, 0, -0.5]));
+    for (const sx of [-1, 1]) {
+      parts[sx < 0 ? "armL" : "armR"]!.add(P("cyl", [0.115, 0.09, 0.115], "#4a3024", [0, -0.18, 0]));
+      const eye = glow(P("sphere", [0.05, 0.06, 0.04], "#d2ff7a", [sx * 0.075, 0.0, 0.2]), 1);
+      eye.visible = false;
+      head.add(eye);
+      formNodes.push(eye);
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const lf = glow(P("cone", [0.07, 0.17, 0.05], i % 2 ? "#9bd46a" : "#d2ff7a", [Math.cos(a) * 0.17, 0.24, Math.sin(a) * 0.15], [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6]), 0.55);
+      lf.visible = false;
+      head.add(lf);
+      formNodes.push(lf);
+    }
+  }
+
+  /* ---- efeitos da transformação: anéis de energia, colunas e brilho ---- */
+  const fxCol = hex(def.accent).map((v) => Math.min(1, v * 0.85 + 0.15)) as Vec3;
+  const fx: Node[] = [];
+  for (let i = 0; i < 3; i++) {
+    const r = P("ring", [0.9, 0.6, 0.9], fxCol, [0, 0.1, 0]);
+    r.emis = fxCol.map((v) => v * 0.6) as Vec3;
+    r.ink = false;
+    r.alpha = 0.5;
+    r.visible = false;
+    root.add(r);
+    fx.push(r);
+    parts["fxRing" + i] = r;
+  }
+  for (let i = 0; i < 6; i++) {
+    const c = P("cone", [0.05, 0.4, 0.05], fxCol, [0, 0, 0]);
+    c.emis = fxCol.map((v) => v * 1.0) as Vec3;
+    c.ink = false;
+    c.alpha = 0.7;
+    c.visible = false;
+    root.add(c);
+    fx.push(c);
+    parts["fxCol" + i] = c;
+  }
+  let lastForm = false;
+  let popAt = -10;
+
   const model: Model = {
     root,
     kind: "hero",
@@ -257,6 +379,31 @@ export function buildHero(id: HeroId): Model {
       body.rot[0] = run * 0.1 + (air ? -0.05 : 0);
       if (parts.cape) parts.cape.rot[0] = 0.15 + run * 0.35 + Math.sin(p.t * 5) * 0.05 + (air ? 0.25 : 0);
       if (parts.tail) parts.tail.rot[2] = Math.sin(p.t * 8) * 0.25;
+      if (parts.pony) parts.pony.rot[0] = 0.5 + run * 0.5 + Math.sin(p.t * 6) * 0.12 - (air ? 0.4 : 0);
+      if (p.form !== lastForm) {
+        lastForm = p.form;
+        popAt = p.t;
+      }
+      for (const n of fx) n.visible = p.form;
+      if (p.form) {
+        for (let i = 0; i < 3; i++) {
+          const u = (p.t * 0.9 + i / 3) % 1;
+          const r = parts["fxRing" + i]!;
+          r.pos[1] = 0.05 + u * 1.15;
+          const k = 0.75 + Math.sin(u * Math.PI) * 0.55;
+          r.size = [k, 0.6, k];
+          r.alpha = Math.sin(u * Math.PI) * 0.5 + 0.04;
+          r.rot[1] = p.t * 2 + i;
+        }
+        for (let i = 0; i < 6; i++) {
+          const u = (p.t * 0.7 + i * 0.17) % 1;
+          const c = parts["fxCol" + i]!;
+          const a = i * 1.047 + p.t * 1.6;
+          c.pos = [Math.cos(a) * 0.36, u * 1.0 - 0.1, Math.sin(a) * 0.3];
+          c.size = [0.05, 0.22 + u * 0.18, 0.05];
+          c.alpha = Math.sin(u * Math.PI) * 0.7 + 0.05;
+        }
+      }
       if (parts.wingL && parts.wingR) {
         const f = Math.sin(p.t * 14) * 0.5;
         parts.wingL.rot[2] = -0.3 - f;
@@ -275,7 +422,8 @@ export function buildHero(id: HeroId): Model {
         const s = 1 + Math.sin(p.t * 9) * 0.06;
         parts.aura!.size = [1.1 * s, 1.5 * s, 1.1 * s];
       }
-      const big = p.form && id === "ivo" ? 1.15 : 1;
+      const popK = Math.max(0, 1 - (p.t - popAt) / 0.45);
+      const big = (p.form && id === "ivo" ? 1.15 : 1) * (1 + Math.sin(popK * Math.PI) * 0.3);
       root.scl = [big, big, big];
       // esticar/achatar no ar
       const st = Math.max(-0.12, Math.min(0.14, -p.vy * 0.00012));
@@ -361,11 +509,29 @@ function buildEnemy(kind: Kind, world: number): Model {
         head.add(glow(P("sphere", [0.12, 0.14, 0.08], "#ffd34a", [sx * 0.13, 0.03, 0.26])));
       }
       head.add(P("cube", [0.26, 0.05, 0.06], "#3a1014", [0, -0.12, 0.27]));
+      for (let i = 0; i < 4; i++) head.add(P("cone", [0.035, 0.07, 0.03], "#fffaf0", [-0.08 + i * 0.053, -0.09, 0.28], [Math.PI, 0, 0]));
+      for (const sx of [-1, 1]) {
+        head.add(P("cube", [0.14, 0.03, 0.03], "#3a1014", [sx * 0.13, 0.12, 0.26], [0, 0, -sx * 0.4]));
+        const wing = G(sx * 0.3, 0.5, -0.2);
+        wing.add(P("cube", [0.3, 0.26, 0.02], "#6a1c2a", [sx * 0.14, 0.05, 0], [0, sx * 0.4, sx * 0.4]));
+        wing.add(P("cube", [0.3, 0.02, 0.03], "#e8a0a8", [sx * 0.14, 0.17, 0], [0, sx * 0.4, sx * 0.4]));
+        body.add(wing);
+        parts[sx < 0 ? "wingL" : "wingR"] = wing;
+      }
       body.add(head);
       parts.tail = P("cone", [0.1, 0.34, 0.1], "#8c2430", [0, 0.28, -0.3], [-1.2, 0, 0]);
       body.add(parts.tail);
       limbs(body, parts, { hipY: 0.2, hipX: 0.15, legLen: 0.2, legW: 0.12, legColor: "#8c2430", footColor: "#3a1014", armY: 0.5, armX: 0.37, armLen: 0.2, armW: 0.08, armColor: "#b8323a" });
       standardAnim(m, { legs: 0.9, speedK: 8 });
+      {
+        const upd = m.update;
+        m.update = (p) => {
+          upd(p);
+          const f = Math.sin(p.t * 12) * 0.35;
+          if (parts.wingL) parts.wingL.rot[1] = -f;
+          if (parts.wingR) parts.wingR.rot[1] = f;
+        };
+      }
       break;
     }
     case "mask": {
@@ -413,6 +579,9 @@ function buildEnemy(kind: Kind, world: number): Model {
       for (let i = 0; i < 3; i++) body.add(P("cyl", [0.4 - i * 0.05, 0.045, 0.22], "#efe8d8", [0, 0.68 - i * 0.075, 0]));
       body.add(P("cube", [0.28, 0.08, 0.16], "#efe8d8", [0, 0.4, 0]));
       limbs(body, parts, { hipY: 0.38, hipX: 0.09, legLen: 0.36, legW: 0.07, legColor: "#efe8d8", footColor: "#cfc6b4", armY: 0.72, armX: 0.22, armLen: 0.3, armW: 0.06, armColor: "#efe8d8" });
+      parts.armR!.add(P("cube", [0.04, 0.34, 0.025], "#b9b4a8", [0, -0.45, 0.06]));
+      parts.armR!.add(P("cube", [0.14, 0.03, 0.04], "#6b4a2f", [0, -0.29, 0.06]));
+      body.add(P("cube", [0.34, 0.3, 0.03], "#3a2a2a", [0, 0.58, -0.14], [0.15, 0, 0]));
       standardAnim(m, { legs: 0.8 });
       break;
     }
@@ -460,6 +629,11 @@ function buildEnemy(kind: Kind, world: number): Model {
       for (const sx of [-1, 1]) head.add(glow(P("cube", [0.07, 0.05, 0.04], "#ff8a3a", [sx * 0.09, 0.02, 0.17])));
       body.add(head);
       body.add(glow(P("sphere", [0.22, 0.22, 0.12], "#ff8a3a", [0, 0.52, 0.3]), 1));
+      for (const sx of [-1, 1]) {
+        body.add(P("sphere", [0.3, 0.24, 0.3], "#8a7c70", [sx * 0.42, 0.84, 0]));
+        body.add(P("cone", [0.16, 0.18, 0.16], "#4a8a4a", [sx * 0.42, 0.98, 0]));
+      }
+      for (let i = 0; i < 3; i++) body.add(glow(P("cube", [0.1, 0.025, 0.03], "#ff8a3a", [-0.22 + i * 0.22, 0.38, 0.3]), 0.7));
       limbs(body, parts, { hipY: 0.28, hipX: 0.2, legLen: 0.28, legW: 0.28, legColor: "#6a5c50", armY: 0.76, armX: 0.52, armLen: 0.5, armW: 0.24, armColor: "#7a6c60", hand: "#8a7c70" });
       standardAnim(m, { legs: 0.4, arms: 0.3, bob: 0.015, speedK: 4 });
       break;
@@ -476,6 +650,9 @@ function buildEnemy(kind: Kind, world: number): Model {
       body.add(head);
       limbs(body, parts, { hipY: 0.24, hipX: 0.2, legLen: 0.24, legW: 0.22, legColor: "#55703a", footColor: "#3a2a1a", armY: 0.6, armX: 0.5, armLen: 0.4, armW: 0.18, armColor: "#6d8a4a", hand: "#7f9d58" });
       parts.armR!.add(P("cyl", [0.16, 0.6, 0.16], "#6b4a2f", [0.0, -0.4, 0.14], [0.5, 0, 0]));
+      for (let i = 0; i < 4; i++) parts.armR!.add(P("cone", [0.05, 0.12, 0.05], "#d9d0c2", [(i % 2 ? 0.1 : -0.1), -0.55 - i * 0.05, 0.28 + i * 0.03], [0, 0, (i % 2 ? -1 : 1) * 1.3]));
+      body.add(P("cyl", [0.62, 0.09, 0.46], "#4a321e", [0, 0.28, 0]));
+      body.add(P("sphere", [0.12, 0.12, 0.1], "#efe8d8", [0, 0.28, 0.24]));
       standardAnim(m, { legs: 0.6, arms: 0.4, bob: 0.03, speedK: 5 });
       break;
     }
@@ -591,6 +768,23 @@ function buildEnemy(kind: Kind, world: number): Model {
     case "boss": {
       buildBoss(body, parts, w);
       standardAnim(m, { legs: 0.3, arms: 0.2, bob: 0.02, speedK: 3 });
+      {
+        const ac = hex(["#e0b15a", "#8fd0c8", "#ff6a2a", "#d2e39a", "#c9b6e0"][w % 5]!);
+        const orbs: Node[] = [];
+        for (let i = 0; i < 4; i++) {
+          const o = glow(P("sphere", [0.15, 0.15, 0.15], ac, [0, 0.9, 0]), 1);
+          body.add(o);
+          orbs.push(o);
+        }
+        const upd = m.update;
+        m.update = (p) => {
+          upd(p);
+          orbs.forEach((o, i) => {
+            const a = p.t * 1.6 + (i / 4) * Math.PI * 2;
+            o.pos = [Math.cos(a) * 0.78, 0.9 + Math.sin(p.t * 2 + i) * 0.12, Math.sin(a) * 0.5];
+          });
+        };
+      }
       break;
     }
   }

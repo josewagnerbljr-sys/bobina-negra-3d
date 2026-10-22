@@ -138,7 +138,7 @@ export function Bobina() {
             )}
             {snap.hint && (
               <p className="max-w-md text-sm text-paper/80">
-                A e D movem. Espaço pula. J atira. K é a forma. S desce da plataforma.
+                A e D movem. Espaço pula. J atira. K é a forma. U, I, O e P usam os poderes (liberam com o nível). S desce da plataforma.
               </p>
             )}
           </header>
@@ -392,6 +392,14 @@ export function Bobina() {
           )}
         </div>
 
+        {playing && snap.screen === "play" && (
+          <div className="pointer-events-auto flex justify-end gap-2 px-3 pb-2">
+            {snap.skills.map((k, i) => (
+              <SkillButton key={k.name} skill={k} onDown={(d) => hold(("s" + (i + 1)) as Action, d)} />
+            ))}
+          </div>
+        )}
+
         {playing && (
           <div className="touch-dock safe-bot pointer-events-auto flex items-end justify-between gap-2 px-3 pb-3">
             <div className="flex gap-2">
@@ -513,6 +521,37 @@ function IconButton({
   );
 }
 
+function SkillButton({ skill, onDown }: { skill: Snap["skills"][number]; onDown: (d: boolean) => void }) {
+  const ready = skill.unlocked && skill.cd <= 0;
+  const pct = skill.unlocked ? Math.min(100, (skill.cd / Math.max(0.1, skill.cdMax)) * 100) : 100;
+  return (
+    <button
+      type="button"
+      aria-label={`${skill.name} (${skill.kind})${skill.unlocked ? "" : `, libera no nível ${skill.lv}`}`}
+      disabled={!skill.unlocked}
+      className={`relative grid min-h-12 min-w-[3.6rem] touch-none select-none place-items-center overflow-hidden rounded-md border px-1.5 py-1 text-paper ${ready ? "border-brass bg-panel/95" : "border-paper/25 bg-panel/80 opacity-80"}`}
+      style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "none" }}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* sem captura */
+        }
+        onDown(true);
+      }}
+      onPointerUp={() => onDown(false)}
+      onPointerCancel={() => onDown(false)}
+      onLostPointerCapture={() => onDown(false)}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink/70" style={{ height: `${pct}%` }} />
+      <span className="pointer-events-none relative text-[10px] leading-tight text-brass">{skill.key} · {skill.kind}</span>
+      <span className="pointer-events-none relative text-[11px] leading-tight">{skill.unlocked ? skill.name : `Nv ${skill.lv}`}</span>
+    </button>
+  );
+}
+
 function Pad({
   children,
   label,
@@ -548,3 +587,4 @@ function Pad({
     </button>
   );
 }
+

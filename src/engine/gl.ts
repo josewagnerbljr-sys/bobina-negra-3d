@@ -253,6 +253,31 @@ export function addSphere(g: Geo, cx: number, cy: number, cz: number, r: number,
   }
 }
 
+/** Anel (toro) no plano XZ, raio maior R e espessura r. */
+export function addTorus(g: Geo, R: number, r: number, seg: number, rseg: number, col: Vec3) {
+  const base = g.pos.length / 3;
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    for (let j = 0; j <= rseg; j++) {
+      const b = (j / rseg) * Math.PI * 2;
+      const cb = Math.cos(b);
+      const sb = Math.sin(b);
+      g.pos.push((R + r * cb) * ca, r * sb, (R + r * cb) * sa);
+      g.nor.push(cb * ca, sb, cb * sa);
+      g.col.push(...col);
+    }
+  }
+  for (let i = 0; i < seg; i++) {
+    for (let j = 0; j < rseg; j++) {
+      const a = base + i * (rseg + 1) + j;
+      const b = a + rseg + 1;
+      g.idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+}
+
 /* ----------------------------------------------------------------- shaders */
 
 const LIT_VS = `#version 300 es
@@ -407,7 +432,7 @@ export class Engine {
   private nmat = new Float32Array(9);
   private ident = m4.create();
   private identN = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
-  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh };
+  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh; ring: GpuMesh };
   drawCalls = 0;
   lost = false;
 
@@ -444,6 +469,7 @@ export class Engine {
       cone: this.coneMesh(0),
       cyl: this.coneMesh(1),
       quad: this.quadMesh(),
+      ring: this.ringMesh(),
     };
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
@@ -522,6 +548,11 @@ export class Engine {
     return this.upload(g);
   }
   /** cone: topo 0 ; cilindro: topo = base. Centrados em y=0, altura 1, raio base 0.5 */
+  private ringMesh() {
+    const g = newGeo();
+    addTorus(g, 0.5, 0.06, 32, 8, [1, 1, 1]);
+    return this.upload(g);
+  }
   private coneMesh(kind: 0 | 1) {
     const g = newGeo();
     addCone(g, 0, -0.5, 0, 0.5, kind === 0 ? 0 : 0.5, 1, 14, [1, 1, 1], undefined, true);
@@ -646,7 +677,7 @@ export class Engine {
     this.draw(mesh, model, opts);
   }
 
-  prim(kind: "cube" | "sphere" | "cone" | "cyl" | "quad", p: Vec3, r: Vec3, s: Vec3, opts: DrawOpts = {}, ink?: Vec3, thick = 0.06) {
+  prim(kind: "cube" | "sphere" | "cone" | "cyl" | "quad" | "ring", p: Vec3, r: Vec3, s: Vec3, opts: DrawOpts = {}, ink?: Vec3, thick = 0.06) {
     m4.compose(this.model, p, r, s);
     if (ink) this.drawInked(this.prims[kind], this.model, opts, ink, thick);
     else this.draw(this.prims[kind], this.model, opts);
