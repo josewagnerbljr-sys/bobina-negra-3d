@@ -62,7 +62,10 @@ const css = compiler.build([...candidates]);
 await writeFile(path.join(dist, "assets/app.css"), css);
 
 // 3) HTML + estáticos
-await cp(path.join(root, "index.html"), path.join(dist, "index.html"));
+// cache-busting: app.js/app.css têm nome fixo, então o navegador (e o CDN do GitHub Pages) guardavam a versão velha
+const stamp = Date.now().toString(36);
+const html = (await readFile(path.join(root, "index.html"), "utf8")).replace("./assets/app.css", `./assets/app.css?v=${stamp}`).replace("./assets/app.js", `./assets/app.js?v=${stamp}`);
+await writeFile(path.join(dist, "index.html"), html);
 await cp(path.join(root, "public"), dist, { recursive: true });
 await writeFile(path.join(dist, ".nojekyll"), "");
 console.log("OK -> dist/ (", (css.length / 1024).toFixed(1), "KB css )");
