@@ -506,6 +506,18 @@ export function createAudio() {
       } else if (hero === "osso") {
         osc(b, "triangle", 900, t, 0.04, b.sfx, 0.12, { slideTo: 700 });
         osc(b, "triangle", 1250, t + 0.045, 0.05, b.sfx, 0.1, { slideTo: 900 });
+      } else if (hero === "tito") {
+        noiseHit(b, t, 0.18, 0.35, b.sfx, { type: "bandpass", freq: 700, to: 2600, q: 0.7 });
+        osc(b, "sawtooth", 110, t, 0.16, b.sfx, 0.12, { slideTo: 220, filter: 900 });
+      } else if (hero === "mari") {
+        osc(b, "sine", 520, t, 0.1, b.sfx, 0.12, { slideTo: 980 });
+        osc(b, "sine", 780, t + 0.05, 0.1, b.sfx, 0.08, { slideTo: 1300 });
+      } else if (hero === "pia") {
+        osc(b, "square", 90, t, 0.1, b.sfx, 0.16, { slideTo: 50 });
+        noiseHit(b, t, 0.06, 0.3, b.sfx, { type: "lowpass", freq: 1200 });
+      } else if (hero === "lumen") {
+        osc(b, "sawtooth", 1800, t, 0.1, b.sfx, 0.08, { slideTo: 300, filter: 4000 });
+        noiseHit(b, t, 0.07, 0.25, b.sfx, { type: "highpass", freq: 3000 });
       } else {
         osc(b, "sawtooth", 330, t, 0.16, b.sfx, 0.08, { slideTo: 190, filter: 1800 });
         noiseHit(b, t, 0.06, 0.1, b.sfx, { freq: 4000 });

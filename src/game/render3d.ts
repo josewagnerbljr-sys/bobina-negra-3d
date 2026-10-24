@@ -1,5 +1,5 @@
 import { Engine, hex, m4, mix3, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
-import { buildModel, drawModel, INK_COLOR, type DrawState, type Model, type Pose } from "../engine/models";
+import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
 import { GROUND, ROWS, TILE, Tile, type HeroId, type Kind, type Level } from "./types";
@@ -29,9 +29,10 @@ export type Paint = {
   /** 0..1 animação de morte */
   dying?: number;
   mini?: boolean;
+  gear?: GearLook;
 };
 
-export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number };
+export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number; slot: string };
 
 export type Fx = { kind: "wave" | "slash" | "pillar" | "nova"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number };
 
@@ -114,7 +115,7 @@ function lightingFor(w: WorldDef): Lighting {
 export type Renderer = {
   setAttract: (l: Level) => void;
   render: (f: Frame) => void;
-  previewHero: (canvas: HTMLCanvasElement, id: HeroId, t: number, form: boolean) => void;
+  previewHero: (canvas: HTMLCanvasElement, id: HeroId, t: number, form: boolean, gear?: GearLook) => void;
   destroy: () => void;
   ok: boolean;
 };
@@ -213,6 +214,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ally: p.ally,
       world: p.world,
       attack: p.attack,
+      gear: p.gear,
     };
     m.update(pose);
     const target = p.facing >= 0 ? Math.PI / 2 - 0.5 : -(Math.PI / 2 - 0.5);
@@ -414,7 +416,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (!near(lt.x * S)) continue;
       const c = col(lt.color);
       const bob = Math.sin(f.t * 3 + lt.t) * 0.06;
-      e.prim(lt.rarity > 1 ? "cone" : "cube", [lt.x * S, ROWS - lt.y * S + 0.28 + bob, 0.05], [f.t * 1.4 + lt.t, f.t * 2 + lt.t, 0.5], [0.22, 0.22, 0.22], { color: c, emis: [c[0] * 0.5, c[1] * 0.5, c[2] * 0.5] }, INK_COLOR, 0.06);
+      const X = lt.x * S;
+      const Y = ROWS - lt.y * S + 0.3 + bob;
+      const spin = f.t * 1.6 + lt.t;
+      const em: Vec3 = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
+      const mat = { color: c, emis: em };
+      const metal = { color: [0.82, 0.85, 0.9] as Vec3, emis: [0.1, 0.1, 0.12] as Vec3 };
+      if (lt.slot === "potion") {
+        e.prim("sphere", [X, Y, 0.05], [0, spin, 0], [0.26, 0.28, 0.26], mat, INK_COLOR, 0.05);
+        e.prim("cyl", [X, Y + 0.2, 0.05], [0, spin, 0], [0.09, 0.14, 0.09], metal, INK_COLOR, 0.04);
+      } else if (lt.slot === "weapon") {
+        e.prim("cube", [X, Y, 0.05], [0, spin, 0.7], [0.08, 0.52, 0.08], mat, INK_COLOR, 0.05);
+        e.prim("cube", [X - 0.08, Y - 0.1, 0.05], [0, spin, 0.7], [0.26, 0.06, 0.1], metal, INK_COLOR, 0.04);
+      } else if (lt.slot === "armor") {
+        e.prim("cube", [X, Y, 0.05], [0, spin, 0], [0.34, 0.34, 0.16], mat, INK_COLOR, 0.05);
+        e.prim("cube", [X, Y + 0.17, 0.05], [0, spin, 0], [0.4, 0.06, 0.18], metal, INK_COLOR, 0.04);
+      } else {
+        e.prim("ring", [X, Y, 0.05], [Math.PI / 2 * 0.4, spin, 0], [0.3, 0.3, 0.3], mat, INK_COLOR, 0.04);
+        e.prim("sphere", [X, Y + 0.17, 0.05], [0, 0, 0], [0.1, 0.1, 0.1], { color: [1, 0.9, 0.5] as Vec3, emis: [0.6, 0.5, 0.2] as Vec3 }, INK_COLOR, 0.03);
+      }
     }
     for (const it of pass1) drawModel(e, it.m, it.mat, it.st, 1);
     e.blend(false);
@@ -617,11 +637,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   }
 
   function heroAccent(id: HeroId) {
-    return id === "ivo" ? "#e0b15a" : id === "lena" ? "#c4373a" : id === "osso" ? "#9fd4d8" : "#d2e39a";
+    return ({ ivo: "#e0b15a", lena: "#c4373a", osso: "#9fd4d8", syl: "#d2e39a", tito: "#ff7a2a", mari: "#4ac0e0", pia: "#c0c8d4", lumen: "#ffe24a" } as Record<string, string>)[id] ?? "#e0b15a";
   }
 
 
-  function previewHero(target: HTMLCanvasElement, id: HeroId, t: number, form: boolean) {
+  function previewHero(target: HTMLCanvasElement, id: HeroId, t: number, form: boolean, gear?: GearLook) {
     try {
       if (!prev) {
         prevCanvas = document.createElement("canvas");
@@ -658,7 +678,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         m = buildModel("hero", id, 0);
         prevModels.set(id, m);
       }
-      const pose: Pose = { t, phase: t * 4, speed: 0.2, vy: 0, facing: 1, form, hurt: false, ally: false, world: 0, attack: 0 };
+      const pose: Pose = { t, phase: t * 4, speed: 0.2, vy: 0, facing: 1, form, hurt: false, ally: false, world: 0, attack: 0, gear };
       m.update(pose);
       const yaw = Math.sin(t * 0.9) * 0.55 + 0.25;
       const mat = m4.compose(m4.create(), [0, 0.02, 0], [0, yaw, 0], [1.5, 1.5, 1.5]);

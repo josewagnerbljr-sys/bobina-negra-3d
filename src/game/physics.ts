@@ -106,10 +106,11 @@ export function moveBody(body: Body, level: Level, dt: number, drop: number) {
 }
 
 export function touchesSpike(body: Body, level: Level) {
-  const c0 = Math.floor(body.x / TILE);
-  const c1 = Math.floor((body.x + body.w) / TILE);
-  const r0 = Math.floor(body.y / TILE);
-  const r1 = Math.floor((body.y + body.h) / TILE);
+  // caixa menor que o corpo: só conta se o herói realmente afundou nos espinhos
+  const c0 = Math.floor((body.x + 9) / TILE);
+  const c1 = Math.floor((body.x + body.w - 9) / TILE);
+  const r0 = Math.floor((body.y + 6) / TILE);
+  const r1 = Math.floor((body.y + body.h - 10) / TILE);
   for (let r = r0; r <= r1; r++) {
     for (let c = c0; c <= c1; c++) {
       if (tileAt(level, c, r) === 3) return true;
@@ -117,4 +118,3 @@ export function touchesSpike(body: Body, level: Level) {
   }
   return false;
 }
-

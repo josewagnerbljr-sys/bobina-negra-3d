@@ -1,6 +1,6 @@
 # Bobina Negra 3D
 
-Jogo de plataforma **3D (2.5D) para navegador**, em WebGL, com 4 heróis, 10 mundos, 50 fases, 10 bis de tesouro, 20 chefes, atributos e mochila de itens.
+Jogo de plataforma **3D (2.5D) para navegador**, em WebGL, com 8 heróis, 10 mundos, 50 fases, 10 bis de tesouro, 20 chefes, atributos e mochila de itens.
 Projeto do desafio da **DIO** ("publicar um jogo jogável em WebGL"), adaptado de um jogo 2D que eu já tinha:
 a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em 3D.
 
@@ -11,7 +11,7 @@ a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em
 
 | Item | Detalhe |
 |---|---|
-| Heróis | Ivo (lobo), Lena (vampira/asas), Osso (necromante/caveira), Syl (arqueira/elfa), cada um com ataque, forma e 4 poderes próprios |
+| Heróis | 8: Ivo (lobo), Lena (vampira/asas), Osso (necromante/caveira), Syl (arqueira/elfa), Tito Brasa (engolidor de fogo/dragão), Marina Sal (sereia/maré), Pia Granito (gárgula/pedra) e Doutor Lúmen (eletricista fantasma/raio), cada um com ataque, forma e 4 poderes próprios |
 | Mundos | 10: Carnaval de Verniz, Catacumbas de Medula, Forja dos Golens, Mata Cega, Arquivo do Contrato, Dunas do Sol Morto, Geleira Silenciosa, Lagoa dos Náufragos, Cidadela Celeste, Palácio do Empresário |
 | Fases | **50 rolos** com estrutura de mapa própria (colinas, poços com ilhas, pontes, pilares, torres, túneis, molas, espinhos...), todos conferidos por um verificador que usa a física real do jogo |
 | Bis (bônus) | **10 mapas bônus**, um a cada 5 fases: poucos monstros e muitos baús de tesouro |
@@ -19,9 +19,11 @@ a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em
 | Inimigos | 23 tipos, todos modelados em 3D |
 | Atributos | Cada nível dá **5 pontos** para FOR, INT, DES, SAB e REC (tecla C): força, intensidade, velocidade, recarga, XP, drops e corações. Nível máximo 50 |
 | Itens e drops | Monstros, mini-chefes, chefes e baús soltam poções, elixires, armas, armaduras e relíquias (4 raridades) |
+| Equipamento visível | armadura vestida (prata, preto, vermelho, roxo e dourado conforme raridade), arma na mão e relíquia no personagem; cada item tem ícone próprio |
 | Mochila | **32 blocos**; cada objeto ocupa blocos pelo tamanho, não pela quantidade (poção 1, cajado 3, armadura 5). Equipar, usar e descartar na tela de personagem |
 | Controles | Teclado (A/D, Espaço, J tiro, K forma, S descer, U/I/O/P ou 1–4 poderes, Q poção, C personagem/mochila) e botões na tela para celular |
 | Poderes (U, I, O, P) | 2 ataques unitários (perseguidor e investida), 1 em área comum e 1 super especial em área, liberados desde o início |
+| Visual | sombreamento estilo anime: 3 faixas duras, sombra fria, brilho de gloss, luz de contorno e traço de tinta |
 | Cenários | cada rolo tem clima, lua e peças de cenário próprios |
 | Trilha sonora | rock original gerado por código (70s, 80s, 90s), com várias músicas por mundo e efeitos sonoros elaborados, sem gravações e sem direitos autorais |
 | Save | automático no navegador (migra saves da versão anterior) |

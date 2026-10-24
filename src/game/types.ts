@@ -15,7 +15,7 @@ export const Tile = {
 
 export type TileId = (typeof Tile)[keyof typeof Tile];
 
-export const HERO_IDS = ["ivo", "lena", "osso", "syl"] as const;
+export const HERO_IDS = ["ivo", "lena", "osso", "syl", "tito", "mari", "pia", "lumen"] as const;
 export type HeroId = (typeof HERO_IDS)[number];
 
 export const STAT_KEYS = ["str", "int", "dex", "wis", "rec"] as const;

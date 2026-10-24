@@ -1,5 +1,5 @@
 import { emptyEquip, setUidSeed } from "./items";
-import { EMPTY_STATS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
+import { EMPTY_STATS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
 
 const KEY = "bobina-negra-v2";
 const OLD_KEY = "bobina-negra-v1";
@@ -40,7 +40,7 @@ export function emptySave(hero: HeroId): Save {
 }
 
 function okHero(v: unknown): v is HeroId {
-  return v === "ivo" || v === "lena" || v === "osso" || v === "syl";
+  return typeof v === "string" && (HERO_IDS as readonly string[]).includes(v);
 }
 
 function okItem(v: unknown): v is Item {

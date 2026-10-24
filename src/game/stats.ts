@@ -6,6 +6,10 @@ export const BASE_STATS: Record<HeroId, Stats> = {
   lena: { str: 3, int: 4, dex: 5, wis: 3, rec: 2 },
   osso: { str: 2, int: 6, dex: 2, wis: 5, rec: 3 },
   syl: { str: 3, int: 2, dex: 7, wis: 3, rec: 3 },
+  tito: { str: 5, int: 5, dex: 2, wis: 1, rec: 4 },
+  mari: { str: 2, int: 5, dex: 4, wis: 4, rec: 3 },
+  pia: { str: 7, int: 1, dex: 2, wis: 2, rec: 6 },
+  lumen: { str: 2, int: 4, dex: 6, wis: 4, rec: 2 },
 };
 
 export const STAT_INFO: Record<StatKey, { abbr: string; name: string; text: string }> = {

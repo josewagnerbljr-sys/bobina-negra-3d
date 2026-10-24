@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
 import { BONUS_NAMES, HEROES, REEL_NAMES, WORLDS, heroById } from "../game/content";
 import { BASE_BY_ID, RARITY_COLOR, RARITY_NAME, baseOf, itemName, itemSize, modText } from "../game/items";
+import { ItemIcon } from "./ItemIcon";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
 import { BAG_SIZE, EMPTY_STATS, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
@@ -92,18 +93,18 @@ export function Bobina() {
   }
 
   return (
-    <main className="sprocket relative h-dvh select-none overflow-hidden bg-ink font-sans text-paper" onContextMenu={(e) => e.preventDefault()}>
+    <main className="sprocket fixed inset-0 select-none overflow-hidden bg-ink font-sans text-paper" onContextMenu={(e) => e.preventDefault()}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" aria-hidden />
-      <div className="safe-top pointer-events-none absolute inset-0 flex flex-col">
+      <div className="safe-top hud-root pointer-events-none absolute inset-0 flex flex-col">
         {(playing || snap.screen === "pause" || snap.screen === "dead") && (
           <header className="pointer-events-none flex flex-col gap-2 px-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-display text-lg leading-none text-brass">
+                <p className="hud-title font-display text-lg leading-none text-brass">
                   {snap.bonus ? "Bis" : "Rolo"} {snap.bonus ? snap.reel - 50 : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
-                <p className="mt-1 text-sm text-paper/75">
+                <p className="hud-sub mt-1 text-sm text-paper/75">
                   {snap.worldName} · Nv {snap.level} · {clock(snap.time)}
                   {snap.buffs.map((b) => (
                     <span key={b.kind} className="ml-2 rounded bg-ink px-1.5 text-xs text-moon">
@@ -121,7 +122,7 @@ export function Bobina() {
                     type="button"
                     aria-label="Personagem e mochila"
                     onClick={() => rtRef.current?.openChar()}
-                    className={"relative grid size-11 place-items-center rounded-md border bg-panel font-display text-lg " + (snap.levelupFresh ? "animate-pulse border-brass text-brass" : "border-paper/30 text-paper")}
+                    className={"hud-ico relative grid size-11 place-items-center rounded-md border bg-panel font-display text-lg " + (snap.levelupFresh ? "animate-pulse border-brass text-brass" : "border-paper/30 text-paper")}
                   >
                     C
                     {snap.points > 0 && <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-blood px-1 text-[11px] leading-5 text-paper">{snap.points}</span>}
@@ -245,7 +246,7 @@ export function Bobina() {
             <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3 px-4 pb-6">
               <div className="rounded-lg border border-brass/40 bg-panel/95 p-4">
                 <h2 className="font-display text-3xl">Quem assina</h2>
-                <p className="mt-1 text-sm text-paper/75">Os outros três ficam no camarim, comentando. Você entra no rolo.</p>
+                <p className="mt-1 text-sm text-paper/75">Os outros sete ficam no camarim, comentando. Você entra no rolo.</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {HEROES.map((h) => {
                     const on = snap.selectedHero === h.id;
@@ -421,40 +422,41 @@ export function Bobina() {
           )}
         </div>
 
-        {playing && snap.screen === "play" && (
-          <div className="pointer-events-auto flex justify-end gap-2 px-3 pb-2">
-            {snap.skills.map((k, i) => (
-              <SkillButton key={k.name} skill={k} onDown={(d) => hold(("s" + (i + 1)) as Action, d)} />
-            ))}
-          </div>
-        )}
-
         {playing && (
-          <div className="touch-dock safe-bot pointer-events-auto flex items-end justify-between gap-2 px-3 pb-3">
-            <div className="flex gap-2">
-              <Pad label="Esquerda" onDown={(d) => hold("left", d)}>
+          <div className="touch-dock dock pointer-events-none">
+            <div className="dock-left pointer-events-auto">
+              <Pad label="Esquerda" onDown={(d) => hold("left", d)} cls="pad-lg">
                 <ArrowLeft className="size-6" />
               </Pad>
-              <Pad label="Direita" onDown={(d) => hold("right", d)}>
+              <Pad label="Direita" onDown={(d) => hold("right", d)} cls="pad-lg">
                 <ArrowRight className="size-6" />
               </Pad>
             </div>
-            <div className="flex gap-2">
-              <Pad label="Descer plataforma" onDown={(d) => hold("down", d)}>
-                <ArrowDown className="size-6" />
-              </Pad>
-              <Pad label="Beber poção" onDown={(d) => hold("potion", d)}>
-                <span className="font-display text-sm text-blood">♥ {snap.potions}</span>
-              </Pad>
-              <Pad label={`Forma ${hero.formName}`} onDown={(d) => hold("form", d)}>
-                <span className="font-display text-sm">{hero.formName}</span>
-              </Pad>
-              <Pad label="Atirar" onDown={(d) => hold("attack", d)}>
-                <span className="font-display text-sm">Tiro</span>
-              </Pad>
-              <Pad label="Pular" onDown={(d) => hold("jump", d)}>
-                <ArrowUp className="size-6" />
-              </Pad>
+            <div className="dock-right pointer-events-auto">
+              {snap.screen === "play" && (
+                <div className="dock-skills">
+                  {snap.skills.map((k, i) => (
+                    <SkillButton key={k.name} skill={k} onDown={(d) => hold(("s" + (i + 1)) as Action, d)} />
+                  ))}
+                </div>
+              )}
+              <div className="dock-main">
+                <Pad label="Descer plataforma" onDown={(d) => hold("down", d)} cls="pad-sm">
+                  <ArrowDown className="size-5" />
+                </Pad>
+                <Pad label="Beber poção" onDown={(d) => hold("potion", d)} cls="pad-sm">
+                  <span className="font-display text-xs text-blood">♥{snap.potions}</span>
+                </Pad>
+                <Pad label={`Forma ${hero.formName}`} onDown={(d) => hold("form", d)} cls="pad-md">
+                  <span className="font-display text-xs leading-none">{hero.formName}</span>
+                </Pad>
+                <Pad label="Atirar" onDown={(d) => hold("attack", d)} cls="pad-md">
+                  <span className="font-display text-sm">Tiro</span>
+                </Pad>
+                <Pad label="Pular" onDown={(d) => hold("jump", d)} cls="pad-xl">
+                  <ArrowUp className="size-7" />
+                </Pad>
+              </div>
             </div>
           </div>
         )}
@@ -511,8 +513,9 @@ function layoutBag(bag: Item[]) {
 function ItemChip({ it }: { it: Item }) {
   const b = baseOf(it);
   return (
-    <span style={{ color: b.slot === "potion" ? b.color : RARITY_COLOR[it.rarity] }}>
-      {b.glyph} {itemName(it)}
+    <span className="inline-flex items-center gap-1.5" style={{ color: b.slot === "potion" ? b.color : RARITY_COLOR[it.rarity] }}>
+      <ItemIcon item={it} size={26} ring={false} />
+      {itemName(it)}
     </span>
   );
 }
@@ -541,6 +544,7 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
           </div>
           <Primary onClick={() => rt?.closeChar()}>Voltar</Primary>
         </div>
+        <canvas data-hero-preview={snap.hero} className="pointer-events-none mx-auto mt-2 block h-44 w-full max-w-xs rounded-md bg-ink/60" />
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
@@ -636,10 +640,10 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
                     type="button"
                     onClick={() => setSel(on ? null : c.item.uid)}
                     aria-label={itemName(c.item)}
-                    className={"grid aspect-square place-items-center rounded-sm border text-base " + (on ? "ring-2 ring-brass" : "")}
-                    style={{ borderColor: color, background: `${color}26`, color }}
+                    className={"grid aspect-square place-items-center rounded-sm border " + (on ? "ring-2 ring-brass" : "")}
+                    style={{ borderColor: color, background: `${color}26` }}
                   >
-                    {c.first ? b.glyph : "·"}
+                    {c.first ? <ItemIcon item={c.item} size={30} ring={false} /> : <span style={{ color }} className="text-xs opacity-60">▪</span>}
                   </button>
                 );
               })}
@@ -742,7 +746,7 @@ function IconButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="grid size-11 place-items-center rounded-md border border-paper/30 bg-panel text-paper"
+      className="hud-ico grid size-11 place-items-center rounded-md border border-paper/30 bg-panel text-paper"
     >
       {children}
     </button>
@@ -757,7 +761,7 @@ function SkillButton({ skill, onDown }: { skill: Snap["skills"][number]; onDown:
       type="button"
       aria-label={`${skill.name} (${skill.kind})${skill.unlocked ? "" : `, libera no nível ${skill.lv}`}`}
       disabled={!skill.unlocked}
-      className={`relative grid min-h-12 min-w-[3.6rem] touch-none select-none place-items-center overflow-hidden rounded-md border px-1.5 py-1 text-paper ${ready ? "border-brass bg-panel/95" : "border-paper/25 bg-panel/80 opacity-80"}`}
+      className={`skillbtn relative grid touch-none select-none place-items-center overflow-hidden rounded-md border px-1 py-0.5 text-paper ${ready ? "border-brass bg-panel/95" : "border-paper/25 bg-panel/80 opacity-80"}`}
       style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "none" }}
       onPointerDown={(e) => {
         e.preventDefault();
@@ -774,8 +778,8 @@ function SkillButton({ skill, onDown }: { skill: Snap["skills"][number]; onDown:
       onContextMenu={(e) => e.preventDefault()}
     >
       <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-ink/70" style={{ height: `${pct}%` }} />
-      <span className="pointer-events-none relative text-[10px] leading-tight text-brass">{skill.key} · {skill.kind}</span>
-      <span className="pointer-events-none relative text-[11px] leading-tight">{skill.unlocked ? skill.name : `Nv ${skill.lv}`}</span>
+      <span className="pointer-events-none relative text-[10px] leading-tight text-brass">{skill.key}</span>
+      <span className="skillname pointer-events-none relative text-[10px] leading-tight">{skill.unlocked ? skill.name : `Nv ${skill.lv}`}</span>
     </button>
   );
 }
@@ -784,16 +788,18 @@ function Pad({
   children,
   label,
   onDown,
+  cls = "",
 }: {
   children: ReactNode;
   label: string;
   onDown: (down: boolean) => void;
+  cls?: string;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
-      className="grid min-h-14 min-w-14 touch-none select-none place-items-center rounded-md border border-paper/30 bg-panel/90 px-2 text-paper"
+      className={"pad grid touch-none select-none place-items-center rounded-lg border border-paper/30 bg-panel/85 text-paper " + cls}
       style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none", touchAction: "none" }}
       onPointerDown={(e) => {
         e.preventDefault();

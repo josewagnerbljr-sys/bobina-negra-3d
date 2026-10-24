@@ -82,6 +82,66 @@ export const HEROES: HeroDef[] = [
     shoe: "#4a3024",
     accent: "#d2e39a",
   },
+  {
+    id: "tito",
+    name: "Tito Brasa",
+    role: "Engolidor de fogo",
+    formName: "Dragão",
+    blurb: "Assinou por seguro de vida. O seguro assinou por ele e sumiu.",
+    voice: "Fogo não é truque. Truque é a cláusula de incêndio.",
+    attack: "Bola de brasa. Em forma de dragão, queima tudo em volta.",
+    skin: "#d79a6a",
+    hair: "#2a140c",
+    cloth: "#7a1410",
+    cloth2: "#1c1210",
+    shoe: "#3a2418",
+    accent: "#ff7a2a",
+  },
+  {
+    id: "mari",
+    name: "Marina Sal",
+    role: "Sereia de aquário",
+    formName: "Maré",
+    blurb: "Trabalhava no tanque da entrada. Trocaram a água pelo contrato.",
+    voice: "Pernas são um aluguel caro. Eu pago em tinta e em sal.",
+    attack: "Bolha salgada em arco. Em forma de maré, nada pelo ar.",
+    skin: "#bfe4e0",
+    hair: "#1f6f86",
+    cloth: "#1c8a9a",
+    cloth2: "#e0b15a",
+    shoe: "#146070",
+    accent: "#4ac0e0",
+  },
+  {
+    id: "pia",
+    name: "Pia Granito",
+    role: "Gárgula de torre",
+    formName: "Pedra",
+    blurb: "Vigiava o telhado do cinema. Foi demitida por piscar.",
+    voice: "Eu não sou pesada. Eu sou definitiva.",
+    attack: "Estilhaço de pedra. Em forma de pedra, aguenta e esmaga.",
+    skin: "#9aa0a8",
+    hair: "#4a4e56",
+    cloth: "#6a6e78",
+    cloth2: "#3a3d46",
+    shoe: "#2a2c32",
+    accent: "#c0c8d4",
+  },
+  {
+    id: "lumen",
+    name: "Doutor Lúmen",
+    role: "Eletricista fantasma",
+    formName: "Raio",
+    blurb: "Morreu religando o refletor. O refletor continua aceso. Ele, também.",
+    voice: "Todo mundo teme o escuro. Eu temo a fiação.",
+    attack: "Faísca perfurante. Em forma de raio, corre e dispara em leque.",
+    skin: "#d8e6f0",
+    hair: "#e8e0a0",
+    cloth: "#2a4a8a",
+    cloth2: "#e0c030",
+    shoe: "#1a1c28",
+    accent: "#ffe24a",
+  },
 ];
 
 export function heroById(id: HeroId): HeroDef {
@@ -378,10 +438,10 @@ export const ENT: Record<Kind, EntDef> = {
 export function entDef(kind: Kind, world: number, mini = false): EntDef {
   const base = ENT[kind];
   if (kind === "candle" || kind === "chest") return base;
-  const scale = 1 + world * 0.28;
+  const scale = 1.4 + world * 0.34;
   const xpK = 1 + world * 0.4;
   if (kind === "boss") {
-    const hp = mini ? 12 + world * 5 : 24 + world * 11;
+    const hp = mini ? 18 + world * 7 : 34 + world * 15;
     return {
       ...base,
       hp,
@@ -610,6 +670,26 @@ const DEATHS: Record<HeroId, string[]> = {
     "A mata não perdoa pressa. Eu também não. Empate.",
     "Respawn não é poesia. É teimosia com sprite.",
   ],
+  tito: [
+    "Apagaram o artista. Ficou só a fumaça e o boletim de ocorrência.",
+    "Eu cuspo fogo. O chão cospe de volta, e com mais pontaria.",
+    "Seguro não cobre morte recorrente. Já li a letra miúda duas vezes.",
+  ],
+  mari: [
+    "Afoguei no seco. É uma habilidade que eu não pedi.",
+    "O tanque era menor e mais seguro. Ninguém me escuta.",
+    "Sal na ferida é figura de linguagem. Aqui é rotina.",
+  ],
+  pia: [
+    "Caí. Gárgula cai de telhado. Só não costuma ter plateia.",
+    "Pedra não quebra. Racha com dignidade. Já racho de novo.",
+    "Eu avisei que era pesada. Ninguém leu o aviso.",
+  ],
+  lumen: [
+    "Curto-circuito. Dessa vez, o meu.",
+    "Morri de novo. A conta de luz do além deve estar enorme.",
+    "Fiz tudo certo. A fiação discordou, como sempre.",
+  ],
 };
 
 const CLEARS: Record<HeroId, string[]> = {
@@ -629,6 +709,22 @@ const CLEARS: Record<HeroId, string[]> = {
     "Trilha fechada. Sem fita no peito. Sem plateia. Serve.",
     "A flecha chegou. Eu também. Nessa ordem, de preferência.",
   ],
+  tito: [
+    "Rolo queimado. Literalmente, e dessa vez fui eu.",
+    "Apaguem as luzes. Eu faço o resto, com educação e com gasolina.",
+  ],
+  mari: [
+    "Atravessei mais um rolo a nado, mesmo sem água. Anotem o recorde.",
+    "O rolo secou. Eu não. Ainda.",
+  ],
+  pia: [
+    "Pronto. Pedra no caminho agora é de quem passa.",
+    "Terminei. Pode me colocar no telhado de novo.",
+  ],
+  lumen: [
+    "Luz acesa. Nem eu acredito.",
+    "Rolo ligado na tomada certa. Raro.",
+  ],
 };
 
 const TOASTS: Record<HeroId, string> = {
@@ -636,6 +732,10 @@ const TOASTS: Record<HeroId, string> = {
   lena: "Asas fora. Se alguém comentar a orelha, eu comento a jugular.",
   osso: "Caveira à mostra. O último que eu derrubei ganhou um crachá e uma ordem.",
   syl: "Orelha pontuda, três flechas, zero paciência. A mata que se explique.",
+  tito: "Dragão. O contrato disse 'efeito pirotécnico'. Eu interpretei com generosidade.",
+  mari: "Maré alta! Se alguém falar de pernas de novo, eu vazo.",
+  pia: "Pedra. Agora eu posso ser a parede que vocês nunca tiveram.",
+  lumen: "Raio. Se alguém perguntar, foi tudo dentro da norma.",
 };
 
 export function deathLine(hero: HeroId, n: number): string {
@@ -729,5 +829,29 @@ export const SKILLS: Record<HeroId, { name: string; color: string; text: string 
     { name: "Corte Ágil", color: "#9bd46a", text: "Rolamento cortante: atravessa e fere um alvo." },
     { name: "Chuva de Folhas", color: "#6aaa48", text: "Folhas afiadas em volta ferem todos perto." },
     { name: "Floresta Viva", color: "#d2ff7a", text: "Raízes e luz da mata atingem todos os monstros visíveis." },
+  ],
+  tito: [
+    { name: "Cometa de Brasa", color: "#ff9a3a", text: "Bola de fogo que persegue o alvo mais próximo." },
+    { name: "Cuspe de Dragão", color: "#ff5a1a", text: "Avanço em chamas: atravessa e queima um alvo." },
+    { name: "Anel de Fogo", color: "#ffb04a", text: "Círculo de chamas em volta; empurra e fere quem está perto." },
+    { name: "Grande Incêndio", color: "#ff3a1a", text: "Tempestade de fogo: dano enorme em todos os monstros visíveis." },
+  ],
+  mari: [
+    { name: "Bolha Caçadora", color: "#8fe4ff", text: "Bolha salgada que segue o alvo mais próximo." },
+    { name: "Mergulho Cortante", color: "#4ac0e0", text: "Mergulho no ar: atravessa e fere um alvo." },
+    { name: "Onda Curta", color: "#5ad0e8", text: "Onda em volta: empurra e fere todos perto." },
+    { name: "Maremoto", color: "#2a9ad0", text: "Parede de água em tela inteira: fere todos os monstros visíveis." },
+  ],
+  pia: [
+    { name: "Estilhaço Guiado", color: "#c0c8d4", text: "Pedra afiada que persegue o alvo mais próximo." },
+    { name: "Mergulho de Gárgula", color: "#9aa4b0", text: "Investida pesada: atravessa e esmaga um alvo." },
+    { name: "Pisão", color: "#8a929c", text: "Abalo em volta: empurra e fere todos perto." },
+    { name: "Desabamento", color: "#d0d6e0", text: "Chuva de pedras em tela inteira: fere todos os monstros visíveis." },
+  ],
+  lumen: [
+    { name: "Faísca Caçadora", color: "#ffee6a", text: "Faísca que busca o alvo mais próximo." },
+    { name: "Curto-Circuito", color: "#ffd02a", text: "Descarga em linha: atravessa e fere um alvo." },
+    { name: "Pulso Elétrico", color: "#a0e0ff", text: "Pulso em volta: empurra e fere todos perto." },
+    { name: "Apagão", color: "#ffffff", text: "A luz some e volta num raio: dano enorme em todos os monstros visíveis." },
   ],
 };

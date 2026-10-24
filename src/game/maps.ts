@@ -367,7 +367,8 @@ function build(i: number, bonus: boolean): Level {
     for (let k = 0; k < 3; k++) sk.ent("chest", sk.cols - 8 - k * 2);
     finale(sk);
     sk.ent("chest", sk.cols - 6);
-    fixEnts(sk);
+    cleanSpikes(sk);
+  fixEnts(sk);
     debugSegs[i] = sk.log;
     return mk(sk, i, world, false, false, true);
   }
@@ -406,9 +407,25 @@ function build(i: number, bonus: boolean): Level {
       }
     }
   }
+  cleanSpikes(sk);
   fixEnts(sk);
   debugSegs[i] = sk.log;
   return mk(sk, i, world, boss, mini, false);
+}
+
+/** espinho nunca encosta na borda de um buraco: ali o herói tomava dano antes de cair */
+function cleanSpikes(sk: Sketch) {
+  const open = (c: number, r: number) => c >= 0 && c < sk.cols && sk.get(c, r) === Tile.Air && sk.get(c, r + 1) === Tile.Air && sk.get(c, ROWS - 1) === Tile.Air;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let c = 0; c < sk.cols; c++) {
+      for (let r = 0; r <= GROUND; r++) {
+        if (sk.get(c, r) !== Tile.Spike) continue;
+        let near = false;
+        for (let dc = -2; dc <= 2; dc++) if (dc !== 0 && open(c + dc, r) && sk.get(c + dc, GROUND) === Tile.Air) near = true;
+        if (near && r === GROUND) sk.set(c, r, Tile.Solid);
+      }
+    }
+  }
 }
 
 function mk(sk: Sketch, i: number, world: number, boss: boolean, mini: boolean, bonus: boolean): Level {

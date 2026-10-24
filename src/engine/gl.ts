@@ -327,12 +327,30 @@ void main(){
   if (uUnlit > 0.5) {
     col = base;
   } else {
-    float ndl = dot(n, normalize(uSunDir)) * 0.5 + 0.5;
-    float band = uCel > 0.5 ? (smoothstep(0.34, 0.40, ndl) * 0.55 + smoothstep(0.62, 0.68, ndl) * 0.45) : ndl;
-    vec3 hemi = mix(uGround, uSky, n.y * 0.5 + 0.5);
+    vec3 L = normalize(uSunDir);
     vec3 v = normalize(uCam - vW);
-    float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.22;
-    col = base * (hemi + uSun * band) + uEmis + rim * uSky;
+    float ndl = dot(n, L) * 0.5 + 0.5;
+    vec3 hemi = mix(uGround, uSky, n.y * 0.5 + 0.5);
+    if (uCel > 0.5) {
+      // anime: 3 faixas duras, sombra fria e saturada, brilho de gloss e luz de contorno
+      float b1 = smoothstep(0.35, 0.39, ndl);
+      float b2 = smoothstep(0.64, 0.68, ndl);
+      float band = b1 * 0.55 + b2 * 0.45;
+      float lum = dot(base, vec3(0.299, 0.587, 0.114));
+      vec3 sat = clamp(mix(vec3(lum), base, 1.18), 0.0, 1.0);
+      vec3 shade = sat * mix(vec3(0.5, 0.46, 0.8), uSky * 1.4, 0.3);
+      vec3 lit = sat * (hemi * 0.85 + uSun * (0.1 + band));
+      col = mix(shade * (hemi * 0.9 + 0.12), lit, b1);
+      float ndv = max(dot(n, v), 0.0);
+      float rimk = smoothstep(0.6, 0.66, 1.0 - ndv) * smoothstep(0.35, 0.7, ndl);
+      col += rimk * mix(uSun, vec3(1.0), 0.4) * 0.32;
+      float sp = pow(max(dot(n, normalize(L + v)), 0.0), 40.0);
+      col += smoothstep(0.55, 0.6, sp) * 0.16 * (0.4 + lum) * b1;
+      col += uEmis;
+    } else {
+      float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.22;
+      col = base * (hemi + uSun * ndl) + uEmis + rim * uSky;
+    }
   }
   col = mix(col, vec3(1.0, 0.96, 0.9), uFlash);
   float d = length(vW - uCam);

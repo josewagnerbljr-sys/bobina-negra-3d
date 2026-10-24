@@ -66,6 +66,13 @@ function eyes(parent: Node, y: number, z: number, spread: number, s: number, iri
   }
 }
 
+/** o que o herói está vestindo/segurando (vem do equipamento) */
+export type GearLook = { armor: string | null; armorRarity: number; weapon: string | null; weaponRarity: number; relic: string | null; relicColor: string };
+
+const ARMOR_COLOR: Record<string, string> = { plate: "#c9d1db", vest: "#1b1b22", robe: "#c3101e", cape: "#7b2bd1" };
+const GOLD = "#e8b72e";
+const RAR_GLOW = ["#d8d0c0", "#5fb4ff", "#c07aff", "#ffb23a"];
+
 export type Pose = {
   t: number;
   phase: number;
@@ -77,6 +84,7 @@ export type Pose = {
   ally: boolean;
   world: number;
   attack: number; // 0..1 (pulso depois de atirar)
+  gear?: GearLook;
 };
 
 export type Model = {
@@ -221,6 +229,7 @@ export function buildHero(id: HeroId): Model {
     bow.add(P("cube", [0.03, 0.16, 0.03], "#8d4a2f", [0.01, -0.2, 0.0], [0, 0, -0.5]));
     bow.add(P("cube", [0.008, 0.46, 0.008], "#f4efe4", [-0.06, 0, 0]));
     parts.armR!.add(bow);
+    parts.sylBow = bow;
     for (const sx of [-1, 1]) {
       const ear = P("cone", [0.07, 0.17, 0.06], skin, [sx * 0.2, 0.01, 0], [0, 0, -sx * 1.25]);
       ear.visible = false;
@@ -319,6 +328,259 @@ export function buildHero(id: HeroId): Model {
     }
   }
 
+
+
+  /* ---- novos personagens ---- */
+  const nodeForm = (n: Node) => {
+    n.visible = false;
+    formNodes.push(n);
+    return n;
+  };
+  if (id === "tito") {
+    head.add(P("cube", [0.2, 0.03, 0.05], "#24160f", [0, -0.085, 0.16]));
+    head.add(P("cube", [0.3, 0.04, 0.05], "#24160f", [0, -0.05, 0.155], [0, 0, 0.0]));
+    // faixa vermelha na testa e suspensórios
+    head.add(P("cyl", [0.37, 0.05, 0.34], "#c4373a", [0, 0.1, 0]));
+    for (const sx of [-1, 1]) body.add(P("cube", [0.05, 0.4, 0.03], "#e0b15a", [sx * 0.1, 0.56, 0.15]));
+    body.add(P("sphere", [0.36, 0.14, 0.29], "#1c1210", [0, 0.4, 0]));
+    // tocha na mão esquerda
+    const torch = G(0, -0.24, 0.07);
+    torch.add(P("cyl", [0.035, 0.34, 0.035], "#6b4a2f", [0, 0.1, 0]));
+    const tf = glow(P("cone", [0.1, 0.22, 0.1], "#ff8a2a", [0, 0.34, 0]), 1);
+    torch.add(tf);
+    parts.torchFlame = tf;
+    parts.armL!.add(torch);
+    skull.formColor = hex("#c8553a");
+    torso.formColor = hex("#b02a1a");
+    // forma de dragão: chifres, escamas nas costas, olhos e chama no queixo
+    for (const sx of [-1, 1]) {
+      head.add(nodeForm(P("cone", [0.08, 0.26, 0.08], "#3a1a10", [sx * 0.13, 0.26, 0], [0, 0, -sx * 0.35])));
+      head.add(nodeForm(glow(P("sphere", [0.05, 0.06, 0.04], "#ffd34a", [sx * 0.075, 0.0, 0.2]), 1)));
+    }
+    for (let i = 0; i < 5; i++) body.add(nodeForm(P("cone", [0.09, 0.2 - i * 0.015, 0.07], i % 2 ? "#ff7a2a" : "#b02a1a", [0, 0.72 - i * 0.1, -0.17], [-0.9, 0, 0])));
+    const dtail = nodeForm(glow(P("cone", [0.14, 0.4, 0.14], "#ff7a2a", [0, 0.34, -0.2], [-1.2, 0, 0]), 0.7));
+    body.add(dtail);
+    parts.tail = dtail;
+    head.add(nodeForm(glow(P("cone", [0.12, 0.2, 0.1], "#ff9a3a", [0, -0.12, 0.27], [Math.PI / 2, 0, 0]), 1)));
+  } else if (id === "mari") {
+    // aquário na cabeça: globo de vidro com um peixinho
+    const bowl = P("sphere", [0.66, 0.66, 0.62], "#9fe0ee", [0, 0.02, 0]);
+    bowl.alpha = 0.26;
+    bowl.ink = false;
+    bowl.emis = [0.05, 0.12, 0.14];
+    head.add(bowl);
+    const fish = G(0, -0.02, 0.02);
+    fish.add(P("sphere", [0.1, 0.07, 0.05], "#ff8a3a", [0, 0, 0]));
+    fish.add(P("cone", [0.06, 0.08, 0.02], "#ff8a3a", [-0.08, 0, 0], [0, 0, Math.PI / 2]));
+    head.add(fish);
+    parts.fish = fish;
+    head.add(P("cyl", [0.4, 0.05, 0.38], "#e0b15a", [0, -0.22, 0]));
+    // cauda de peixe nas costas e cinto de escamas
+    body.add(P("cone", [0.36, 0.5, 0.2], "#1c8a9a", [0, 0.1, -0.2], [0.2, 0, 0]));
+    body.add(P("cone", [0.3, 0.3, 0.14], "#4ac0e0", [0, 0.02, -0.34], [0.35, 0, 0]));
+    body.add(P("cone", [0.42, 0.22, 0.4], "#e0b15a", [0, 0.43, 0], [Math.PI, 0, 0]));
+    for (const sx of [-1, 1]) {
+      body.add(P("sphere", [0.15, 0.12, 0.1], "#e0b15a", [sx * 0.1, 0.62, 0.13]));
+      const arm = parts[sx < 0 ? "armL" : "armR"]!;
+      arm.add(P("cone", [0.08, 0.22, 0.02], "#4ac0e0", [sx * 0.07, -0.1, -0.04], [0, 0, -sx * 0.5]));
+    }
+    skull.formColor = hex("#8fe8ee");
+    torso.formColor = hex("#2ac0d0");
+    for (const sx of [-1, 1]) {
+      const fin = G(sx * 0.12, 0.66, -0.12);
+      fin.add(P("cone", [0.3, 0.6, 0.03], "#4ac0e0", [sx * 0.3, 0.0, 0], [0, 0, -sx * 1.25]));
+      fin.add(P("cone", [0.2, 0.44, 0.03], "#8fe8ee", [sx * 0.24, -0.1, 0.01], [0, 0, -sx * 1.5]));
+      body.add(nodeForm(fin));
+      parts[sx < 0 ? "wingL" : "wingR"] = fin;
+    }
+    for (let i = 0; i < 3; i++) body.add(nodeForm(glow(P("sphere", [0.07, 0.07, 0.07], "#bfefff", [0, 0.5, 0]), 0.6)));
+  } else if (id === "pia") {
+    // chifres curtos, asas de pedra dobradas, cauda
+    for (const sx of [-1, 1]) {
+      head.add(P("cone", [0.08, 0.2, 0.08], "#3a3d46", [sx * 0.12, 0.2, 0], [0, 0, -sx * 0.4]));
+      const wing = G(sx * 0.13, 0.62, -0.16);
+      wing.add(P("cube", [0.3, 0.46, 0.04], "#4a4e56", [sx * 0.14, 0.0, 0], [0, 0, -sx * 0.5]));
+      wing.add(P("cube", [0.05, 0.5, 0.05], "#2a2c32", [sx * 0.03, 0.0, 0.01]));
+      body.add(wing);
+      parts[sx < 0 ? "wingL" : "wingR"] = wing;
+      body.add(P("sphere", [0.15, 0.12, 0.14], "#3a3d46", [sx * 0.22, 0.7, 0]));
+    }
+    const gt = P("cone", [0.1, 0.32, 0.1], "#4a4e56", [0, 0.3, -0.2], [-1.1, 0, 0]);
+    body.add(gt);
+    parts.tail = gt;
+    body.add(P("cube", [0.28, 0.2, 0.05], "#4a4e56", [0, 0.56, 0.14]));
+    // forma de pedra: rachaduras brilhando
+    skull.formColor = hex("#6a6e78");
+    torso.formColor = hex("#4a4e56");
+    hair.formColor = hex("#2a2c32");
+    for (let i = 0; i < 5; i++) {
+      const crack = glow(P("cube", [0.025, 0.12 + (i % 2) * 0.06, 0.02], "#ff9a3a", [-0.14 + i * 0.07, 0.55 + (i % 3) * 0.04, 0.17], [0, 0, 0.5 - i * 0.25]), 1);
+      body.add(nodeForm(crack));
+    }
+    for (const sx of [-1, 1]) head.add(nodeForm(glow(P("sphere", [0.05, 0.06, 0.04], "#ff9a3a", [sx * 0.075, 0.0, 0.2]), 1)));
+    for (const sx of [-1, 1]) body.add(nodeForm(P("sphere", [0.22, 0.17, 0.2], "#6a6e78", [sx * 0.27, 0.72, 0])));
+  } else if (id === "lumen") {
+    // capacete amarelo com lanterna, cinto de ferramentas, cabo no ombro
+    head.add(P("sphere", [0.4, 0.28, 0.4], "#e8c820", [0, 0.1, -0.01]));
+    head.add(P("cyl", [0.46, 0.04, 0.44], "#e8c820", [0, 0.07, 0.02]));
+    head.add(glow(P("sphere", [0.09, 0.09, 0.06], "#fffbd0", [0, 0.17, 0.2]), 1));
+    head.add(P("cube", [0.2, 0.05, 0.03], "#1a1c28", [0, 0.01, 0.17]));
+    body.add(P("cyl", [0.33, 0.07, 0.28], "#6b4a2f", [0, 0.44, 0]));
+    for (const sx of [-1, 1]) body.add(P("cube", [0.07, 0.1, 0.05], "#c4c8d0", [sx * 0.14, 0.4, 0.15]));
+    const coil = P("ring", [0.34, 0.22, 0.34], "#e0602a", [0.18, 0.7, -0.1], [0.4, 0, 0.3]);
+    body.add(coil);
+    const rod = G(0, -0.25, 0.06);
+    rod.add(P("cyl", [0.035, 0.34, 0.035], "#8a8e98", [0, 0.1, 0]));
+    const tip = glow(P("cone", [0.06, 0.12, 0.06], "#ffe24a", [0, 0.3, 0]), 1);
+    rod.add(tip);
+    parts.rodTip = tip;
+    parts.armL!.add(rod);
+    skull.formColor = hex("#f4f8ff");
+    hair.formColor = hex("#fff070");
+    torso.formColor = hex("#5a8aff");
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      body.add(nodeForm(glow(P("cube", [0.03, 0.34, 0.03], "#ffee6a", [Math.cos(a) * 0.3, 0.5 + (i % 2) * 0.1, Math.sin(a) * 0.22], [0, 0, a * 2 + 0.3]), 1)));
+    }
+    for (const sx of [-1, 1]) head.add(nodeForm(glow(P("sphere", [0.06, 0.07, 0.04], "#ffffff", [sx * 0.075, 0.0, 0.2]), 1)));
+    for (let i = 0; i < 5; i++) head.add(nodeForm(glow(P("cone", [0.05, 0.2, 0.05], "#ffee6a", [-0.14 + i * 0.07, 0.3, 0], [0, 0, (i - 2) * 0.35]), 1)));
+  }
+
+  /* ---- equipamentos visíveis: armadura vestida e arma na mão ---- */
+  type ArmorSet = { root: Node; main: Node[]; trim: Node[] };
+  const armorSets: Record<string, ArmorSet> = {};
+  const mkSet = (key: string, build: (add: (n: Node, trim?: boolean) => Node) => void) => {
+    const g = G();
+    g.visible = false;
+    const set: ArmorSet = { root: g, main: [], trim: [] };
+    build((n, trim = false) => {
+      (trim ? set.trim : set.main).push(n);
+      g.add(n);
+      return n;
+    });
+    body.add(g);
+    armorSets[key] = set;
+  };
+  const W = "#ffffff";
+  mkSet("plate", (add) => {
+    add(P("sphere", [0.41, 0.39, 0.32], W, [0, 0.55, 0]));
+    add(P("cyl", [0.33, 0.07, 0.28], W, [0, 0.42, 0]));
+    for (const sx of [-1, 1]) {
+      add(P("sphere", [0.2, 0.13, 0.2], W, [sx * 0.24, 0.71, 0]));
+      add(P("cone", [0.06, 0.12, 0.06], W, [sx * 0.28, 0.8, 0], [0, 0, -sx * 0.4]), true);
+    }
+    add(P("sphere", [0.4, 0.26, 0.38], W, [0, 0.9, -0.02]));
+    add(P("cube", [0.07, 0.07, 0.36], W, [0, 1.06, -0.02]), true);
+    add(P("cube", [0.1, 0.22, 0.04], W, [0, 0.55, 0.16]), true);
+  });
+  mkSet("vest", (add) => {
+    add(P("sphere", [0.39, 0.38, 0.31], W, [0, 0.54, 0]));
+    add(P("cube", [0.06, 0.5, 0.03], W, [0.1, 0.55, 0.15], [0, 0, 0.5]), true);
+    add(P("cube", [0.06, 0.5, 0.03], W, [-0.1, 0.55, 0.15], [0, 0, -0.5]), true);
+    add(P("cyl", [0.33, 0.06, 0.28], W, [0, 0.43, 0]), true);
+    for (const sx of [-1, 1]) add(P("sphere", [0.15, 0.1, 0.15], W, [sx * 0.23, 0.7, 0]));
+    add(P("cone", [0.3, 0.2, 0.3], W, [0, 0.34, 0], [Math.PI, 0, 0]));
+  });
+  mkSet("robe", (add) => {
+    add(P("sphere", [0.4, 0.38, 0.31], W, [0, 0.55, 0]));
+    add(P("cone", [0.58, 0.58, 0.52], W, [0, 0.19, 0]));
+    add(P("cyl", [0.6, 0.04, 0.54], W, [0, -0.08, 0]), true);
+    add(P("cyl", [0.2, 0.08, 0.2], W, [0, 0.73, 0]), true);
+    for (const sx of [-1, 1]) add(P("sphere", [0.15, 0.12, 0.15], W, [sx * 0.23, 0.69, 0]), true);
+    add(P("cube", [0.08, 0.5, 0.03], W, [0, 0.28, 0.2]), true);
+  });
+  mkSet("cape", (add) => {
+    const cp = add(P("cube", [0.5, 0.74, 0.05], W, [0, 0.42, -0.2], [0.12, 0, 0]));
+    parts.gearCape = cp;
+    add(P("cube", [0.52, 0.05, 0.06], W, [0, 0.79, -0.18]), true);
+    for (const sx of [-1, 1]) add(P("sphere", [0.14, 0.1, 0.14], W, [sx * 0.23, 0.7, 0]));
+    add(P("sphere", [0.07, 0.07, 0.06], W, [0, 0.72, 0.13]), true);
+  });
+
+  type WeaponSet = { root: Node; main: Node[]; trim: Node[] };
+  const weaponSets: Record<string, WeaponSet> = {};
+  const mkWeapon = (key: string, build: (add: (n: Node, trim?: boolean) => Node) => void) => {
+    const g = G(0, -0.25, 0.07);
+    g.rot = [1.15, 0, 0];
+    g.visible = false;
+    const set: WeaponSet = { root: g, main: [], trim: [] };
+    build((n, trim = false) => {
+      (trim ? set.trim : set.main).push(n);
+      g.add(n);
+      return n;
+    });
+    parts.armR!.add(g);
+    weaponSets[key] = set;
+  };
+  mkWeapon("knife", (add) => {
+    add(P("cube", [0.05, 0.26, 0.015], W, [0, 0.16, 0]));
+    add(P("cone", [0.05, 0.08, 0.02], W, [0, 0.33, 0]));
+    add(P("cube", [0.12, 0.03, 0.04], W, [0, 0.02, 0]), true);
+  });
+  mkWeapon("sword", (add) => {
+    add(P("cube", [0.075, 0.5, 0.02], W, [0, 0.3, 0]));
+    add(P("cone", [0.075, 0.1, 0.025], W, [0, 0.59, 0]));
+    add(P("cube", [0.26, 0.05, 0.06], W, [0, 0.03, 0]), true);
+    add(P("sphere", [0.05, 0.05, 0.05], W, [0, -0.1, 0]), true);
+  });
+  mkWeapon("axe", (add) => {
+    add(P("cyl", [0.035, 0.62, 0.035], "#6b4a2f", [0, 0.24, 0]));
+    add(P("cube", [0.3, 0.2, 0.04], W, [0.14, 0.46, 0]));
+    add(P("cone", [0.1, 0.22, 0.04], W, [0.32, 0.46, 0], [0, 0, -Math.PI / 2]), true);
+  });
+  mkWeapon("staff", (add) => {
+    add(P("cyl", [0.035, 0.9, 0.035], "#6b4a2f", [0, 0.3, 0]));
+    add(glow(P("sphere", [0.12, 0.12, 0.12], W, [0, 0.8, 0]), 0.8), true);
+    add(P("ring", [0.2, 0.06, 0.2], W, [0, 0.72, 0], [0.4, 0, 0]));
+  });
+  mkWeapon("scepter", (add) => {
+    add(P("cyl", [0.04, 0.55, 0.04], "#d9a830", [0, 0.22, 0]));
+    add(glow(P("cone", [0.14, 0.18, 0.14], W, [0, 0.58, 0]), 0.8), true);
+    add(P("cyl", [0.1, 0.04, 0.1], "#d9a830", [0, 0.46, 0]));
+  });
+  mkWeapon("bow", (add) => {
+    add(P("cube", [0.035, 0.46, 0.035], "#8d4a2f", [0.02, 0.2, 0]));
+    add(P("cube", [0.035, 0.2, 0.035], "#8d4a2f", [0.0, 0.46, 0], [0, 0, 0.5]));
+    add(P("cube", [0.035, 0.2, 0.035], "#8d4a2f", [0.0, -0.06, 0], [0, 0, -0.5]));
+    add(P("cube", [0.008, 0.66, 0.008], W, [-0.08, 0.2, 0]), true);
+  });
+  const relicGem = glow(P("sphere", [0.075, 0.09, 0.05], "#ffffff", [0, 0.6, 0.16]), 0.9);
+  relicGem.visible = false;
+  const relicChain = P("cyl", [0.17, 0.01, 0.15], "#d9a830", [0, 0.67, 0.0]);
+  relicChain.visible = false;
+  body.add(relicGem, relicChain);
+  let gearKey = "";
+  const paint = (n: Node, c: string, emisK = 0) => {
+    n.color = hex(c);
+    if (emisK > 0) n.emis = n.color.map((v) => v * emisK) as Vec3;
+    if (!n.baseColor) n.baseColor = n.color;
+  };
+  const applyGear = (g: GearLook | undefined) => {
+    const key = g ? `${g.armor}|${g.armorRarity}|${g.weapon}|${g.weaponRarity}|${g.relic}` : "";
+    if (key === gearKey) return;
+    gearKey = key;
+    for (const k of Object.keys(armorSets)) armorSets[k]!.root.visible = Boolean(g && g.armor === k);
+    for (const k of Object.keys(weaponSets)) weaponSets[k]!.root.visible = Boolean(g && g.weapon === k);
+    if (parts.sylBow) parts.sylBow.visible = !g || !g.weapon;
+    if (g?.armor && armorSets[g.armor]) {
+      const set = armorSets[g.armor]!;
+      const base = g.armorRarity >= 3 ? GOLD : (ARMOR_COLOR[g.armor] ?? "#c9d1db");
+      const trim = g.armorRarity >= 2 ? (g.armorRarity >= 3 ? "#fff2b0" : GOLD) : g.armor === "vest" ? "#8a1620" : g.armor === "plate" ? "#2a2a34" : g.armor === "robe" ? "#e8b72e" : "#e8b72e";
+      for (const n of set.main) paint(n, base);
+      for (const n of set.trim) paint(n, trim);
+    }
+    if (g?.weapon && weaponSets[g.weapon]) {
+      const set = weaponSets[g.weapon]!;
+      const rc = RAR_GLOW[Math.min(3, g.weaponRarity)]!;
+      const blade = g.weapon === "staff" || g.weapon === "scepter" ? rc : g.weapon === "bow" ? "#f4efe0" : g.weaponRarity >= 3 ? GOLD : "#dfe5ee";
+      for (const n of set.main) paint(n, blade, n.emis[0] > 0 ? 0.8 : 0);
+      for (const n of set.trim) paint(n, g.weapon === "staff" || g.weapon === "scepter" ? rc : rc, n.emis[0] > 0 ? 0.9 : 0);
+    }
+    relicGem.visible = Boolean(g?.relic);
+    relicChain.visible = Boolean(g?.relic);
+    if (g?.relic) paint(relicGem, g.relicColor, 0.9);
+  };
+
   /* ---- efeitos da transformação: anéis de energia, colunas e brilho ---- */
   const fxCol = hex(def.accent).map((v) => Math.min(1, v * 0.85 + 0.15)) as Vec3;
   const fx: Node[] = [];
@@ -353,11 +615,13 @@ export function buildHero(id: HeroId): Model {
     formNodes,
     fly: false,
     update(p) {
+      applyGear(p.gear);
+      if (parts.gearCape) parts.gearCape.rot[0] = 0.15 + p.speed * 0.35 + Math.sin(p.t * 5) * 0.05 + (Math.abs(p.vy) > 70 ? 0.25 : 0);
       const run = p.speed;
       const air = Math.abs(p.vy) > 70;
       const lw = Math.sin(p.phase * 1.5);
       const bat = p.form && id === "lena";
-      const skullForm = p.form && id === "osso";
+      const skullForm = p.form && (id === "osso" || id === "mari");
       const hover = bat || skullForm;
       // bobbing e balanço
       body.pos[1] = hover ? 0.1 + Math.sin(p.t * 6) * 0.03 : Math.abs(Math.sin(p.phase * 1.5)) * 0.03 * run;
@@ -404,7 +668,15 @@ export function buildHero(id: HeroId): Model {
           c.alpha = Math.sin(u * Math.PI) * 0.7 + 0.05;
         }
       }
-      if (parts.wingL && parts.wingR) {
+      if (parts.wingL && parts.wingR && id === "mari") {
+        const f = Math.sin(p.t * 9) * 0.3;
+        parts.wingL.rot[2] = -f;
+        parts.wingR.rot[2] = f;
+      } else if (parts.wingL && parts.wingR && id === "pia") {
+        const f = p.form ? 0.5 + Math.sin(p.t * 3) * 0.05 : 0.05;
+        parts.wingL.rot[1] = -f;
+        parts.wingR.rot[1] = f;
+      } else if (parts.wingL && parts.wingR) {
         const f = Math.sin(p.t * 14) * 0.5;
         parts.wingL.rot[2] = -0.3 - f;
         parts.wingR.rot[2] = 0.3 + f;
@@ -423,7 +695,7 @@ export function buildHero(id: HeroId): Model {
         parts.aura!.size = [1.1 * s, 1.5 * s, 1.1 * s];
       }
       const popK = Math.max(0, 1 - (p.t - popAt) / 0.45);
-      const big = (p.form && id === "ivo" ? 1.15 : 1) * (1 + Math.sin(popK * Math.PI) * 0.3);
+      const big = (p.form && id === "ivo" ? 1.15 : p.form && id === "pia" ? 1.2 : 1) * (1 + Math.sin(popK * Math.PI) * 0.3);
       root.scl = [big, big, big];
       // esticar/achatar no ar
       const st = Math.max(-0.12, Math.min(0.14, -p.vy * 0.00012));

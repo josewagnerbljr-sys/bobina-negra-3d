@@ -24,12 +24,14 @@ import {
 import { buildLevel } from "./maps";
 import { baseOf, bagUsed, canFit, countPotions, itemName, itemSize, makeItem, peekUid, rollDrops, RARITY_COLOR } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
+import type { GearLook } from "../engine/models";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
 import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
 import {
   BAG_SIZE,
   GROUND,
+  HERO_IDS,
   MAIN_LEVELS,
   MAX_LEVEL,
   POINTS_PER_LEVEL,
@@ -196,6 +198,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   };
   let prevPotion = false;
   let wantPotion = false;
+  let auraT = 0;
+  let lastVy = 0;
   let prevJump = false;
   let prevForm = false;
   let wantJump = false;
@@ -336,17 +340,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     return D().maxHp;
   }
   function speedMul() {
-    const wolf = formT > 0 && save.hero === "ivo" ? 1.38 : 1;
+    const f = formT > 0;
+    const wolf = f ? (save.hero === "ivo" ? 1.38 : save.hero === "lumen" ? 1.35 : save.hero === "tito" ? 1.1 : save.hero === "pia" ? 0.85 : 1) : 1;
     return D().speed * wolf * (hasBuff("haste") ? 1.2 : 1);
   }
   function formDur() {
-    return D().formDur;
+    return D().formDur * (save.hero === "pia" ? 0.6 : 1);
   }
   function formCool() {
     return D().formCool;
   }
   function attackCd() {
-    const fast = formT > 0 && (save.hero === "syl" || save.hero === "lena") ? 0.82 : 1;
+    const fast = formT > 0 ? (save.hero === "syl" || save.hero === "lena" ? 0.82 : save.hero === "lumen" ? 0.7 : 1) : 1;
     return D().atkCd * fast * (hasBuff("haste") ? 0.8 : 1);
   }
   const bonusBoost = () => D().potion - 2;
@@ -536,9 +541,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
   }
 
-  function hurtPlayer(fromX: number) {
+  function hurtPlayer(fromX: number, dmg = 1) {
     if (iframe > 0 || screen !== "play" || hasBuff("ward")) return;
-    player.hp -= 1;
+    player.hp -= dmg;
     iframe = D().iframe;
     player.vx = player.x + player.w / 2 < fromX ? -220 : 220;
     player.vy = -320;
@@ -676,6 +681,28 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, -90);
       fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, 0);
       fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, 90);
+    } else if (hero === "tito") {
+      fire("player", player, player.facing, 500, (formed ? 1.3 : 1) * dmgPhys(), "#ff8a2a", 0, formed ? 2 : 0);
+      const sh = shots[shots.length - 1]!;
+      sh.w = formed ? 24 : 16;
+      sh.h = formed ? 16 : 12;
+    } else if (hero === "mari") {
+      const arc = formed ? [-70, 70] : [-110];
+      for (const vy of arc) {
+        fire("player", player, player.facing, 430, 1.1 * dmgPhys(), "#8fe4ff", vy, 0);
+        const sh = shots[shots.length - 1]!;
+        sh.w = 18;
+        sh.h = 18;
+        sh.life = 1.1;
+      }
+    } else if (hero === "pia") {
+      fire("player", player, player.facing, 420, (formed ? 1.9 : 1.5) * dmgPhys(), "#c0c8d4", 0, formed ? 1 : 0);
+      const sh = shots[shots.length - 1]!;
+      sh.w = 20;
+      sh.h = 16;
+    } else if (hero === "lumen") {
+      const sp = formed ? [-70, 0, 70] : [0];
+      for (const vy of sp) fire("player", player, player.facing, 700, (formed ? 0.85 : 1.05) * dmgPhys(), "#ffee6a", vy, 1);
     } else if (hero === "osso") {
       fire("player", player, player.facing, 500, dmgPhys(), "#f4efe4", 0, formed ? 3 : 1);
     } else if (hero === "lena" && formed) {
@@ -787,7 +814,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
     if (hasBuff("ward")) iframe = Math.max(iframe, 0.1);
     const bat = formed && save.hero === "lena";
-    const skull = formed && save.hero === "osso";
+    const skull = formed && (save.hero === "osso" || save.hero === "mari");
+    if (formed && save.hero === "pia") iframe = Math.max(iframe, 0.1);
+    if (formed && save.hero === "tito") {
+      auraT -= dt;
+      if (auraT <= 0) {
+        auraT = 0.45;
+        const px = player.x + player.w / 2;
+        const py = player.y + player.h / 2;
+        fx.push({ kind: "wave", x: px, y: py, t: 0, max: 0.4, color: "#ff7a2a", r: 110, dir: 0 });
+        for (const a of foesNear(px, py, 115, 90)) hurtFoe(a, 1.1 * dmgMagic(), "#ff7a2a");
+      }
+    }
     let g = player.vy < 0 ? G_RISE : G_FALL;
     if (player.vy < 0 && Math.abs(player.vy) < 80) g *= 0.48;
     if (bat) g *= 0.32;
@@ -829,6 +867,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       player.y = ceilY;
       if (player.vy < 0) player.vy = 0;
     }
+    if (hit.grounded && !wasGround && lastVy > 620 && formed && save.hero === "pia") {
+      const px = player.x + player.w / 2;
+      const py = player.y + player.h;
+      fx.push({ kind: "wave", x: px, y: py, t: 0, max: 0.5, color: "#c0c8d4", r: 150, dir: 0 });
+      for (const a of foesNear(px, py, 150, 90)) hurtFoe(a, 3 * dmgMagic(), "#c0c8d4");
+      shake = 9;
+    }
+    lastVy = player.vy;
     wasGround = hit.grounded;
     player.onOneWay = hit.onOneWay;
     if (hit.grounded) {
@@ -938,7 +984,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (a.cd <= 0 && Math.abs(dx) < 460 && Math.abs(player.y - a.y) < 180) {
           a.cd = a.behavior === "still" ? 1.5 : 1.9;
           a.facing = dx >= 0 ? 1 : -1;
-          fire("foe", a, a.facing, 220, 1, a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" ? "#ffe9a0" : "#e08a3a", 0);
+          fire("foe", a, a.facing, 220, (level?.world ?? 0) >= 5 ? 2 : 1, a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" ? "#ffe9a0" : "#e08a3a", 0);
         }
       }
 
@@ -950,7 +996,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       } else if (a.kind === "chest" && overlaps(player, a)) {
         openChest(a);
       } else if (!a.ally && a.touch > 0 && iframe <= 0 && overlaps(player, a)) {
-        hurtPlayer(a.x + a.w / 2);
+        hurtPlayer(a.x + a.w / 2, a.boss || a.mini ? 2 : (level?.world ?? 0) >= 5 ? 2 : 1);
       }
     }
 
@@ -1010,7 +1056,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       if (s.foe) {
         if (iframe <= 0 && overlaps(player, s)) {
-          hurtPlayer(s.x);
+          hurtPlayer(s.x, s.dmg);
           shots.splice(i, 1);
         }
         continue;
@@ -1060,7 +1106,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   ];
 
   function foeShot(x: number, y: number, vx: number, vy: number, color: string, life = 1.6, seek = false) {
-    shots.push({ x, y, w: 14, h: 12, vx, vy, life, color, dmg: 1, foe: true, pierce: 0, hit: new Set(), seek });
+    shots.push({ x, y, w: 14, h: 12, vx, vy, life, color, dmg: (level?.world ?? 0) >= 3 ? 2 : 1, foe: true, pierce: 0, hit: new Set(), seek });
     if (shots.length > 60) shots.splice(0, shots.length - 60);
   }
 
@@ -1247,6 +1293,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     shake = Math.max(0, shake - dt * 16);
   }
 
+  function gearLook(): GearLook {
+    const eq = save.equip;
+    return {
+      armor: eq.armor ? eq.armor.base : null,
+      armorRarity: eq.armor?.rarity ?? 0,
+      weapon: eq.weapon ? eq.weapon.base : null,
+      weaponRarity: eq.weapon?.rarity ?? 0,
+      relic: eq.relic ? eq.relic.base : null,
+      relicColor: eq.relic ? baseOf(eq.relic).color : "#ffffff",
+    };
+  }
+
   function paintList(): Paint[] {
     const list: Paint[] = [];
     for (const a of actors) {
@@ -1289,6 +1347,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         kind: "hero",
         hero: save.hero,
         form: formT > 0,
+        gear: gearLook(),
         hurt: iframe > 0 && screen === "play",
         ally: false,
         world: level?.world ?? 0,
@@ -1324,15 +1383,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       attractHero: selected,
       fx,
       flash: flashT,
-      loot: playing ? loot.map<LootPaint>((l) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2, color: l.item.rarity > 0 ? RARITY_COLOR[l.item.rarity]! : baseOf(l.item).color, rarity: l.item.rarity, t: l.t })) : [],
+      loot: playing ? loot.map<LootPaint>((l) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2, color: l.item.rarity > 0 ? RARITY_COLOR[l.item.rarity]! : baseOf(l.item).color, rarity: l.item.rarity, t: l.t, slot: baseOf(l.item).slot })) : [],
     });
 
-    if (screen === "cast" || screen === "title") {
+    if (screen === "cast" || screen === "title" || screen === "char") {
       document.querySelectorAll<HTMLCanvasElement>("[data-hero-preview]").forEach((node) => {
         const id = node.dataset.heroPreview as HeroId;
-        if (id === "ivo" || id === "lena" || id === "osso" || id === "syl") {
-          renderer.previewHero(node, id, clock, false);
-        }
+        if (HERO_IDS.includes(id)) renderer.previewHero(node, id, clock, false, screen === "char" ? gearLook() : undefined);
       });
     }
     void dt;
@@ -1693,7 +1750,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     // modo de teste: ?qa=<fase 0-24>&hero=<ivo|lena|osso|syl>
     const q = new URLSearchParams(location.search);
     const h = q.get("hero");
-    const hid: HeroId = h === "lena" || h === "osso" || h === "syl" ? h : "ivo";
+    const hid: HeroId = (HERO_IDS as readonly string[]).includes(h ?? "") ? (h as HeroId) : "ivo";
     save = emptySave(hid);
     save.next = 51;
     const lvq = Number(q.get("lv"));
@@ -1721,6 +1778,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     getX: () => player.x,
     getCols: () => level?.cols ?? 0,
     getFoes: () => actors.filter((a) => !a.dead && !a.ally && !inert(a)).length,
+    setGear: (armor: string, weapon: string, relic: string, rarity: number) => {
+      save.equip.armor = armor ? makeItem(armor, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
+      save.equip.weapon = weapon ? makeItem(weapon, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
+      save.equip.relic = relic ? makeItem(relic, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
+    },
     getLoot: () => loot.length,
     killAll: () => {
       for (const a of actors) if (!a.dead && !a.ally && !inert(a) && !a.boss) killActor(a);
