@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
-import { HEROES, REEL_NAMES, UPGRADES, WORLDS, heroById } from "../game/content";
+import { BONUS_NAMES, HEROES, REEL_NAMES, WORLDS, heroById } from "../game/content";
+import { BASE_BY_ID, RARITY_COLOR, RARITY_NAME, baseOf, itemName, itemSize, modText } from "../game/items";
+import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
-import { EMPTY_STATS, type Action, type Snap, type StatKey } from "../game/types";
+import { BAG_SIZE, EMPTY_STATS, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
 
 const BOOT: Snap = {
   screen: "title",
@@ -10,15 +12,19 @@ const BOOT: Snap = {
   hero: "ivo",
   selectedHero: "ivo",
   next: 1,
+  bonusOpen: 0,
   level: 1,
   xp: 0,
   xpNeed: 40,
   stats: { ...EMPTY_STATS },
+  alloc: { ...EMPTY_STATS },
+  points: 0,
   hp: 5,
   maxHp: 5,
   reel: 0,
   reelName: "",
   worldName: "",
+  bonus: false,
   bossAlive: false,
   bossName: "",
   bossHp: 0,
@@ -29,7 +35,6 @@ const BOOT: Snap = {
   formDur: 7,
   lines: [],
   lineIndex: 0,
-  choices: [],
   deadLine: "",
   toast: "",
   mute: false,
@@ -38,6 +43,14 @@ const BOOT: Snap = {
   best: 0,
   hint: false,
   progress: 0,
+  skills: [],
+  bag: [],
+  equip: { weapon: null, armor: null, relic: null },
+  bagUsed: 0,
+  potions: 0,
+  buffs: [],
+  derived: {},
+  levelupFresh: false,
 };
 
 function clock(s: number) {
@@ -52,6 +65,7 @@ export function Bobina() {
   const [snap, setSnap] = useState<Snap>(BOOT);
   const [confirmNew, setConfirmNew] = useState(false);
   const [pick, setPick] = useState(1);
+  const [sel, setSel] = useState<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,7 +79,7 @@ export function Bobina() {
   }, []);
 
   useEffect(() => {
-    if (snap.screen === "map") setPick(Math.min(25, Math.max(1, snap.next)));
+    if (snap.screen === "map") setPick(Math.min(50, Math.max(1, snap.next)));
   }, [snap.screen, snap.next]);
 
   const hero = heroById(snap.hero);
@@ -81,22 +95,38 @@ export function Bobina() {
     <main className="sprocket relative h-dvh select-none overflow-hidden bg-ink font-sans text-paper" onContextMenu={(e) => e.preventDefault()}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" aria-hidden />
       <div className="safe-top pointer-events-none absolute inset-0 flex flex-col">
-        {(playing || snap.screen === "pause" || snap.screen === "dead" || snap.screen === "levelup") && (
+        {(playing || snap.screen === "pause" || snap.screen === "dead") && (
           <header className="pointer-events-none flex flex-col gap-2 px-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-display text-lg leading-none text-brass">
-                  Rolo {snap.reel}
+                  {snap.bonus ? "Bis" : "Rolo"} {snap.bonus ? snap.reel - 50 : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
                 <p className="mt-1 text-sm text-paper/75">
                   {snap.worldName} · Nv {snap.level} · {clock(snap.time)}
+                  {snap.buffs.map((b) => (
+                    <span key={b.kind} className="ml-2 rounded bg-ink px-1.5 text-xs text-moon">
+                      {b.kind === "haste" ? "Pressa" : b.kind === "fury" ? "Fúria" : "Escudo"} {Math.ceil(b.left)}s
+                    </span>
+                  ))}
                 </p>
               </div>
               <div className="pointer-events-auto flex gap-2">
                 <IconButton label={snap.mute ? "Ativar som" : "Silenciar"} onClick={() => rtRef.current?.toggleMute()}>
                   {snap.mute ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
                 </IconButton>
+                {(playing || snap.screen === "pause") && (
+                  <button
+                    type="button"
+                    aria-label="Personagem e mochila"
+                    onClick={() => rtRef.current?.openChar()}
+                    className={"relative grid size-11 place-items-center rounded-md border bg-panel font-display text-lg " + (snap.levelupFresh ? "animate-pulse border-brass text-brass" : "border-paper/30 text-paper")}
+                  >
+                    C
+                    {snap.points > 0 && <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-blood px-1 text-[11px] leading-5 text-paper">{snap.points}</span>}
+                  </button>
+                )}
                 {playing && (
                   <IconButton label="Pausar" onClick={() => rtRef.current?.pause()}>
                     <Pause className="size-5" />
@@ -138,7 +168,7 @@ export function Bobina() {
             )}
             {snap.hint && (
               <p className="max-w-md text-sm text-paper/80">
-                A e D movem. Espaço pula. J atira. K é a forma. U, I, O e P usam os poderes (liberam com o nível). S desce da plataforma.
+                A e D movem. Espaço pula. J atira. K é a forma. U/I/O/P (ou 1–4) são os poderes. Q bebe poção. C abre personagem e mochila. S desce da plataforma.
               </p>
             )}
           </header>
@@ -151,7 +181,7 @@ export function Bobina() {
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
-                  Vinte e cinco rolos longos. Quatro amaldiçoados. Um contrato que ninguém leu até a cláusula final.
+                  Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Quatro amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
@@ -199,7 +229,9 @@ export function Bobina() {
                   <li>K, L ou Shift ativam a forma: uivo, asas, caveira ou elfa.</li>
                   <li>S ou ↓ em cima de uma tábua solta deixa você cair por ela.</li>
                   <li>Molas lançam. Espinhos e buracos cobram coração. Lanternas gravam o retorno.</li>
-                  <li>Matar e queimar rolos sobe nível. Escolha um atributo. A fase não é curta de propósito pequeno: é travessia.</li>
+                  <li>Cada nível dá 5 pontos para FOR, INT, DES, SAB e REC (tecla C). FOR/INT aumentam o dano, DES a velocidade, SAB as recargas, REC os corações.</li>
+                  <li>Monstros e baús soltam itens. A mochila tem 32 blocos: cada objeto ocupa blocos pelo tamanho (poção 1, cajado 3, armadura 5). Q bebe poção de cura.</li>
+                  <li>A cada 5 rolos abre um Bis: mapa bônus cheio de baús. Mini-chefes aparecem no meio de alguns rolos.</li>
                   <li>No telefone, use os botões. De lado cabe mais picadeiro.</li>
                 </ul>
                 <div className="mt-4">
@@ -249,58 +281,75 @@ export function Bobina() {
 
           {snap.screen === "map" && (
             <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col justify-end px-4 pb-6">
-              <div className="rounded-lg border border-brass/40 bg-panel/95 p-4">
+              <div className="max-h-[92dvh] overflow-y-auto rounded-lg border border-brass/40 bg-panel/95 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h2 className="font-display text-3xl">Arquivo</h2>
                     <p className="text-sm text-paper/75">
                       {hero.name} · nível {snap.level}
+                      {snap.points > 0 ? ` · ${snap.points} pontos livres` : ""}
                     </p>
                   </div>
-                  <Ghost onClick={() => rtRef.current?.backTitle()}>Título</Ghost>
+                  <div className="flex gap-2">
+                    <Ghost onClick={() => rtRef.current?.openChar()}>Personagem{snap.points > 0 ? ` (${snap.points})` : ""}</Ghost>
+                    <Ghost onClick={() => rtRef.current?.backTitle()}>Título</Ghost>
+                  </div>
                 </div>
-                <div className="mt-3 grid gap-3">
-                  {WORLDS.map((world) => (
-                    <div key={world.id}>
-                      <h3 className="text-sm text-brass">{world.name}</h3>
-                      <div className="mt-1 grid grid-cols-5 gap-1.5">
-                        {Array.from({ length: 5 }, (_, k) => {
-                          const n = world.id * 5 + k + 1;
-                          const locked = n > snap.next;
-                          const on = pick === n;
-                          const boss = k === 4;
-                          return (
-                            <button
-                              key={n}
-                              type="button"
-                              disabled={locked}
-                              onClick={() => setPick(n)}
-                              className={
-                                "min-h-12 rounded-md border text-sm " +
-                                (locked
-                                  ? "border-paper/10 text-paper/30"
-                                  : on
-                                    ? "border-brass bg-brass text-ink"
-                                    : "border-paper/25 bg-ink text-paper")
-                              }
-                            >
-                              {n}
-                              {boss ? <span className="block text-xs leading-none">chefe</span> : null}
-                            </button>
-                          );
-                        })}
+                <div className="mt-3 grid max-h-[40dvh] gap-3 overflow-y-auto pr-1">
+                  {WORLDS.map((world) => {
+                    const bonusN = 51 + world.id;
+                    const bonusLocked = snap.bonusOpen <= world.id;
+                    return (
+                      <div key={world.id}>
+                        <h3 className="text-sm text-brass">
+                          {world.id + 1}. {world.name}
+                        </h3>
+                        <div className="mt-1 grid grid-cols-6 gap-1.5">
+                          {Array.from({ length: 5 }, (_, k) => {
+                            const n = world.id * 5 + k + 1;
+                            const locked = n > snap.next;
+                            const on = pick === n;
+                            const boss = k === 4;
+                            const mini = k === 2;
+                            return (
+                              <button
+                                key={n}
+                                type="button"
+                                disabled={locked}
+                                onClick={() => setPick(n)}
+                                className={
+                                  "min-h-12 rounded-md border text-sm " +
+                                  (locked ? "border-paper/10 text-paper/30" : on ? "border-brass bg-brass text-ink" : "border-paper/25 bg-ink text-paper")
+                                }
+                              >
+                                {n}
+                                {boss ? <span className="block text-xs leading-none">chefe</span> : mini ? <span className="block text-xs leading-none">mini</span> : null}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            disabled={bonusLocked}
+                            onClick={() => setPick(bonusN)}
+                            className={
+                              "min-h-12 rounded-md border text-sm " +
+                              (bonusLocked ? "border-paper/10 text-paper/30" : pick === bonusN ? "border-moon bg-moon text-ink" : "border-moon/60 bg-ink text-moon")
+                            }
+                          >
+                            ★<span className="block text-xs leading-none">bis</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                <p className="mt-3 font-display text-xl">{REEL_NAMES[pick - 1]}</p>
+                <p className="mt-3 font-display text-xl">{pick > 50 ? `Bis: ${BONUS_NAMES[pick - 51] ?? ""}` : REEL_NAMES[pick - 1]}</p>
                 <p className="text-sm text-paper/70">
-                  {pick % 5 === 0 ? "Chefe no fim do rolo. " : ""}
-                  Travessia longa, com lanternas no caminho.
+                  {pick > 50 ? "Mapa de tesouro: baús e poucos monstros. Sem chefe." : pick % 5 === 0 ? "Chefe no fim do rolo. " : pick % 5 === 3 ? "Tem mini-chefe no caminho. " : "Travessia longa, com lanternas no caminho."}
                 </p>
                 <div className="mt-3">
-                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > snap.next}>
-                    Entrar no rolo {pick}
+                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > 50 ? snap.bonusOpen < pick - 50 : pick > snap.next}>
+                    {pick > 50 ? `Entrar no bis ${pick - 50}` : `Entrar no rolo ${pick}`}
                   </Primary>
                 </div>
               </div>
@@ -331,34 +380,14 @@ export function Bobina() {
                 {snap.formActive ? ` ativa (${snap.formLeft.toFixed(1)}s)` : snap.formCd > 0 ? ` em ${snap.formCd.toFixed(1)}s` : " pronta"}.
               </p>
               <Primary onClick={() => rtRef.current?.resume()}>Voltar ao rolo</Primary>
+              <Ghost onClick={() => rtRef.current?.openChar()}>Personagem e mochila{snap.points > 0 ? ` (${snap.points} pontos)` : ""}</Ghost>
               <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Ligar som" : "Silenciar"}</Ghost>
               <Ghost onClick={() => rtRef.current?.quitToMap()}>Sair para o arquivo</Ghost>
             </CenterCard>
           )}
 
-          {snap.screen === "levelup" && (
-            <CenterCard title={`Nível ${snap.level}`} kicker="O contrato oferece uma emenda">
-              <div className="grid gap-2">
-                {snap.choices.map((id, i) => {
-                  const u = UPGRADES.find((x) => x.id === id);
-                  if (!u) return null;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => rtRef.current?.chooseUpgrade(id)}
-                      className="rounded-md border border-brass/40 bg-ink p-3 text-left"
-                    >
-                      <span className="font-display text-xl text-brass">
-                        {i + 1}. {u.name}
-                      </span>
-                      <span className="mt-1 block text-sm text-paper/80">{u.text}</span>
-                      <span className="mt-1 block text-xs text-moon">agora {snap.stats[id]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </CenterCard>
+          {snap.screen === "char" && (
+            <CharSheet snap={snap} sel={sel} setSel={setSel} rt={rtRef.current} />
           )}
 
           {snap.screen === "dead" && (
@@ -375,16 +404,16 @@ export function Bobina() {
                 Tempo {clock(snap.time)}
                 {snap.best > 0 ? ` · melhor ${clock(snap.best)}` : ""}
               </p>
-              <Primary onClick={() => rtRef.current?.quitToMap()}>
-                {snap.reel >= 25 ? "Ir ao epílogo" : "Voltar ao arquivo"}
-              </Primary>
+              {snap.points > 0 && <p className="text-sm text-brass">Você tem {snap.points} pontos de atributo para gastar.</p>}
+              <Primary onClick={() => rtRef.current?.quitToMap()}>Voltar ao arquivo</Primary>
+              <Ghost onClick={() => rtRef.current?.openChar()}>Personagem e mochila{snap.points > 0 ? ` (${snap.points})` : ""}</Ghost>
             </CenterCard>
           )}
 
           {snap.screen === "ending" && (
             <CenterCard title="Rescisão carimbada" kicker="Bobina Negra">
               <p className="text-base leading-relaxed text-paper/85">
-                Os quatro podem sair. O arquivo fica. Se quiser o bis, os rolos continuam no mapa — teimosia também é um atributo.
+                Cinquenta rolos queimados. O Empresário assinou a própria rescisão. Os quatro podem sair; o arquivo fica. Os bis e os rolos antigos continuam no mapa — teimosia também é um atributo.
               </p>
               <Primary onClick={() => rtRef.current?.quitToMap()}>Reabrir o arquivo</Primary>
               <Ghost onClick={() => rtRef.current?.backTitle()}>Voltar ao cartaz</Ghost>
@@ -413,6 +442,9 @@ export function Bobina() {
             <div className="flex gap-2">
               <Pad label="Descer plataforma" onDown={(d) => hold("down", d)}>
                 <ArrowDown className="size-6" />
+              </Pad>
+              <Pad label="Beber poção" onDown={(d) => hold("potion", d)}>
+                <span className="font-display text-sm text-blood">♥ {snap.potions}</span>
               </Pad>
               <Pad label={`Forma ${hero.formName}`} onDown={(d) => hold("form", d)}>
                 <span className="font-display text-sm">{hero.formName}</span>
@@ -457,13 +489,209 @@ function childrenStart(kicker: string, title: string, children: ReactNode) {
 function StatList({ stats }: { stats: Snap["stats"] }) {
   return (
     <ul className="grid grid-cols-2 gap-2 text-sm">
-      {UPGRADES.map((u) => (
-        <li key={u.id} className="rounded-md bg-ink px-2 py-1">
-          <span className="text-paper/70">{u.name}</span>
-          <span className="float-right text-brass">{stats[u.id as StatKey]}</span>
+      {STAT_KEYS.map((k) => (
+        <li key={k} className="rounded-md bg-ink px-2 py-1">
+          <span className="text-paper/70">{STAT_INFO[k].name}</span>
+          <span className="float-right text-brass">{stats[k]}</span>
         </li>
       ))}
     </ul>
+  );
+}
+
+function layoutBag(bag: Item[]) {
+  const cells: { item: Item; first: boolean }[] = [];
+  for (const it of bag) {
+    const n = itemSize(it);
+    for (let i = 0; i < n; i++) cells.push({ item: it, first: i === 0 });
+  }
+  return cells;
+}
+
+function ItemChip({ it }: { it: Item }) {
+  const b = baseOf(it);
+  return (
+    <span style={{ color: b.slot === "potion" ? b.color : RARITY_COLOR[it.rarity] }}>
+      {b.glyph} {itemName(it)}
+    </span>
+  );
+}
+
+function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; setSel: (n: number | null) => void; rt: Runtime | null }) {
+  const cells = layoutBag(snap.bag);
+  const chosen = snap.bag.find((i) => i.uid === sel) ?? null;
+  const equipped = [
+    { slot: "weapon" as const, label: "Arma", item: snap.equip.weapon },
+    { slot: "armor" as const, label: "Armadura", item: snap.equip.armor },
+    { slot: "relic" as const, label: "Relíquia", item: snap.equip.relic },
+  ];
+  const hero = heroById(snap.hero);
+  return (
+    <section className="pointer-events-auto mx-auto flex min-h-full max-w-4xl flex-col justify-end px-3 pb-4">
+      <div className="max-h-[92dvh] overflow-y-auto rounded-lg border border-brass/50 bg-panel/97 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs tracking-widest text-brass">PERSONAGEM</p>
+            <h2 className="font-display text-3xl leading-none">
+              {hero.name} · Nv {snap.level}
+            </h2>
+            <p className="mt-1 text-sm text-paper/70">
+              XP {snap.xp}/{snap.xpNeed} · {snap.maxHp} corações
+            </p>
+          </div>
+          <Primary onClick={() => rt?.closeChar()}>Voltar</Primary>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-display text-xl text-brass">Atributos</h3>
+              <span className={"text-sm " + (snap.points > 0 ? "text-moon" : "text-paper/50")}>{snap.points} pontos livres</span>
+            </div>
+            <ul className="mt-2 grid gap-2">
+              {STAT_KEYS.map((k: StatKey) => {
+                const info = STAT_INFO[k];
+                const extra = snap.stats[k] - snap.alloc[k];
+                return (
+                  <li key={k} className="rounded-md border border-paper/15 bg-ink p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display text-lg">
+                        <span className="text-brass">{info.abbr}</span> <span className="text-paper/70 text-sm">{info.name}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-display text-xl">{snap.stats[k]}</span>
+                        <button type="button" disabled={snap.points < 1} onClick={() => rt?.allocate(k, 1)} className="min-h-10 min-w-10 rounded-md bg-blood font-display text-lg disabled:opacity-30" aria-label={`+1 ${info.name}`}>
+                          +
+                        </button>
+                        <button type="button" disabled={snap.points < 5} onClick={() => rt?.allocate(k, 5)} className="min-h-10 rounded-md border border-brass/50 px-2 text-sm disabled:opacity-30" aria-label={`+5 ${info.name}`}>
+                          +5
+                        </button>
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs leading-snug text-paper/65">{info.text}</p>
+                    <p className="text-[11px] text-paper/45">
+                      base {BASE_STATS[snap.hero][k]} + pontos {snap.alloc[k]}
+                      {extra - BASE_STATS[snap.hero][k] !== 0 ? ` + equip. ${extra - BASE_STATS[snap.hero][k]}` : ""}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-2 flex items-center justify-between">
+              <button type="button" onClick={() => rt?.respec()} className="min-h-10 rounded-md border border-paper/25 px-3 text-sm text-paper/80">
+                Redistribuir pontos
+              </button>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              {Object.entries(snap.derived).map(([k, v]) => (
+                <div key={k} className="flex justify-between border-b border-paper/10 py-0.5">
+                  <dt className="text-paper/60">{k}</dt>
+                  <dd className="text-moon">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <div>
+            <h3 className="font-display text-xl text-brass">Equipado</h3>
+            <ul className="mt-2 grid gap-2">
+              {equipped.map((e) => (
+                <li key={e.slot} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink p-2 text-sm">
+                  <span>
+                    <span className="block text-xs text-paper/50">{e.label}</span>
+                    {e.item ? (
+                      <>
+                        <ItemChip it={e.item} />
+                        <span className="block text-xs text-moon">{modText(e.item)}</span>
+                      </>
+                    ) : (
+                      <span className="text-paper/40">vazio</span>
+                    )}
+                  </span>
+                  {e.item && (
+                    <button type="button" onClick={() => rt?.unequip(e.slot)} className="min-h-10 rounded-md border border-paper/25 px-3 text-sm">
+                      Tirar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 flex items-baseline justify-between">
+              <h3 className="font-display text-xl text-brass">Mochila</h3>
+              <span className={"text-sm " + (snap.bagUsed >= BAG_SIZE ? "text-blood" : "text-paper/70")}>
+                {snap.bagUsed}/{BAG_SIZE} blocos
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-8 gap-1">
+              {Array.from({ length: BAG_SIZE }, (_, i) => {
+                const c = cells[i];
+                if (!c) return <div key={i} className="aspect-square rounded-sm border border-paper/10 bg-ink/60" />;
+                const b = baseOf(c.item);
+                const color = b.slot === "potion" ? b.color : RARITY_COLOR[c.item.rarity]!;
+                const on = sel === c.item.uid;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSel(on ? null : c.item.uid)}
+                    aria-label={itemName(c.item)}
+                    className={"grid aspect-square place-items-center rounded-sm border text-base " + (on ? "ring-2 ring-brass" : "")}
+                    style={{ borderColor: color, background: `${color}26`, color }}
+                  >
+                    {c.first ? b.glyph : "·"}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 min-h-24 rounded-md border border-paper/15 bg-ink p-2 text-sm">
+              {chosen ? (
+                <>
+                  <p className="font-display text-lg">
+                    <ItemChip it={chosen} />
+                  </p>
+                  <p className="text-xs text-paper/60">
+                    {baseOf(chosen).slot === "potion" ? "Consumível" : RARITY_NAME[chosen.rarity]} · {itemSize(chosen)} bloco(s)
+                  </p>
+                  <p className="text-xs text-paper/75">{BASE_BY_ID[chosen.base]?.text}</p>
+                  <p className="text-xs text-moon">{modText(chosen)}</p>
+                  <div className="mt-2 flex gap-2">
+                    {baseOf(chosen).slot === "potion" ? (
+                      <button type="button" onClick={() => rt?.useItem(chosen.uid)} className="min-h-10 rounded-md bg-blood px-3 font-display">
+                        Usar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          rt?.equipItem(chosen.uid);
+                          setSel(null);
+                        }}
+                        className="min-h-10 rounded-md bg-blood px-3 font-display"
+                      >
+                        Equipar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        rt?.discardItem(chosen.uid);
+                        setSel(null);
+                      }}
+                      className="min-h-10 rounded-md border border-paper/30 px-3"
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-paper/50">Toque num item para ver detalhes. Cada objeto ocupa blocos pelo tamanho, não pela quantidade.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

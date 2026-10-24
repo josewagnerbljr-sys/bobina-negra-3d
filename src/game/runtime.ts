@@ -1,14 +1,16 @@
 import { createAudio } from "./audio";
 import {
   bossIntro,
-  buildLevel,
   clearLine,
   deathLine,
   ending,
   entDef,
   heroById,
+  midEnding,
+  miniIntro,
+  MINI_NAMES,
+  POOLS,
   prologue,
-  REEL_NAMES,
   reelWorld,
   SKILLS,
   SKILL_CD,
@@ -16,14 +18,22 @@ import {
   SKILL_KINDS,
   SKILL_LV,
   transformLine,
-  UPGRADES,
   worldIntro,
   WORLDS,
 } from "./content";
-import { createRenderer, type Fx, type Paint, type Spark } from "./render3d";
+import { buildLevel } from "./maps";
+import { baseOf, bagUsed, canFit, countPotions, itemName, itemSize, makeItem, peekUid, rollDrops, RARITY_COLOR } from "./items";
+import { derive, derivedLines, totalStats, type Derived } from "./stats";
+import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
+import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
 import {
+  BAG_SIZE,
   GROUND,
+  MAIN_LEVELS,
+  MAX_LEVEL,
+  POINTS_PER_LEVEL,
+  STAT_KEYS,
   TILE,
   VIEW_H,
   VIEW_W,
@@ -31,7 +41,9 @@ import {
   tileAt,
   xpToNext,
   type Action,
+  type BuffKind,
   type HeroId,
+  type Item,
   type Kind,
   type Level,
   type Screen,
@@ -40,19 +52,6 @@ import {
 } from "./types";
 
 const STEP = 1 / 60;
-const JUMP_V = 820;
-const G_RISE = 2100;
-const G_FALL = 4600;
-const TERM = 1080;
-
-type Body = {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  vx: number;
-  vy: number;
-};
 
 type Actor = Body & {
   kind: Kind;
@@ -70,7 +69,15 @@ type Actor = Body & {
   hop: number;
   hurt: number;
   boss: boolean;
+  mini: boolean;
+  seq: number;
+  atkT: number;
+  dashT: number;
+  slamT: number;
+  dyT: number;
 };
+
+type Loot = Body & { item: Item; age: number; t: number };
 
 type Shot = Body & {
   life: number;
@@ -80,6 +87,7 @@ type Shot = Body & {
   pierce: number;
   hit: Set<Actor>;
   home?: Actor | null;
+  seek?: boolean;
 };
 
 export type Runtime = {
@@ -91,7 +99,15 @@ export type Runtime = {
   enterReel: (index0: number) => void;
   advanceDialogue: () => void;
   skipDialogue: () => void;
-  chooseUpgrade: (id: StatKey) => void;
+  openChar: () => void;
+  closeChar: () => void;
+  allocate: (id: StatKey, n?: number) => void;
+  respec: () => void;
+  equipItem: (uid: number) => void;
+  unequip: (slot: "weapon" | "armor" | "relic") => void;
+  useItem: (uid: number) => void;
+  discardItem: (uid: number) => void;
+  quickPotion: () => void;
   resume: () => void;
   pause: () => void;
   toggleMute: () => void;
@@ -103,116 +119,12 @@ export type Runtime = {
   backTitle: () => void;
 };
 
-function overlaps(a: Body, b: Body) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
-
-function resolveX(body: Body, level: Level) {
-  const r0 = Math.floor((body.y + 4) / TILE);
-  const r1 = Math.floor((body.y + body.h - 6) / TILE);
-  const c0 = Math.floor(body.x / TILE);
-  const c1 = Math.floor((body.x + body.w - 0.01) / TILE);
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0; c <= c1; c++) {
-      if (!isSolidTile(tileAt(level, c, r))) continue;
-      const left = c * TILE;
-      const right = left + TILE;
-      const pushLeft = body.x + body.w - left;
-      const pushRight = right - body.x;
-      if (pushLeft < pushRight) {
-        body.x -= pushLeft;
-        if (body.vx > 0) body.vx = 0;
-      } else {
-        body.x += pushRight;
-        if (body.vx < 0) body.vx = 0;
-      }
-    }
-  }
-}
-
-function resolveY(body: Body, level: Level, drop: number, prevBottom: number) {
-  let grounded = false;
-  let onOneWay = false;
-  let spring = false;
-  let spike = false;
-  const c0 = Math.floor((body.x + 3) / TILE);
-  const c1 = Math.floor((body.x + body.w - 3) / TILE);
-  const r0 = Math.floor(body.y / TILE);
-  const r1 = Math.floor((body.y + body.h - 0.01) / TILE);
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0; c <= c1; c++) {
-      const t = tileAt(level, c, r);
-      const top = r * TILE;
-      const bot = top + TILE;
-      if (isSolidTile(t)) {
-        const fromAbove = prevBottom <= top + 4 && body.y + body.h > top && body.y < top + 8;
-        if ((body.vy >= 0 && fromAbove) || (body.vy >= 0 && body.y + body.h - top < 16 && body.y < top)) {
-          body.y = top - body.h;
-          body.vy = 0;
-          grounded = true;
-          if (t === 3) spike = true;
-          if (t === 4) spring = true;
-        } else if (body.vy < 0 && body.y < bot && body.y + body.h > bot) {
-          body.y = bot;
-          if (body.vy < 0) body.vy = 0;
-        }
-      } else if (t === 2 && drop <= 0 && body.vy >= 0 && prevBottom <= top + 3 && body.y + body.h >= top && body.y < top) {
-        body.y = top - body.h;
-        body.vy = 0;
-        grounded = true;
-        onOneWay = true;
-      }
-    }
-  }
-  return { grounded, onOneWay, spring, spike };
-}
-
-function moveBody(body: Body, level: Level, dt: number, drop: number) {
-  const xSteps = Math.max(1, Math.ceil(Math.abs(body.vx * dt) / 16));
-  const xPart = (body.vx * dt) / xSteps;
-  for (let i = 0; i < xSteps; i++) {
-    body.x += xPart;
-    resolveX(body, level);
-  }
-  const yDist = body.vy * dt;
-  const ySteps = Math.max(1, Math.ceil(Math.abs(yDist) / 16));
-  const yPart = yDist / ySteps;
-  let grounded = false;
-  let onOneWay = false;
-  let spring = false;
-  let spike = false;
-  for (let i = 0; i < ySteps; i++) {
-    const prevBottom = body.y + body.h;
-    body.y += yPart;
-    const hit = resolveY(body, level, drop, prevBottom);
-    grounded = grounded || hit.grounded;
-    onOneWay = onOneWay || hit.onOneWay;
-    spring = spring || hit.spring;
-    spike = spike || hit.spike;
-    if (hit.grounded && yPart > 0) break;
-  }
-  return { grounded, onOneWay, spring, spike };
-}
-
-function touchesSpike(body: Body, level: Level) {
-  const c0 = Math.floor(body.x / TILE);
-  const c1 = Math.floor((body.x + body.w) / TILE);
-  const r0 = Math.floor(body.y / TILE);
-  const r1 = Math.floor((body.y + body.h) / TILE);
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0; c <= c1; c++) {
-      if (tileAt(level, c, r) === 3) return true;
-    }
-  }
-  return false;
-}
-
 export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => void): Runtime {
   const audio = createAudio();
   const renderer = createRenderer(canvas);
-  let attract: Level = buildLevel(Math.floor(Math.random() * 5) * 5);
+  let attract: Level = buildLevel(Math.floor(Math.random() * 10) * 5);
   renderer.setAttract(attract);
-  audio.setWorld(attract.world);
+  audio.setWorld(attract.world, 0);
   let alive = true;
   let save: Save = loadSave() ?? emptySave("ivo");
   let hasSave = loadSave() !== null;
@@ -243,8 +155,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let formCd = 0;
   let airJumps = 0;
   let wasGround = false;
-  let pendingLevels = 0;
-  let choices: StatKey[] = [];
+  let loot: Loot[] = [];
+  let buffs: { kind: BuffKind; left: number }[] = [];
+  let charFrom: Screen = "map";
+  let fullToast = 0;
+  const opened = new Set<number>();
   let lines: Snap["lines"] = [];
   let lineIndex = 0;
   let afterTalk: "play" | "first" | "map" | "ending" = "play";
@@ -277,7 +192,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     s2: false,
     s3: false,
     s4: false,
+    potion: false,
   };
+  let prevPotion = false;
+  let wantPotion = false;
   let prevJump = false;
   let prevForm = false;
   let wantJump = false;
@@ -317,9 +235,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     return allSkills || save.level >= SKILL_LV[i]!;
   }
 
+  /* ---- atributos / buffs ---- */
+  function D(): Derived {
+    return derive(totalStats(save.hero, save.alloc, save.equip), save.level);
+  }
+  const hasBuff = (k: BuffKind) => buffs.some((b) => b.kind === k && b.left > 0);
+  function dmgPhys() {
+    return D().phys * (hasBuff("fury") ? 1.5 : 1);
+  }
+  function dmgMagic() {
+    return D().magic * (hasBuff("fury") ? 1.5 : 1);
+  }
+  function crit(d: number): number {
+    return Math.random() < D().crit ? d * 1.8 : d;
+  }
+
+  const inert = (a: Actor) => a.kind === "candle" || a.kind === "chest";
+
   function hurtFoe(a: Actor, dmg: number, color: string) {
-    if (a.dead || a.ally || a.kind === "candle") return;
-    a.hp -= dmg;
+    if (a.dead || a.ally || inert(a)) return;
+    a.hp -= crit(dmg);
     a.hurt = 0.14;
     burst(a.x + a.w / 2, a.y + a.h / 2, color, 8, 140);
     audio.hit();
@@ -327,7 +262,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function foesNear(cx: number, cy: number, rx: number, ry: number) {
-    return actors.filter((a) => !a.dead && !a.ally && a.kind !== "candle" && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry);
+    return actors.filter((a) => !a.dead && !a.ally && !inert(a) && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry);
   }
 
   function useSkill(i: number) {
@@ -335,8 +270,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const def = SKILLS[save.hero][i]!;
     const cx = player.x + player.w / 2;
     const cy = player.y + player.h / 2;
-    const cdMul = Math.max(0.6, 1 - 0.04 * save.stats.folego);
-    skillCd[i] = SKILL_CD[i]! * cdMul;
+    const d = D();
+    skillCd[i] = SKILL_CD[i]! * (1 - d.cdr);
     atkT = 0.3;
     audio.skill(i);
     if (i === 0) {
@@ -344,11 +279,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       let best: Actor | null = null;
       let bd = 640;
       for (const a of actors) {
-        if (a.dead || a.ally || a.kind === "candle") continue;
-        const d = Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy);
+        if (a.dead || a.ally || inert(a)) continue;
+        const dist = Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy);
         const front = (a.x + a.w / 2 - cx) * player.facing > -60;
-        if (front && d < bd) {
-          bd = d;
+        if (front && dist < bd) {
+          bd = dist;
           best = a;
         }
       }
@@ -361,7 +296,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         vy: -90,
         life: 1.7,
         color: def.color,
-        dmg: 3.4 * dmgMul(),
+        dmg: 3.4 * dmgPhys(),
         foe: false,
         pierce: 0,
         hit: new Set(),
@@ -373,21 +308,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       iframe = Math.max(iframe, 0.3);
       fx.push({ kind: "slash", x: cx, y: cy, t: 0, max: 0.3, color: def.color, r: 150, dir: player.facing });
     } else if (i === 2) {
-      const R = 175;
+      const R = 175 * d.radius;
       fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: def.color, r: R, dir: 0 });
       for (const a of foesNear(cx, cy, R, R * 0.8)) {
-        hurtFoe(a, 2.1 * dmgMul(), def.color);
+        hurtFoe(a, 2.1 * dmgMagic(), def.color);
         if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * 30;
       }
       for (const sh of shots) if (sh.foe && Math.hypot(sh.x - cx, sh.y - cy) < R) sh.life = 0;
       shake = 6;
     } else {
       // super especial: tela inteira
-      const hit = foesNear(cx, cy, 560, 380);
-      fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: def.color, r: 640, dir: 0 });
+      const hit = foesNear(cx, cy, 560 * d.radius, 380 * d.radius);
+      fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: def.color, r: 640 * d.radius, dir: 0 });
       for (const a of hit) {
         fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: def.color, r: 0, dir: 0 });
-        hurtFoe(a, 7.5 * dmgMul(), def.color);
+        hurtFoe(a, 7.5 * dmgMagic(), def.color);
       }
       for (const sh of shots) if (sh.foe) sh.life = 0;
       shake = 16;
@@ -398,27 +333,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function maxHp() {
-    return Math.min(10, 5 + save.stats.vit);
-  }
-  function dmgMul() {
-    return 1 + save.stats.impeto * 0.22;
+    return D().maxHp;
   }
   function speedMul() {
     const wolf = formT > 0 && save.hero === "ivo" ? 1.38 : 1;
-    return (1 + save.stats.passo * 0.06) * wolf;
+    return D().speed * wolf * (hasBuff("haste") ? 1.2 : 1);
   }
   function formDur() {
-    return 7 + save.stats.folego * 0.5;
+    return D().formDur;
   }
   function formCool() {
-    return Math.max(4.2, 11 - save.stats.folego * 0.45);
+    return D().formCool;
   }
   function attackCd() {
     const fast = formT > 0 && (save.hero === "syl" || save.hero === "lena") ? 0.82 : 1;
-    return Math.max(0.15, (0.36 - save.stats.mira * 0.025) * fast);
+    return D().atkCd * fast * (hasBuff("haste") ? 0.8 : 1);
   }
+  const bonusBoost = () => D().potion - 2;
 
   function persist() {
+    save.uid = peekUid();
     writeSave(save);
     hasSave = true;
   }
@@ -430,24 +364,30 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function makeSnap(): Snap {
     const world = level ? reelWorld(level.index) : WORLDS[0]!;
-    const boss = actors.find((a) => a.boss && !a.dead);
+    const boss = actors.find((a) => (a.boss || a.mini) && !a.dead);
+    const stats = totalStats(save.hero, save.alloc, save.equip);
+    const d = D();
     return {
       screen,
       hasSave,
       hero: save.hero,
       selectedHero: selected,
       next: save.next,
+      bonusOpen: Math.min(10, Math.floor((save.next - 1) / 5)),
       level: save.level,
       xp: save.xp,
       xpNeed: xpToNext(save.level),
-      stats: { ...save.stats },
+      stats,
+      alloc: { ...save.alloc },
+      points: save.points,
       hp: player.hp,
       maxHp: maxHp(),
       reel: level ? level.index + 1 : 0,
       reelName: level?.name ?? "",
       worldName: level ? world.name : "",
+      bonus: Boolean(level?.bonus),
       bossAlive: Boolean(boss),
-      bossName: level?.boss ? world.boss : "",
+      bossName: level?.boss ? world.boss : level?.mini ? (MINI_NAMES[level.world] ?? "Mini-chefe") : "",
       bossHp: boss ? Math.max(0, boss.hp) : 0,
       bossMax: boss ? boss.maxHp : 0,
       formActive: formT > 0,
@@ -456,7 +396,6 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       formDur: formDur(),
       lines,
       lineIndex,
-      choices,
       deadLine: deadLineText,
       toast: toastT > 0 ? toast : "",
       mute,
@@ -465,7 +404,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       best: level ? (save.best[level.index] ?? 0) : 0,
       hint: hint && screen === "play" && reelTime < 9,
       progress: level ? Math.max(0, Math.min(1, (player.x + player.w) / (level.cols * TILE))) : 0,
-      skills: SKILLS[save.hero].map((d, i) => ({ name: d.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]!, lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) })),
+      skills: SKILLS[save.hero].map((sd, i) => ({ name: sd.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]! * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) })),
+      bag: save.bag,
+      equip: save.equip,
+      bagUsed: bagUsed(save.bag),
+      potions: countPotions(save.bag),
+      buffs: buffs.map((b) => ({ kind: b.kind, left: b.left })),
+      derived: derivedLines(d),
+      levelupFresh: save.points > 0,
     };
   }
 
@@ -492,9 +438,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (sparks.length > 180) sparks.splice(0, sparks.length - 180);
   }
 
-  function spawnActor(kind: Kind, c: number, foot: number, ally = false): Actor {
+  function spawnActor(kind: Kind, c: number, foot: number, ally = false, mini = false): Actor {
     const world = level?.world ?? 0;
-    const def = entDef(kind === "boss" ? "boss" : kind, world);
+    const def = entDef(kind, world, mini);
     const hp = ally ? Math.max(2, Math.round(def.hp * 0.7)) : def.hp;
     const actor: Actor = {
       kind,
@@ -517,7 +463,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       cd: 0.6 + Math.random(),
       hop: 0.4,
       hurt: 0,
-      boss: kind === "boss" && !ally,
+      boss: kind === "boss" && !ally && !mini,
+      mini: kind === "boss" && !ally && mini,
+      seq: 0,
+      atkT: 0,
+      dashT: 0,
+      slamT: 0,
+      dyT: 0,
     };
     return actor;
   }
@@ -527,7 +479,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     lit = new Set();
     shots = [];
     sparks = [];
-    actors = level.ents.map((e) => spawnActor(e.kind, e.c, e.foot));
+    actors = level.ents.map((e) => spawnActor(e.kind, e.c, e.foot, false, Boolean(e.mini)));
+    loot = [];
+    buffs = [];
+    opened.clear();
     blueprint = actors.map((a) => ({ ...a, hit: undefined }) as Actor);
     const spawnX = level.spawn.c * TILE + 8;
     const spawnY = level.spawn.foot * TILE - player.h;
@@ -542,14 +497,15 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     camY = Math.max(0, player.y - 80);
     reelTime = 0;
     clearText = "";
-    hint = index0 === 0;
+    hint = index0 === 0 && save.level === 1;
     formT = 0;
     iframe = 1;
     skillCd = [0, 0, 0, 0];
     dashT = 0;
     fx = [];
     bossAlive = actors.some((a) => a.boss);
-    audio.setWorld(level.world);
+    prevPotion = true;
+    audio.setWorld(level.world, level.index % 5, level.bonus);
     audio.setBoss(level.boss);
     const mark = level.tiles;
     for (let i = 0; i < mark.length; i++) {
@@ -563,32 +519,27 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function gainXp(n: number) {
-    save.xp += n;
-    while (save.level < 20 && save.xp >= xpToNext(save.level)) {
+    save.xp += Math.round(n * D().xp);
+    let up = 0;
+    while (save.level < MAX_LEVEL && save.xp >= xpToNext(save.level)) {
       save.xp -= xpToNext(save.level);
       save.level += 1;
-      pendingLevels += 1;
+      save.points += POINTS_PER_LEVEL;
+      up += 1;
     }
-  }
-
-  function openLevelUp() {
-    if (pendingLevels <= 0) return false;
-    const bag = [...UPGRADES];
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = bag[i]!;
-      bag[i] = bag[j]!;
-      bag[j] = tmp;
+    if (save.level >= MAX_LEVEL) save.xp = 0;
+    if (up > 0) {
+      audio.levelup();
+      showToast(`Nível ${save.level}! +${up * POINTS_PER_LEVEL} pontos (C)`);
+      if (player.hp > 0) player.hp = Math.min(maxHp(), player.hp + 1);
+      burst(player.x + player.w / 2, player.y + 10, "#ffe27a", 18, 200);
     }
-    choices = bag.slice(0, 3).map((u) => u.id);
-    screen = "levelup";
-    return true;
   }
 
   function hurtPlayer(fromX: number) {
-    if (iframe > 0 || screen !== "play") return;
+    if (iframe > 0 || screen !== "play" || hasBuff("ward")) return;
     player.hp -= 1;
-    iframe = 0.95;
+    iframe = D().iframe;
     player.vx = player.x + player.w / 2 < fromX ? -220 : 220;
     player.vy = -320;
     shake = 7;
@@ -605,19 +556,89 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
   }
 
+  function dropLoot(items: Item[], x: number, y: number) {
+    items.forEach((item, i) => {
+      loot.push({ x: x - 10, y: y - 10, w: 20, h: 20, vx: (i - (items.length - 1) / 2) * 90 + (Math.random() - 0.5) * 30, vy: -380 - Math.random() * 120, item, age: 0, t: Math.random() * 6 });
+    });
+    if (loot.length > 40) loot.splice(0, loot.length - 40);
+  }
+
   function killActor(a: Actor) {
     if (a.dead) return;
     a.dead = true;
     a.hp = 0;
+    a.dyT = 0.45;
     burst(a.x + a.w / 2, a.y + a.h / 2, "#f4e4c8", 12, 160);
     audio.hit();
-    shake = a.boss ? 10 : 4;
-    if (!a.ally && a.kind !== "candle") {
+    shake = a.boss || a.mini ? 10 : 4;
+    if (!a.ally && !inert(a)) {
       lastKill = a.kind === "boss" ? lastKill : a.kind;
       gainXp(a.xp);
-      showToast(`+${a.xp}`);
+      showToast(`+${Math.round(a.xp * D().xp)} XP`);
       if (a.boss) showToast("A saída destrancou. O carimbo rangeu.");
+      if (a.mini) showToast("Mini-chefe caiu! Tesouro no chão.");
+      const src = a.boss ? "boss" : a.mini ? "mini" : "mob";
+      const drops = rollDrops(src, level?.world ?? 0, D().luck, Math.random);
+      if (drops.length) dropLoot(drops, a.x + a.w / 2, a.y + a.h / 2);
     }
+  }
+
+  function openChest(a: Actor) {
+    a.dead = true;
+    a.dyT = 0.25;
+    opened.add(Math.round(a.x));
+    audio.chest();
+    shake = 3;
+    const items = rollDrops("chest", level?.world ?? 0, D().luck, Math.random);
+    dropLoot(items, a.x + a.w / 2, a.y);
+    burst(a.x + a.w / 2, a.y, "#ffd36a", 16, 180);
+    showToast("Baú aberto!");
+  }
+
+  /* ---- itens ---- */
+  function addToBag(it: Item): boolean {
+    if (!canFit(save.bag, it)) return false;
+    save.bag.push(it);
+    return true;
+  }
+
+  function applyPotion(it: Item): boolean {
+    const b = baseOf(it);
+    if (b.slot !== "potion") return false;
+    if (b.heal) {
+      if (player.hp >= maxHp() || player.hp <= 0) {
+        showToast("Corações cheios.");
+        return false;
+      }
+      player.hp = Math.min(maxHp(), player.hp + b.heal + bonusBoost());
+      burst(player.x + player.w / 2, player.y + 14, "#ff6a8a", 10, 100);
+    } else if (b.buff) {
+      const dur = b.buff === "ward" ? 8 : 25;
+      buffs = buffs.filter((x) => x.kind !== b.buff);
+      buffs.push({ kind: b.buff, left: dur });
+      burst(player.x + player.w / 2, player.y + 14, b.color, 12, 120);
+    }
+    audio.drink();
+    return true;
+  }
+
+  function consume(uid: number) {
+    const i = save.bag.findIndex((x) => x.uid === uid);
+    if (i < 0) return;
+    if (applyPotion(save.bag[i]!)) {
+      save.bag.splice(i, 1);
+      persist();
+    }
+  }
+
+  function quick() {
+    if (screen !== "play") return;
+    const heal = save.bag.find((x) => baseOf(x).heal);
+    if (!heal) {
+      showToast("Sem poção de cura na mochila.");
+      return;
+    }
+    consume(heal.uid);
   }
 
   function fire(owner: "player" | "foe" | "ally", origin: Body, facing: number, speed: number, dmg: number, color: string, vy = 0, pierce = 0) {
@@ -647,20 +668,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const color = heroById(hero).accent;
     audio.shot(save.hero);
     if (hero === "ivo" && formed) {
-      fire("player", { ...player, x: player.x + player.facing * 8 }, player.facing, 280, 1.7 * dmgMul(), "#e0b15a", 0, 0);
+      fire("player", { ...player, x: player.x + player.facing * 8 }, player.facing, 280, 1.7 * dmgPhys(), "#e0b15a", 0, 0);
       shots[shots.length - 1]!.w = 28;
       shots[shots.length - 1]!.h = 18;
       shots[shots.length - 1]!.life = 0.18;
     } else if (hero === "syl" && formed) {
-      fire("player", player, player.facing, 560, 0.85 * dmgMul(), color, -90);
-      fire("player", player, player.facing, 560, 0.85 * dmgMul(), color, 0);
-      fire("player", player, player.facing, 560, 0.85 * dmgMul(), color, 90);
+      fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, -90);
+      fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, 0);
+      fire("player", player, player.facing, 560, 0.85 * dmgPhys(), color, 90);
     } else if (hero === "osso") {
-      fire("player", player, player.facing, 500, dmgMul(), "#f4efe4", 0, formed ? 3 : 1);
+      fire("player", player, player.facing, 500, dmgPhys(), "#f4efe4", 0, formed ? 3 : 1);
     } else if (hero === "lena" && formed) {
-      fire("player", player, player.facing, 480, 1.15 * dmgMul(), "#c4373a");
+      fire("player", player, player.facing, 480, 1.15 * dmgPhys(), "#c4373a");
     } else {
-      fire("player", player, player.facing, 540, dmgMul(), color);
+      fire("player", player, player.facing, 540, dmgPhys(), color);
     }
     burst(player.x + (player.facing > 0 ? player.w : 0), player.y + 16, color, 4, 80);
   }
@@ -672,7 +693,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     showToast(transformLine(save.hero));
     shake = 5;
     if (save.hero === "osso") {
-      const kind = lastKill && lastKill !== "boss" && lastKill !== "candle" ? lastKill : "skel";
+      const kind = lastKill && lastKill !== "boss" && lastKill !== "candle" && lastKill !== "chest" ? lastKill : "skel";
       const c = Math.floor((player.x + player.w / 2) / TILE);
       const ally = spawnActor(kind, c, GROUND, true);
       ally.x = player.x + player.facing * 28;
@@ -701,8 +722,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     buffer = Math.max(0, buffer - dt);
     cutLock = Math.max(0, cutLock - dt);
     if (toastT > 0) toastT -= dt;
+    fullToast = Math.max(0, fullToast - dt);
+    for (const b of buffs) b.left -= dt;
+    buffs = buffs.filter((b) => b.left > 0);
 
     const hold = readHold();
+    if (wantPotion || (hold.potion && !prevPotion)) quick();
+    wantPotion = false;
+    prevPotion = hold.potion;
     if (wantJump || (hold.jump && !prevJump)) buffer = 0.13;
     if (wantForm || (hold.form && !prevForm)) activateForm();
     wantJump = false;
@@ -741,10 +768,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (dashT > 0) {
       dashT -= dt;
       player.vx = player.facing * 1150;
-      const dmgDash = 4.6 * dmgMul();
+      const dmgDash = 4.6 * dmgPhys();
       const sd = SKILLS[save.hero][1]!;
       for (const a of actors) {
-        if (a.dead || a.ally || a.kind === "candle") continue;
+        if (a.dead || a.ally || inert(a)) continue;
         if (player.x + player.w + 16 > a.x && player.x - 16 < a.x + a.w && player.y + player.h > a.y && player.y < a.y + a.h) {
           hurtFoe(a, dmgDash, sd.color);
           fx.push({ kind: "wave", x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0, max: 0.4, color: sd.color, r: 70, dir: 0 });
@@ -758,6 +785,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
     player.phase += dt * (4 + Math.abs(player.vx) / 50);
 
+    if (hasBuff("ward")) iframe = Math.max(iframe, 0.1);
     const bat = formed && save.hero === "lena";
     const skull = formed && save.hero === "osso";
     let g = player.vy < 0 ? G_RISE : G_FALL;
@@ -769,6 +797,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (skull && hold.jump) player.vy -= 640 * dt;
     if (player.vy > TERM) player.vy = TERM;
     if (bat) player.vy = Math.max(-300, Math.min(360, player.vy));
+    if (skull) player.vy = Math.max(-320, player.vy);
     if (dashT > 0) player.vy = 0;
 
     const canGround = wasGround || coyote > 0;
@@ -794,6 +823,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
 
     const hit = moveBody(player, level, dt, dropT);
+    // teto de altura: o herói nunca sai da tela em super-pulos/voos
+    const ceilY = (GROUND - 7) * TILE;
+    if (player.y < ceilY) {
+      player.y = ceilY;
+      if (player.vy < 0) player.vy = 0;
+    }
     wasGround = hit.grounded;
     player.onOneWay = hit.onOneWay;
     if (hit.grounded) {
@@ -821,7 +856,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (!lit.has(idx)) {
           lit.add(idx);
           respawn = { x: c * TILE, y: r * TILE - player.h + TILE };
-          if (player.hp < maxHp()) player.hp += 1;
+          if (player.hp < maxHp()) player.hp = Math.min(maxHp(), player.hp + 1 + bonusBoost());
           audio.pickup();
           showToast("Lanterna acesa. O rolo lembra daqui.");
         }
@@ -829,7 +864,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
 
     for (const a of actors) {
-      if (a.dead) continue;
+      if (a.dead) {
+        if (a.dyT > 0) a.dyT -= dt;
+        continue;
+      }
       a.phase += dt;
       a.hurt = Math.max(0, a.hurt - dt);
       a.cd = Math.max(0, a.cd - dt);
@@ -855,6 +893,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             a.facing = dx >= 0 ? 1 : -1;
             a.vx = a.facing * a.speed;
           }
+        } else if (a.behavior === "boss") {
+          bossAI(a, dx, dt);
         } else if (a.ally) {
           const foe = nearestFoe(a);
           if (foe) {
@@ -894,36 +934,61 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         a.vx = 0;
       }
 
-      if (!a.ally && a.kind !== "candle" && (a.behavior === "shoot" || a.behavior === "still" || a.behavior === "boss" || a.kind === "golem")) {
+      if (!a.ally && !inert(a) && a.behavior !== "boss" && (a.behavior === "shoot" || a.behavior === "still" || a.kind === "golem" || a.kind === "cherub")) {
         if (a.cd <= 0 && Math.abs(dx) < 460 && Math.abs(player.y - a.y) < 180) {
-          a.cd = a.boss ? 1.35 : a.behavior === "still" ? 1.5 : 1.9;
+          a.cd = a.behavior === "still" ? 1.5 : 1.9;
           a.facing = dx >= 0 ? 1 : -1;
-          const spread = a.boss ? [-80, 0, 80] : [0];
-          for (const vy of spread) fire("foe", a, a.facing, a.boss ? 250 : 220, 1, "#e08a3a", vy);
+          fire("foe", a, a.facing, 220, 1, a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" ? "#ffe9a0" : "#e08a3a", 0);
         }
-      }
-      if (a.boss) {
-        a.facing = dx >= 0 ? 1 : -1;
-        a.vx = a.facing * (70 + (level.world ?? 0) * 12);
-        if (a.hop <= 0) {
-          a.vy = -620;
-          a.hop = 2.1;
-        } else a.hop -= dt;
       }
 
       if (a.kind === "candle" && overlaps(player, a)) {
         a.dead = true;
-        if (player.hp < maxHp()) player.hp += 1;
+        if (player.hp < maxHp()) player.hp = Math.min(maxHp(), player.hp + 1 + bonusBoost());
         audio.pickup();
         burst(a.x, a.y, "#e0b15a", 6, 70);
+      } else if (a.kind === "chest" && overlaps(player, a)) {
+        openChest(a);
       } else if (!a.ally && a.touch > 0 && iframe <= 0 && overlaps(player, a)) {
         hurtPlayer(a.x + a.w / 2);
+      }
+    }
+
+    for (let i = loot.length - 1; i >= 0; i--) {
+      const lt = loot[i]!;
+      lt.age += dt;
+      lt.vy = Math.min(TERM, lt.vy + 1500 * dt);
+      const lh = moveBody(lt, level, dt, 0);
+      if (lh.grounded) lt.vx *= 0.8;
+      if (lt.y > level.rows * TILE) {
+        loot.splice(i, 1);
+        continue;
+      }
+      if (lt.age > 0.5 && overlaps(player, lt)) {
+        if (addToBag(lt.item)) {
+          audio.loot(lt.item.rarity);
+          showToast(`${itemName(lt.item)} (${itemSize(lt.item)} bl.)`);
+          burst(lt.x + 10, lt.y + 10, RARITY_COLOR[lt.item.rarity]!, 8, 90);
+          loot.splice(i, 1);
+          persist();
+        } else if (fullToast <= 0) {
+          fullToast = 2.2;
+          showToast(`Mochila cheia (${BAG_SIZE} blocos). Descarte algo (C).`);
+        }
       }
     }
 
     for (let i = shots.length - 1; i >= 0; i--) {
       const s = shots[i]!;
       s.life -= dt;
+      if (s.seek) {
+        const tx = player.x + player.w / 2 - (s.x + s.w / 2);
+        const ty = player.y + player.h / 2 - (s.y + s.h / 2);
+        const dd = Math.hypot(tx, ty) || 1;
+        const k2 = 1 - Math.exp(-2.2 * dt);
+        s.vx += ((tx / dd) * 210 - s.vx) * k2;
+        s.vy += ((ty / dd) * 210 - s.vy) * k2;
+      }
       if (s.home && !s.home.dead) {
         const tx = s.home.x + s.home.w / 2 - (s.x + s.w / 2);
         const ty = s.home.y + s.home.h / 2 - (s.y + s.h / 2);
@@ -951,9 +1016,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         continue;
       }
       for (const a of actors) {
-        if (a.dead || a.ally || a.kind === "candle" || s.hit.has(a)) continue;
+        if (a.dead || a.ally || inert(a) || s.hit.has(a)) continue;
         if (!overlaps(s, a)) continue;
-        a.hp -= s.dmg;
+        a.hp -= crit(s.dmg);
         a.hurt = 0.08;
         s.hit.add(a);
         burst(a.x + a.w / 2, a.y + a.h / 2, s.color, 5, 90);
@@ -978,8 +1043,91 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
     }
 
-    if (player.hp > 0 && pendingLevels > 0 && screen === "play") openLevelUp();
     if (screen !== "play") emit();
+  }
+
+  const BOSS_PATTERNS: string[][] = [
+    ["spread", "aimed"],
+    ["dash", "aimed", "spread"],
+    ["slam", "spread", "dash"],
+    ["rain", "aimed", "slam"],
+    ["summon", "homing", "rain"],
+    ["dash", "rain", "spread"],
+    ["spread", "slam", "homing"],
+    ["slam", "aimed", "summon"],
+    ["homing", "rain", "dash"],
+    ["spread", "slam", "summon", "rain", "homing", "dash"],
+  ];
+
+  function foeShot(x: number, y: number, vx: number, vy: number, color: string, life = 1.6, seek = false) {
+    shots.push({ x, y, w: 14, h: 12, vx, vy, life, color, dmg: 1, foe: true, pierce: 0, hit: new Set(), seek });
+    if (shots.length > 60) shots.splice(0, shots.length - 60);
+  }
+
+  function bossAI(a: Actor, dx: number, dt: number) {
+    if (!level) return;
+    const w = level.world;
+    const frac = a.hp / a.maxHp;
+    const rage = frac < 0.5 ? 1.35 : 1;
+    const cx = a.x + a.w / 2;
+    const cy = a.y + a.h * 0.4;
+    const accent = WORLDS[w]?.accent ?? "#e08a3a";
+    a.facing = dx >= 0 ? 1 : -1;
+    const near = Math.abs(dx) < 720;
+    if (a.dashT > 0) {
+      a.dashT -= dt;
+      a.vx = a.facing * a.speed * 3.4;
+    } else {
+      a.vx = near ? a.facing * (a.speed + w * 8) * (a.mini ? 0.8 : 1) * (Math.abs(dx) < 90 ? 0.2 : 1) : 0;
+    }
+    if (a.hop <= 0 && wasGroundActor(a)) {
+      a.vy = -620;
+      a.hop = (a.mini ? 2.4 : 2.0) / rage;
+    } else a.hop -= dt;
+    if (a.slamT > 0) {
+      a.slamT -= dt;
+      if (a.slamT <= 0) {
+        for (const dir of [-1, 1]) foeShot(cx + dir * 30, a.y + a.h - 26, dir * 270, 0, accent, 1.8);
+        shake = 9;
+        audio.skill(2);
+      }
+    }
+    if (a.cd > 0 || !near) return;
+    const list = BOSS_PATTERNS[Math.min(9, w)]!;
+    const usable = a.mini ? list.slice(0, 2) : list;
+    const pat = usable[a.seq++ % usable.length]!;
+    a.cd = (a.mini ? 2.3 : 1.7) / rage;
+    const px = player.x + player.w / 2;
+    const py = player.y + player.h / 2;
+    if (pat === "spread") {
+      const n = frac < 0.5 ? 5 : 3;
+      for (let i = 0; i < n; i++) foeShot(cx + a.facing * 30, cy, a.facing * 250, (i - (n - 1) / 2) * 80, accent);
+    } else if (pat === "aimed") {
+      const ang = Math.atan2(py - cy, px - cx);
+      const k = frac < 0.5 ? 2 : 1;
+      for (let i = 0; i < k; i++) foeShot(cx, cy, Math.cos(ang + (i - (k - 1) / 2) * 0.18) * 300, Math.sin(ang + (i - (k - 1) / 2) * 0.18) * 300, accent);
+    } else if (pat === "dash") {
+      a.dashT = 0.55;
+    } else if (pat === "slam") {
+      a.vy = -760;
+      a.slamT = 0.82;
+    } else if (pat === "rain") {
+      const n = frac < 0.5 ? 7 : 5;
+      for (let i = 0; i < n; i++) foeShot(px + (i - (n - 1) / 2) * 62, py - 330 - Math.random() * 60, 0, 300, accent, 1.8);
+    } else if (pat === "homing") {
+      foeShot(cx, cy - 20, a.facing * 120, -90, accent, 3.2, true);
+      if (frac < 0.5) foeShot(cx, cy - 20, -a.facing * 120, -90, accent, 3.2, true);
+    } else if (pat === "summon") {
+      const live = actors.filter((o) => !o.dead && !o.boss && !o.mini && !o.ally && !inert(o)).length;
+      if (live < 4) {
+        const pool = POOLS[Math.min(9, w)] ?? POOLS[0]!;
+        const kind = pool.find((k) => k !== "boss") ?? "imp";
+        const m = spawnActor(kind, Math.floor(cx / TILE) + a.facing * 2, GROUND);
+        m.xp = Math.round(m.xp * 0.4);
+        actors.push(m);
+        burst(m.x + m.w / 2, m.y + m.h / 2, accent, 12, 140);
+      }
+    }
   }
 
   function wasGroundActor(a: Actor) {
@@ -998,7 +1146,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     let best: Actor | null = null;
     let bestD = 1e9;
     for (const o of actors) {
-      if (o.dead || o.ally || o.kind === "candle" || o === a) continue;
+      if (o.dead || o.ally || inert(o) || o === a) continue;
       const d = Math.abs(o.x - a.x);
       if (d < bestD) {
         bestD = d;
@@ -1025,21 +1173,23 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const idx = level.index;
     const t = reelTime;
     if (!save.best[idx] || t < save.best[idx]) save.best[idx] = t;
-    if (save.next < idx + 2) save.next = Math.min(26, idx + 2);
-    gainXp(50 + idx * 3);
+    const first = !level.bonus && save.next <= idx + 1;
+    if (!level.bonus && save.next < idx + 2) save.next = Math.min(MAIN_LEVELS + 1, idx + 2);
+    gainXp(level.bonus ? 160 + level.world * 30 : 50 + idx * 4);
     clears += 1;
     clearText = clearLine(save.hero, clears);
     audio.fanfare();
     persist();
-    if (openLevelUp()) {
-      afterTalk = idx >= 24 ? "ending" : "map";
-      return;
-    }
-    if (idx >= 24) {
+    if (first && idx === MAIN_LEVELS - 1) {
       lines = ending();
       lineIndex = 0;
       screen = "talk";
       afterTalk = "ending";
+    } else if (first && idx === 24) {
+      lines = midEnding();
+      lineIndex = 0;
+      screen = "talk";
+      afterTalk = "map";
     } else {
       screen = "clear";
     }
@@ -1048,7 +1198,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function doRespawn() {
     if (!level) return;
-    actors = blueprint.map((a) => ({ ...a }));
+    actors = blueprint.filter((a) => !(a.kind === "chest" && opened.has(Math.round(a.x)))).map((a) => ({ ...a }));
+    buffs = [];
     summon = null;
     shots = [];
     player.x = respawn.x;
@@ -1072,7 +1223,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       jump: touch.jump || down("Space") || down("KeyW") || down("ArrowUp"),
       attack: touch.attack || down("KeyJ") || down("KeyZ"),
       form: touch.form || down("KeyK") || down("KeyL") || down("ShiftLeft"),
-      s: [touch.s1 || down("KeyU"), touch.s2 || down("KeyI"), touch.s3 || down("KeyO"), touch.s4 || down("KeyP")],
+      s: [touch.s1 || down("KeyU") || down("Digit1"), touch.s2 || down("KeyI") || down("Digit2"), touch.s3 || down("KeyO") || down("Digit3"), touch.s4 || down("KeyP") || down("Digit4")],
+      potion: touch.potion || down("KeyQ"),
     };
   }
 
@@ -1086,16 +1238,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     tx = Math.min(maxX, Math.max(0, tx));
     ty = Math.min(maxY, Math.max(0, ty));
     const kx = 1 - Math.exp(-4.5 * dt);
-    const ky = 1 - Math.exp(-3 * dt);
+    const ky = 1 - Math.exp(-3.4 * dt);
+    const dz = 30;
+    const dyc = ty - camY;
+    const ty2 = Math.abs(dyc) > dz ? camY + dyc - Math.sign(dyc) * dz : camY;
     camX += (tx - camX) * kx;
-    camY += (ty - camY) * ky;
+    camY += (ty2 - camY) * ky;
     shake = Math.max(0, shake - dt * 16);
   }
 
   function paintList(): Paint[] {
     const list: Paint[] = [];
     for (const a of actors) {
-      if (a.dead) continue;
+      if (a.dead && a.dyT <= 0) continue;
       list.push({
         ref: a,
         x: a.x,
@@ -1114,9 +1269,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         ally: a.ally,
         world: level?.world ?? 0,
         attack: 0,
+        fly: a.behavior === "fly",
+        dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
+        mini: a.mini,
       });
     }
-    if (screen === "play" || screen === "pause" || screen === "levelup" || screen === "dead" || screen === "clear" || screen === "talk") {
+    if (screen === "play" || screen === "pause" || screen === "char" || screen === "dead" || screen === "clear" || screen === "talk") {
       list.push({
         ref: player,
         x: player.x,
@@ -1144,7 +1302,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const playing =
       screen === "play" ||
       screen === "pause" ||
-      screen === "levelup" ||
+      screen === "char" ||
       screen === "dead" ||
       screen === "clear" ||
       (screen === "talk" && level !== null);
@@ -1166,6 +1324,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       attractHero: selected,
       fx,
       flash: flashT,
+      loot: playing ? loot.map<LootPaint>((l) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2, color: l.item.rarity > 0 ? RARITY_COLOR[l.item.rarity]! : baseOf(l.item).color, rarity: l.item.rarity, t: l.t })) : [],
     });
 
     if (screen === "cast" || screen === "title") {
@@ -1231,7 +1390,6 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   const bridge = {
     advance: () => {},
-    upgrade: (_id: StatKey) => {},
   };
 
   function onKey(e: KeyboardEvent, down: boolean) {
@@ -1249,14 +1407,15 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       } else if (e.code === "Escape" && screen === "pause") {
         screen = "play";
         emit();
+      } else if ((e.code === "KeyC" || e.code === "KeyB" || e.code === "Tab") && !e.repeat && (screen === "play" || screen === "pause" || screen === "char")) {
+        e.preventDefault();
+        if (screen === "char") api.closeChar();
+        else api.openChar();
+      } else if (e.code === "Escape" && screen === "char") {
+        api.closeChar();
       } else if ((e.code === "Enter" || e.code === "Space") && screen === "talk" && down) {
         e.preventDefault();
         bridge.advance();
-      } else if (screen === "levelup" && down) {
-        const map: Record<string, number> = { Digit1: 0, Digit2: 1, Digit3: 2 };
-        const idx = map[e.code];
-        const choice = idx === undefined ? undefined : choices[idx];
-        if (choice) bridge.upgrade(choice);
       }
     } else keys.delete(e.code);
   }
@@ -1319,18 +1478,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     enterReel(index0: number) {
       audio.unlock();
-      if (index0 < 0 || index0 > 24) return;
-      if (index0 + 1 > save.next) return;
+      const total = MAIN_LEVELS + 10;
+      if (index0 < 0 || index0 >= total) return;
+      if (index0 < MAIN_LEVELS) {
+        if (index0 + 1 > save.next) return;
+      } else if (save.next - 1 < (index0 - MAIN_LEVELS + 1) * 5) return;
       afterTalk = "play";
       loadLevel(index0);
-      const world = Math.floor(index0 / 5);
+      const world = level?.world ?? 0;
       const fresh: Snap["lines"] = [];
-      if (world > 0 && (save.seen & (1 << world)) === 0) {
+      if (index0 < MAIN_LEVELS && world > 0 && (save.seen & (1 << world)) === 0) {
         fresh.push(...worldIntro(world));
         save.seen |= 1 << world;
         persist();
       }
-      if (index0 % 5 === 4) fresh.push(...bossIntro(world));
+      if (index0 < MAIN_LEVELS && index0 % 5 === 4) fresh.push(...bossIntro(world));
+      if (level?.mini && (save.seen & (1 << (10 + world))) === 0) {
+        fresh.push(...miniIntro(world));
+        save.seen |= 1 << (10 + world);
+        persist();
+      }
       if (fresh.length) {
         lines = fresh;
         lineIndex = 0;
@@ -1373,25 +1540,96 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       lineIndex = Math.max(0, lines.length - 1);
       api.advanceDialogue();
     },
-    chooseUpgrade(id: StatKey) {
+    openChar() {
+      if (screen === "char") return;
+      charFrom = screen;
+      screen = "char";
       audio.ui();
-      save.stats[id] = Math.min(12, save.stats[id] + 1);
-      if (id === "vit") player.hp = Math.min(maxHp(), player.hp + 1);
-      pendingLevels = Math.max(0, pendingLevels - 1);
+      emit();
+    },
+    closeChar() {
+      if (screen !== "char") return;
+      screen = charFrom === "play" || charFrom === "pause" || charFrom === "map" || charFrom === "clear" ? charFrom : "map";
+      if (screen === "play") {
+        prevJump = true;
+        prevForm = true;
+        buffer = 0;
+      }
+      audio.ui();
       persist();
-      if (pendingLevels > 0) {
-        openLevelUp();
+      emit();
+    },
+    allocate(id: StatKey, n = 1) {
+      const k = Math.min(n, save.points);
+      if (k <= 0 || !STAT_KEYS.includes(id)) return;
+      save.alloc[id] += k;
+      save.points -= k;
+      audio.ui();
+      persist();
+      emit();
+    },
+    respec() {
+      let sum = 0;
+      for (const k of STAT_KEYS) {
+        sum += save.alloc[k];
+        save.alloc[k] = 0;
+      }
+      save.points += sum;
+      player.hp = Math.min(player.hp, maxHp());
+      audio.ui();
+      persist();
+      emit();
+    },
+    equipItem(uid: number) {
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (i < 0) return;
+      const it = save.bag[i]!;
+      const slot = baseOf(it).slot;
+      if (slot === "potion") return;
+      const old = save.equip[slot];
+      save.bag.splice(i, 1);
+      if (old && !canFit(save.bag, old)) {
+        save.bag.splice(i, 0, it);
+        showToast("Sem espaço na mochila para trocar.");
         emit();
         return;
       }
-      choices = [];
-      if (afterTalk === "ending" && level && level.index >= 24 && screen === "levelup") {
-        lines = ending();
-        lineIndex = 0;
-        screen = "talk";
-      } else if (clearText && level && !actors.some((a) => a.boss && !a.dead) && playerOverlapsExit()) {
-        screen = "clear";
-      } else screen = "play";
+      save.equip[slot] = it;
+      if (old) save.bag.push(old);
+      player.hp = Math.min(player.hp, maxHp());
+      audio.pickup();
+      persist();
+      emit();
+    },
+    unequip(slot: "weapon" | "armor" | "relic") {
+      const it = save.equip[slot];
+      if (!it) return;
+      if (!canFit(save.bag, it)) {
+        showToast("Mochila cheia.");
+        emit();
+        return;
+      }
+      save.equip[slot] = null;
+      save.bag.push(it);
+      player.hp = Math.min(player.hp, maxHp());
+      audio.ui();
+      persist();
+      emit();
+    },
+    useItem(uid: number) {
+      consume(uid);
+      emit();
+    },
+    discardItem(uid: number) {
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (i < 0) return;
+      save.bag.splice(i, 1);
+      audio.ui();
+      persist();
+      emit();
+    },
+    quickPotion() {
+      quick();
       emit();
     },
     resume() {
@@ -1436,6 +1674,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (down && action === "jump") wantJump = true;
       if (down && action === "form") wantForm = true;
       if (down && (action === "s1" || action === "s2" || action === "s3" || action === "s4")) wantSkill[Number(action[1]) - 1] = true;
+      if (down && action === "potion") wantPotion = true;
       if (down) audio.unlock();
     },
     backTitle() {
@@ -1456,9 +1695,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const h = q.get("hero");
     const hid: HeroId = h === "lena" || h === "osso" || h === "syl" ? h : "ivo";
     save = emptySave(hid);
-    save.next = 26;
+    save.next = 51;
+    const lvq = Number(q.get("lv"));
+    if (lvq > 1) {
+      save.level = Math.min(MAX_LEVEL, lvq);
+      save.points = 0;
+    }
     selected = hid;
-    const idx = Math.max(0, Math.min(24, Number(q.get("qa")) || 0));
+    const idx = Math.max(0, Math.min(MAIN_LEVELS + 9, Number(q.get("qa")) || 0));
     loadLevel(idx);
     const at = Number(q.get("at"));
     const lv = level as Level | null;
@@ -1476,7 +1720,28 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     getSpeed: () => player.vx,
     getX: () => player.x,
     getCols: () => level?.cols ?? 0,
-    getFoes: () => actors.filter((a) => !a.dead && !a.ally && a.kind !== "candle").length,
+    getFoes: () => actors.filter((a) => !a.dead && !a.ally && !inert(a)).length,
+    getLoot: () => loot.length,
+    killAll: () => {
+      for (const a of actors) if (!a.dead && !a.ally && !inert(a) && !a.boss) killActor(a);
+    },
+    warpToLoot: () => {
+      const l = loot[0];
+      if (l) {
+        player.x = l.x;
+        player.y = l.y - 20;
+        player.vy = 0;
+      }
+      return loot.length;
+    },
+    info: () => ({ lvl: save.level, points: save.points, hp: player.hp, bagUsed: bagUsed(save.bag), screen }),
+    getBag: () => save.bag.length,
+    giveItems: (n: number) => {
+      for (let i = 0; i < n; i++) {
+        const kinds = ["pot", "staff", "plate", "ring", "sword", "elx_fury", "bow", "orb"];
+        addToBag(makeItem(kinds[i % kinds.length]!, (i % 4) as 0 | 1 | 2 | 3, 3, Math.random));
+      }
+    },
     setKeys: (codes: string[]) => {
       qa = new Set(codes);
     },
@@ -1485,7 +1750,6 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   (window as unknown as { __controlsTest?: typeof probe }).__controlsTest = probe;
 
   bridge.advance = () => api.advanceDialogue();
-  bridge.upgrade = (id) => api.chooseUpgrade(id);
 
   emit();
   requestAnimationFrame(frame);

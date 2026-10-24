@@ -32,7 +32,7 @@ type Song = {
   swing: number;
 };
 
-const SONGS: Song[] = [
+const BASE_SONGS: Song[] = [
   // 0 · Carnaval de Verniz — boogie de palco, anos 70
   { name: "Picadeiro Elétrico", era: "70s", bpm: 126, prog: [40, 40, 45, 40, 47, 45, 40, 40], scale: [0, 3, 5, 6, 7, 10, 12], leadRoot: 64, style: "boogie", kick: "x...x..xx..xx...", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 11, leadWave: "sawtooth", swing: 0.16 },
   // 1 · Catacumbas de Medula — metal gótico, anos 80
@@ -43,7 +43,62 @@ const SONGS: Song[] = [
   { name: "Seiva e Ruído", era: "70s", bpm: 92, prog: [45, 50, 45, 52, 45, 50, 52, 45], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "pluck", kick: "x.....x.x.......", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 41, leadWave: "triangle", swing: 0.12 },
   // 4 · Arquivo do Contrato — synth-rock progressivo, anos 80
   { name: "Cláusula Final", era: "80s", bpm: 120, prog: [48, 44, 51, 46, 48, 44, 43, 46], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 72, style: "synth", kick: "x...x...x...x...", snare: "....x.......x..x", hat: "x.xxx.xxx.xxx.xx", seed: 53, leadWave: "sawtooth", swing: 0 },
+  // 5 · Dunas do Sol Morto — hard rock árabe, anos 80
+  { name: "Sol de Papiro", era: "80s", bpm: 104, prog: [40, 41, 40, 45, 40, 41, 44, 40], scale: [0, 1, 4, 5, 7, 8, 10, 12], leadRoot: 64, style: "gallop", kick: "x..xx..xx..xx..x", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 61, leadWave: "sawtooth", swing: 0.04 },
+  // 6 · Geleira Silenciosa — synth gélido, anos 80
+  { name: "Cristal Fino", era: "80s", bpm: 86, prog: [45, 41, 43, 40, 45, 41, 38, 40], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 76, style: "synth", kick: "x.......x...x...", snare: "........x.......", hat: "x.x.x.x.x.x.x.xx", seed: 67, leadWave: "triangle", swing: 0 },
+  // 7 · Lagoa dos Náufragos — surf rock, anos 60/70
+  { name: "Maré Alta", era: "70s", bpm: 134, prog: [45, 45, 50, 45, 52, 50, 45, 52], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "pluck", kick: "x...x...x...x.x.", snare: "....x.......x...", hat: "xxxxxxxxxxxxxxxx", seed: 71, leadWave: "square", swing: 0.08 },
+  // 8 · Cidadela Celeste — rock progressivo sinfônico, anos 70
+  { name: "Coro de Trombetas", era: "70s", bpm: 112, prog: [48, 50, 52, 47, 48, 50, 55, 52], scale: [0, 2, 4, 5, 7, 9, 11, 12], leadRoot: 72, style: "synth", kick: "x.....x.x.....x.", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 79, leadWave: "triangle", swing: 0.06 },
+  // 9 · Palácio do Empresário — metal industrial, anos 90
+  { name: "Contrato de Ferro", era: "90s", bpm: 138, prog: [36, 36, 39, 38, 36, 36, 43, 41], scale: [0, 2, 3, 5, 7, 8, 11, 12], leadRoot: 60, style: "chug", kick: "x.xxx.xxx.xx.xxx", snare: "....x.......x..x", hat: "x.x.x.x.x.x.xxxx", seed: 83, leadWave: "sawtooth", swing: 0 },
 ];
+
+const KICKS = ["x...x..xx..xx...", "x.xxx.xxx.xxx.xx", "x..x..x.x..x..x.", "x.....x.x.......", "x...x...x...x...", "x..x..x..x..x.x.", "x.x...x.x.x...x."];
+const SNARES = ["....x.......x...", "....x.......x..x", "....x..x....x...", "........x......."];
+const HATS = ["x.x.x.x.x.x.x.x.", "x.xxx.xxx.xxx.xx", "..x...x...x...xx", "xxxxxxxxxxxxxxxx"];
+const ROMAN = ["I", "II", "III", "IV", "V"];
+const SHIFT = [0, 2, -2, 3, 5];
+const BPMK = [1, 1.04, 0.95, 1.08, 1.12];
+
+/** 60 faixas: 10 mundos x 5 fases + 10 mapas-bônus, todas derivadas das bases */
+const songCache = new Map<number, Song>();
+function songFor(track: number): Song {
+  let sg = songCache.get(track);
+  if (sg) return sg;
+  const bonus = track >= 50;
+  const w = bonus ? track - 50 : Math.floor(track / 5);
+  const st = bonus ? 2 : track % 5;
+  const base = BASE_SONGS[Math.max(0, Math.min(9, w))]!;
+  const sh = SHIFT[st]! + (bonus ? 7 : 0);
+  const rot = (st * 2) % 8;
+  const prog = base.prog.map((_, i) => base.prog[(i + rot) % 8]! + sh);
+  const pick = (list: string[], cur: string, k: number) => (st === 0 ? cur : list[(Math.max(0, list.indexOf(cur)) + st * k + (bonus ? 1 : 0)) % list.length]!);
+  sg = {
+    ...base,
+    name: bonus ? `Bis: ${base.name}` : st === 0 ? base.name : `${base.name} ${ROMAN[st]}`,
+    bpm: Math.round(base.bpm * BPMK[st]! * (bonus ? 1.18 : 1)),
+    prog,
+    leadRoot: base.leadRoot + sh,
+    kick: pick(KICKS, base.kick, 2),
+    snare: pick(SNARES, base.snare, 1),
+    hat: pick(HATS, base.hat, 1),
+    seed: base.seed + st * 17 + (bonus ? 101 : 0),
+    leadWave: bonus ? "square" : base.leadWave,
+  };
+  songCache.set(track, sg);
+  return sg;
+}
+const leadCache = new Map<number, number[][]>();
+function leadFor(track: number): number[][] {
+  let l = leadCache.get(track);
+  if (!l) {
+    l = makeLead(songFor(track));
+    leadCache.set(track, l);
+  }
+  return l;
+}
 
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
@@ -77,12 +132,12 @@ function makeLead(song: Song): number[][] {
   return bars;
 }
 
-const LEADS = SONGS.map(makeLead);
 
 export function createAudio() {
   let bus: Buses | null = null;
   let muted = false;
   let world = 0;
+  let track = 0;
   let boss = false;
   let mood: "play" | "menu" = "play";
   let musicOn = false;
@@ -153,9 +208,11 @@ export function createAudio() {
     bus.master.gain.setTargetAtTime(m ? 0 : 0.9, bus.ctx.currentTime, 0.03);
   }
 
-  function setWorld(w: number) {
-    if (w !== world) stepNo = 0;
-    world = Math.max(0, Math.min(4, w));
+  function setWorld(w: number, stage = 0, bonus = false) {
+    const t = bonus ? 50 + Math.max(0, Math.min(9, w)) : Math.max(0, Math.min(9, w)) * 5 + Math.max(0, Math.min(4, stage));
+    if (t !== track) stepNo = 0;
+    world = Math.max(0, Math.min(9, w));
+    track = t;
   }
   function setBoss(on: boolean) {
     boss = on;
@@ -386,9 +443,9 @@ export function createAudio() {
 
     // solo: entra na segunda metade do ciclo (ou o tempo todo contra chefes)
     if (!menu && (bar >= 4 || intense)) {
-      const n = LEADS[idx]![bar]![s]!;
+      const n = leadFor(idx)[bar]![s]!;
       if (n >= 0) {
-        const nxt = LEADS[idx]![bar]!.findIndex((v, i) => i > s && v >= 0);
+        const nxt = leadFor(idx)[bar]!.findIndex((v, i) => i > s && v >= 0);
         const len = ((nxt < 0 ? 16 : nxt) - s) * sd * 0.9;
         lead(b, t, song.leadRoot + song.scale[n]! - (song.style === "synth" ? 12 : 0) + (root - song.prog[0]!), Math.max(0.12, len), song.leadWave, intense ? 1.15 : 1);
       }
@@ -400,8 +457,8 @@ export function createAudio() {
     if (!b || !musicOn || muted) return;
     if (b.ctx.state !== "running") return;
     const now = b.ctx.currentTime;
-    const idx = world;
-    const song = SONGS[idx]!;
+    const idx = track;
+    const song = songFor(idx);
     if (lastSong !== idx) {
       lastSong = idx;
       stepNo = 0;
@@ -429,7 +486,7 @@ export function createAudio() {
     setBoss,
     setMusic,
     tick,
-    songName: () => `${SONGS[world]!.name} (${SONGS[world]!.era})`,
+    songName: () => `${songFor(track).name} (${songFor(track).era})`,
     jump() {
       const b = S();
       if (!b) return;
@@ -516,6 +573,42 @@ export function createAudio() {
       const t = b.ctx.currentTime;
       osc(b, "triangle", 660, t, 0.1, b.sfx, 0.08, { slideTo: 990 });
       osc(b, "triangle", 990, t + 0.07, 0.14, b.sfx, 0.07, { slideTo: 1320 });
+    },
+    loot(rarity = 0) {
+      const b = S();
+      if (!b) return;
+      const t = b.ctx.currentTime;
+      const notes = [72, 76, 79, 84].slice(0, 2 + rarity);
+      notes.forEach((m, i) => osc(b, "triangle", mtof(m), t + i * 0.06, 0.16, b.sfx, 0.08));
+    },
+    chest() {
+      const b = S();
+      if (!b) return;
+      const t = b.ctx.currentTime;
+      noiseHit(b, t, 0.18, 0.25, b.sfx, { type: "bandpass", freq: 700, to: 2400, q: 1.2 });
+      osc(b, "sine", 180, t, 0.2, b.sfx, 0.3, { slideTo: 90 });
+      for (const [i, m] of [[0, 67], [1, 72], [2, 76], [3, 79]] as const) osc(b, "triangle", mtof(m), t + 0.1 + i * 0.07, 0.2, b.sfx, 0.08);
+    },
+    levelup() {
+      const b = S();
+      if (!b) return;
+      const t = b.ctx.currentTime;
+      for (const [i, m] of [[0, 60], [1, 64], [2, 67], [3, 72], [4, 76]] as const) {
+        osc(b, "sawtooth", mtof(m), t + i * 0.08, 0.3, b.sfx, 0.07, { filter: 2600 });
+        osc(b, "triangle", mtof(m + 12), t + i * 0.08, 0.3, b.sfx, 0.06);
+      }
+    },
+    drink() {
+      const b = S();
+      if (!b) return;
+      const t = b.ctx.currentTime;
+      for (let i = 0; i < 3; i++) osc(b, "sine", 300 + i * 90, t + i * 0.07, 0.1, b.sfx, 0.1, { slideTo: 520 + i * 90 });
+    },
+    land() {
+      const b = S();
+      if (!b) return;
+      const t = b.ctx.currentTime;
+      noiseHit(b, t, 0.07, 0.14, b.sfx, { type: "lowpass", freq: 900 });
     },
     ui() {
       const b = S();

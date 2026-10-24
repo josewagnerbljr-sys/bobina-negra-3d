@@ -16,7 +16,7 @@ export function mulberry(seed: number) {
 }
 
 /** copia `src` para `dst` aplicando rotação/translação/escala */
-function bake(dst: Geo, src: Geo, p: Vec3, r: Vec3 = [0, 0, 0], s: Vec3 = [1, 1, 1]) {
+export function bake(dst: Geo, src: Geo, p: Vec3, r: Vec3 = [0, 0, 0], s: Vec3 = [1, 1, 1]) {
   const m = m4.compose(m4.create(), p, r, s);
   const base = dst.pos.length / 3;
   for (let i = 0; i < src.pos.length; i += 3) {
@@ -197,6 +197,21 @@ function decor(g: Geo, glow: Geo, w: number, x: number, y: number, z: number, rn
       addSphere(g, x, y + 0.24 * s, z, 0.17 * s, 8, 5, hex("#c4373a"));
       addSphere(glow, x, y + 0.3 * s, z + 0.1 * s, 0.03, 4, 3, hex("#fff4d8"));
     }
+  } else if (w === 5) {
+    addCone(g, x, y, z, 0.07, 0.06, 0.34 * s, 5, hex("#4a8a3a"));
+    addSphere(g, x + 0.12, y + 0.06, z, 0.07 * s, 5, 4, hex("#d8b070"));
+  } else if (w === 6) {
+    addCone(g, x, y, z, 0.1 * s, 0, 0.36 * s, 5, hex("#bfe6ff"));
+    addCone(g, x + 0.1, y, z, 0.06 * s, 0, 0.22 * s, 5, hex("#e8f6ff"));
+  } else if (w === 7) {
+    addSphere(g, x, y + 0.08 * s, z, 0.12 * s, 6, 4, hex(rnd() < 0.5 ? "#f2a0a0" : "#f4e0c0"));
+    addCone(g, x + 0.14, y, z, 0.05, 0.02, 0.22 * s, 5, hex("#e87a6a"));
+  } else if (w === 8) {
+    addCone(g, x, y, z, 0.03, 0.03, 0.2 * s, 5, hex("#5aaa5a"));
+    addSphere(glow, x, y + 0.24 * s, z, 0.07 * s, 5, 4, hex(rnd() < 0.5 ? "#ffe27a" : "#ffb0d0"));
+  } else if (w === 9) {
+    addCone(g, x, y, z, 0.12 * s, 0.12 * s, 0.05, 8, hex("#ffd24a"));
+    addSphere(glow, x + 0.1, y + 0.1, z, 0.05 * s, 4, 3, hex("#ff3a4a"));
   } else {
     const cols2 = ["#c4373a", "#2a4f86", "#e0b15a", "#6aaa48", "#c9b6e0"];
     for (let k = 0; k < 3; k++) {
@@ -224,7 +239,7 @@ function buildBackdrop(g: Geo, glow: Geo, level: Level, world: WorldDef, pal: Pa
     midProp(g, glow, w, x, -2.2 - rnd() * 1.6, 0.8 + rnd() * 0.5 + stage * 0.05, rnd, pal);
   }
 
-  const dm = [1, 0.8, 1.15, 0.9, 1.3][stage]!; // densidade do fundo muda por nível
+  const dm = [1, 0.8, 1.15, 0.9, 1.3, 1][stage % 6]!; // densidade do fundo muda por nível
   const layers = [
     { z: -7, dens: 11 * dm, scale: 0.8, col: mix3(pal.hill2, pal.fog, 0.1), jit: 3 },
     { z: -17, dens: 8 * dm, scale: 1.2, col: mix3(pal.hill2, pal.fog, 0.35), jit: 5 },
@@ -542,6 +557,158 @@ const NEW_PROPS: ((c: Ctx) => void)[][] = [
   ],
 ];
 
+/* ---- mundos 6–10 (índices 5–9) ---- */
+const PROPS2: ((c: Ctx) => void)[][] = [
+  // 5 · Dunas do Sol Morto
+  [
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      addCone(g, x, gy, z, 3.4 * s, 0, 4.6 * s, 4, tint(pal.trim, 0.35));
+      addCone(g, x + 4.5 * s, gy, z + 1, 2.0 * s, 0, 2.7 * s, 4, tint(pal.trim, 0.3));
+      addSphere(glow, x, gy + 4.8 * s, z, 0.22 * s, 4, 3, pal.accent);
+    },
+    ({ g, x, z, s, tint, gy }) => {
+      for (let k = 0; k < 3; k++) {
+        const cx = x + k * 1.6 * s;
+        const hh = (2.4 + (k % 2) * 1.2) * s;
+        addCone(g, cx, gy, z, 0.28 * s, 0.26 * s, hh, 7, tint([0.25, 0.5, 0.25], 0.5));
+        addCone(g, cx + 0.45 * s, gy + hh * 0.5, z, 0.12 * s, 0.1 * s, hh * 0.35, 6, tint([0.25, 0.5, 0.25], 0.5));
+        addCone(g, cx - 0.45 * s, gy + hh * 0.38, z, 0.12 * s, 0.1 * s, hh * 0.3, 6, tint([0.25, 0.5, 0.25], 0.5));
+      }
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      addCone(g, x, gy, z, 0.7 * s, 0.35 * s, 7 * s, 4, tint(pal.trim, 0.3));
+      addCone(g, x, gy + 7 * s, z, 0.4 * s, 0, 0.9 * s, 4, tint(pal.accent, 0.6));
+      addSphere(glow, x, gy + 5 * s, z + 0.4 * s, 0.18 * s, 4, 3, pal.accent);
+    },
+    ({ g, x, z, s, tint, pal, gy }) => {
+      addCone(g, x, gy, z, 6 * s, 1.2 * s, 2.4 * s, 12, tint(pal.ground, 0.4));
+      addCone(g, x + 5 * s, gy, z - 1, 4 * s, 0.8 * s, 1.6 * s, 12, tint(pal.ground, 0.3));
+    },
+  ],
+  // 6 · Geleira Silenciosa
+  [
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      for (let k = 0; k < 6; k++) {
+        const c = newGeo();
+        const hh = (2 + rnd() * 4) * s;
+        addCone(c, 0, 0, 0, 0.55 * s, 0, hh, 5, tint([0.75, 0.9, 1], 0.55));
+        bake(g, c, [x + (k - 3) * 0.8 * s, gy - 0.05, z + (rnd() - 0.5)], [0, rnd() * 3, (rnd() - 0.5) * 0.4]);
+      }
+      addSphere(glow, x, gy + 2 * s, z + 0.3, 0.2 * s, 4, 3, pal.accent);
+    },
+    ({ g, x, z, s, tint, gy }) => {
+      for (let k = 0; k < 3; k++) addCone(g, x, gy + 1.2 * s + k * 1.5 * s, z, (2.0 - k * 0.5) * s, 0, 2.2 * s, 8, tint(k % 2 ? [0.9, 0.95, 1] : [0.45, 0.65, 0.7], 0.5));
+      addCone(g, x, gy, z, 0.28 * s, 0.28 * s, 1.4 * s, 6, tint([0.3, 0.2, 0.15], 0.4));
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      addSphere(g, x, gy, z, 2.4 * s, 10, 6, tint([0.92, 0.96, 1], 0.5));
+      addBox(glow, x - 0.5 * s, gy, z + 2.0 * s, x + 0.5 * s, gy + 1.1 * s, z + 2.4 * s, mix3(pal.accent, [1, 0.9, 0.6], 0.5), { px: false, nx: false, py: false, ny: false, pz: true });
+    },
+    ({ glow, x, z, s, rnd, pal }) => {
+      // aurora: faixas de luz no alto
+      for (let k = 0; k < 5; k++) {
+        const c = k % 2 ? [0.3, 1, 0.7] as Vec3 : [0.7, 0.4, 1] as Vec3;
+        addBox(glow, x + k * 1.4 * s, ROWS + 4 + rnd() * 3, z - 8, x + k * 1.4 * s + 0.9 * s, ROWS + 14 + rnd() * 3, z - 7.9, mix3(c, pal.fog, 0.55), { px: false, nx: false, py: false, ny: false, pz: true });
+      }
+    },
+  ],
+  // 7 · Lagoa dos Náufragos
+  [
+    ({ g, x, z, s, tint, gy }) => {
+      const hh = 5.4 * s;
+      const tr = newGeo();
+      addCone(tr, 0, 0, 0, 0.32 * s, 0.2 * s, hh, 6, tint([0.45, 0.32, 0.2], 0.4));
+      bake(g, tr, [x, gy - 0.05, z], [0, 0, 0.22]);
+      for (let k = 0; k < 5; k++) {
+        const lf = newGeo();
+        addCone(lf, 0, 0, 0, 0.22 * s, 0, 2.4 * s, 4, tint([0.2, 0.6, 0.35], 0.5));
+        bake(g, lf, [x + hh * 0.22, gy + hh - 0.1, z], [0, k * 1.26, 1.2]);
+      }
+    },
+    ({ g, x, z, s, tint, pal, gy }) => {
+      const hull = newGeo();
+      addBox(hull, -2.4 * s, 0, -0.7 * s, 2.4 * s, 1.5 * s, 0.7 * s, tint([0.28, 0.2, 0.15], 0.4));
+      bake(g, hull, [x, gy - 0.2, z], [0, 0, 0.18]);
+      addBox(g, x - 0.1 * s, gy + 0.8 * s, z - 0.1 * s, x + 0.1 * s, gy + 6 * s, z + 0.1 * s, tint([0.3, 0.22, 0.16], 0.4));
+      addBox(g, x - 1.4 * s, gy + 3 * s, z, x + 0.1 * s, gy + 5.6 * s, z + 0.04, tint([0.9, 0.88, 0.8], 0.3), { px: false, nx: false, py: false, ny: false, pz: true });
+      void pal;
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      for (let k = 0; k < 4; k++) addCone(g, x, gy + k * 1.8 * s, z, (1.0 - k * 0.1) * s, (0.9 - k * 0.1) * s, 1.8 * s, 9, tint(k % 2 ? [0.95, 0.95, 0.95] : [0.8, 0.25, 0.25], 0.5));
+      addCone(g, x, gy + 7.2 * s, z, 1.1 * s, 1.1 * s, 0.9 * s, 9, tint([0.2, 0.2, 0.25], 0.4));
+      addSphere(glow, x, gy + 7.8 * s, z, 0.55 * s, 6, 5, mix3(pal.trim, [1, 1, 0.7], 0.5));
+    },
+    ({ g, x, z, s, rnd, tint, gy }) => {
+      for (let k = 0; k < 6; k++) {
+        const c = newGeo();
+        addCone(c, 0, 0, 0, 0.28 * s, 0.05 * s, (1.4 + rnd() * 2) * s, 6, tint(k % 2 ? [0.95, 0.5, 0.45] : [0.95, 0.7, 0.4], 0.55));
+        bake(g, c, [x + (k - 3) * 0.55 * s, gy - 0.05, z + (rnd() - 0.5)], [0, 0, (rnd() - 0.5) * 0.7]);
+      }
+    },
+  ],
+  // 8 · Cidadela Celeste
+  [
+    ({ g, x, z, s, rnd, tint, gy }) => {
+      const cy = gy + (3 + rnd() * 6) * s;
+      for (let k = 0; k < 5; k++) addSphere(g, x + (k - 2) * 1.3 * s, cy + (k % 2) * 0.5 * s, z, (1.2 + (k % 3) * 0.3) * s, 8, 6, tint([1, 0.98, 0.98], 0.6));
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      const hh = 7.5 * s;
+      addCone(g, x, gy, z, 0.7 * s, 0.6 * s, hh, 10, tint([0.95, 0.94, 1], 0.5));
+      addBox(g, x - 1.0 * s, gy + hh, z - 1.0 * s, x + 1.0 * s, gy + hh + 0.4 * s, z + 1.0 * s, tint(pal.trim, 0.5));
+      addBox(g, x - 1.0 * s, gy, z - 1.0 * s, x + 1.0 * s, gy + 0.4 * s, z + 1.0 * s, tint(pal.trim, 0.4));
+      addSphere(glow, x, gy + hh + 0.9 * s, z, 0.3 * s, 5, 4, pal.accent);
+    },
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      const iy = gy + (4 + rnd() * 5) * s;
+      addCone(g, x, iy - 2.2 * s, z, 0.4 * s, 2.6 * s, 2.2 * s, 8, tint([0.5, 0.45, 0.55], 0.4));
+      addCone(g, x, iy, z, 2.6 * s, 2.6 * s, 0.35 * s, 10, tint([0.55, 0.8, 0.5], 0.5));
+      addBox(g, x - 0.6 * s, iy + 0.35 * s, z - 0.6 * s, x + 0.6 * s, iy + 2.4 * s, z + 0.6 * s, tint([0.95, 0.93, 1], 0.5));
+      addCone(g, x, iy + 2.4 * s, z, 0.9 * s, 0, 1.1 * s, 6, tint(pal.trim, 0.5));
+      addSphere(glow, x, iy + 3.7 * s, z, 0.16 * s, 4, 3, pal.accent);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      for (const sx of [-1, 1]) addBox(g, x + sx * 1.8 * s - 0.25 * s, gy, z - 0.3, x + sx * 1.8 * s + 0.25 * s, gy + 5 * s, z + 0.3, tint([0.95, 0.94, 1], 0.5));
+      addBox(g, x - 2.1 * s, gy + 5 * s, z - 0.35, x + 2.1 * s, gy + 5.4 * s, z + 0.35, tint(pal.trim, 0.5));
+      for (let k = 0; k < 7; k++) addBox(glow, x - 1.5 * s + k * 0.5 * s, gy + 1.2 * s, z, x - 1.48 * s + k * 0.5 * s, gy + 4.9 * s, z + 0.02, mix3(pal.accent, [1, 1, 1], 0.3), { px: false, nx: false, py: false, ny: false, pz: true });
+    },
+  ],
+  // 9 · Palácio do Empresário
+  [
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      addBox(g, x - 0.9 * s, gy, z - 0.9 * s, x + 0.9 * s, gy + 8 * s, z + 0.9 * s, tint([0.3, 0.2, 0.22], 0.4));
+      addBox(g, x - 1.1 * s, gy + 7.6 * s, z - 1.1 * s, x + 1.1 * s, gy + 8.2 * s, z + 1.1 * s, tint(pal.trim, 0.5));
+      addBox(g, x - 0.6 * s, gy + 2.2 * s, z + 0.9 * s, x + 0.6 * s, gy + 6.6 * s, z + 0.95 * s, tint([0.7, 0.1, 0.15], 0.6), { px: false, nx: false, py: false, ny: false, pz: true });
+      addSphere(glow, x, gy + 4.4 * s, z + 1.0 * s, 0.28 * s, 5, 4, pal.trim);
+    },
+    ({ g, glow, x, z, s, tint, pal }) => {
+      const top = ROWS + 6;
+      addCone(g, x, top - 3.6 * s, z, 0.05 * s, 0.05 * s, 3.6 * s, 4, tint([0.4, 0.3, 0.2], 0.3));
+      for (let r = 0; r < 3; r++) {
+        addCone(g, x, top - 4.0 * s - r * 0.7 * s, z, (1.8 - r * 0.4) * s, (1.8 - r * 0.4) * s, 0.16 * s, 14, tint(pal.trim, 0.6));
+        for (let k = 0; k < 6; k++) {
+          const a = (k / 6) * Math.PI * 2 + r;
+          addSphere(glow, x + Math.cos(a) * (1.7 - r * 0.4) * s, top - 3.9 * s - r * 0.7 * s, z + Math.sin(a) * (1.7 - r * 0.4) * s, 0.12 * s, 4, 3, [1, 0.88, 0.5]);
+        }
+      }
+    },
+    ({ g, glow, x, z, s, rnd, tint, pal, gy }) => {
+      for (let k = 0; k < 7; k++) {
+        const cx = x + (k % 4) * 1.1 * s;
+        const n = 2 + Math.floor(rnd() * 5);
+        for (let i = 0; i < n; i++) addCone(g, cx, gy + i * 0.22 * s, z + (k >> 2) * 1.2, 0.5 * s, 0.5 * s, 0.2 * s, 10, tint(pal.trim, 0.65));
+      }
+      addSphere(glow, x + 1.5 * s, gy + 1.4 * s, z, 0.35 * s, 5, 4, pal.trim);
+    },
+    ({ g, glow, x, z, s, tint, pal, gy }) => {
+      addBox(g, x - 1.2 * s, gy, z - 1 * s, x + 1.2 * s, gy + 0.8 * s, z + 1 * s, tint([0.35, 0.1, 0.14], 0.5));
+      addBox(g, x - 0.9 * s, gy + 0.8 * s, z - 0.8 * s, x + 0.9 * s, gy + 1.6 * s, z + 0.8 * s, tint(pal.trim, 0.5));
+      addBox(g, x - 0.9 * s, gy + 1.6 * s, z - 0.9 * s, x + 0.9 * s, gy + 4.6 * s, z - 0.6 * s, tint([0.45, 0.1, 0.16], 0.5));
+      for (const sx of [-1, 1]) addSphere(glow, x + sx * 0.75 * s, gy + 4.7 * s, z - 0.75 * s, 0.14 * s, 4, 3, pal.accent);
+    },
+  ],
+];
+
 /** peças no meio-plano (perto da pista, atrás dela): dão profundidade sem cobrir o herói */
 function midProp(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd: () => number, pal: Palette) {
   const gy = ROWS - GROUND - 0.02;
@@ -559,6 +726,21 @@ function midProp(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, 
   } else if (w === 3) {
     addCone(g, x, gy, z, 0.28 * s, 0.18 * s, 3.2 * s, 6, tint([0.28, 0.2, 0.15], 0.4));
     addSphere(g, x, gy + 3.4 * s, z, 0.85 * s, 7, 5, tint(pal.accent, 0.5));
+  } else if (w === 5) {
+    addCone(g, x, gy, z, 0.2 * s, 0.18 * s, 1.8 * s, 6, tint([0.25, 0.5, 0.25], 0.5));
+    addCone(g, x + 0.4 * s, gy + 0.9 * s, z, 0.09 * s, 0.08 * s, 0.7 * s, 5, tint([0.25, 0.5, 0.25], 0.5));
+  } else if (w === 6) {
+    addCone(g, x, gy, z, 0.35 * s, 0, 2.2 * s, 5, tint([0.8, 0.92, 1], 0.6));
+    addSphere(glow, x, gy + 1.0 * s, z + 0.1, 0.08 * s, 4, 3, pal.accent);
+  } else if (w === 7) {
+    addCone(g, x, gy, z, 0.12 * s, 0.1 * s, 2.0 * s, 6, tint([0.45, 0.32, 0.2], 0.5));
+    addSphere(glow, x, gy + 2.2 * s, z + 0.1, 0.14 * s, 4, 3, pal.accent);
+  } else if (w === 8) {
+    addCone(g, x, gy, z, 0.22 * s, 0.2 * s, 2.4 * s, 8, tint([0.95, 0.94, 1], 0.6));
+    addSphere(glow, x, gy + 2.6 * s, z + 0.1, 0.12 * s, 4, 3, pal.trim);
+  } else if (w === 9) {
+    addCone(g, x, gy, z, 0.2 * s, 0.16 * s, 1.6 * s, 6, tint(pal.trim, 0.6));
+    addSphere(glow, x, gy + 1.8 * s, z + 0.1, 0.13 * s, 4, 3, [1, 0.5, 0.2]);
   } else {
     addBox(g, x - 0.7 * s, gy, z - 0.3 * s, x + 0.7 * s, gy + 2.6 * s, z + 0.3 * s, tint([0.28, 0.2, 0.15], 0.3));
     addBox(g, x - 0.6 * s, gy + 0.2 * s, z + 0.3 * s, x + 0.6 * s, gy + 0.5 * s, z + 0.4 * s, tint(pal.accent, 0.5), { px: false, nx: false, py: false, ny: false, pz: true });
@@ -571,6 +753,12 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
   const near = layerZ > -10;
   const tint = (c: Vec3, k = 0.25) => mix3(col, c, near ? k : k * 0.5);
   // 6 tipos por mundo (3 clássicos + 3 novos); cada nível favorece um subconjunto diferente
+  if (w >= 5) {
+    const list = PROPS2[w - 5]!;
+    const kk = Math.floor((rnd() * 0.7 + (variant % 5) / 5 * 0.3) * list.length) % list.length;
+    list[kk]!({ g, glow, x, z, s, rnd, col, pal, gy, tint });
+    return;
+  }
   const kinds = 6;
   const bias = [0, 2, 4, 1, 3][variant % 5]!;
   const k = Math.floor((rnd() * 0.65 + (bias / kinds) * 0.35 + (rnd() < 0.4 ? rnd() * 0.5 : 0)) * kinds) % kinds;

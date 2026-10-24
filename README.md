@@ -1,6 +1,6 @@
 # Bobina Negra 3D
 
-Jogo de plataforma **3D (2.5D) para navegador**, em WebGL, com 4 heróis, 5 mundos, 25 fases e 5 chefes.
+Jogo de plataforma **3D (2.5D) para navegador**, em WebGL, com 4 heróis, 10 mundos, 50 fases, 10 bis de tesouro, 20 chefes, atributos e mochila de itens.
 Projeto do desafio da **DIO** ("publicar um jogo jogável em WebGL"), adaptado de um jogo 2D que eu já tinha:
 a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em 3D.
 
@@ -11,17 +11,20 @@ a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em
 
 | Item | Detalhe |
 |---|---|
-| Heróis | Ivo (lobo), Lena (vampira/asas), Osso (necromante/caveira), Syl (arqueira/elfa), cada um com ataque e forma própria |
-| Mundos | Carnaval de Verniz, Catacumbas de Medula, Forja dos Golens, Mata Cega, Arquivo do Contrato |
-| Fases | 25 "rolos" gerados por segmentos, com lanternas de checkpoint, molas, espinhos e plataformas |
-| Inimigos | 13 tipos, todos modelados em 3D, mais 5 chefes (um por mundo) |
-| Progressão | XP, nível, escolha de atributos, melhor tempo por fase, save automático no navegador |
-| Controles | Teclado (A/D, Espaço, J tiro, K forma, S descer, U/I/O/P poderes) e botões na tela para celular |
-| Poderes (U, I, O, P) | 2 ataques unitários (perseguidor e investida), 1 em área comum e 1 super especial em área; cada herói tem os seus, liberados nos níveis 2, 3, 4 e 6 |
-| Monstros | quanto mais fundo o rolo, mais monstros no caminho |
-| Cenários | cada rolo tem clima, lua e peças de cenário próprios (5 climas por mundo) |
-| Trilha sonora | 5 temas de rock originais gerados por código (70s boogie e psicodelia, 80s gótico e arena, 90s industrial), sem gravações e sem direitos autorais |
-| Câmera | mais próxima, segue o herói nos pulos e nas quedas |
+| Heróis | Ivo (lobo), Lena (vampira/asas), Osso (necromante/caveira), Syl (arqueira/elfa), cada um com ataque, forma e 4 poderes próprios |
+| Mundos | 10: Carnaval de Verniz, Catacumbas de Medula, Forja dos Golens, Mata Cega, Arquivo do Contrato, Dunas do Sol Morto, Geleira Silenciosa, Lagoa dos Náufragos, Cidadela Celeste, Palácio do Empresário |
+| Fases | **50 rolos** com estrutura de mapa própria (colinas, poços com ilhas, pontes, pilares, torres, túneis, molas, espinhos...), todos conferidos por um verificador que usa a física real do jogo |
+| Bis (bônus) | **10 mapas bônus**, um a cada 5 fases: poucos monstros e muitos baús de tesouro |
+| Chefes | 10 chefes de mundo (cada um com padrão de ataque próprio) e 10 mini-chefes no meio de alguns rolos |
+| Inimigos | 23 tipos, todos modelados em 3D |
+| Atributos | Cada nível dá **5 pontos** para FOR, INT, DES, SAB e REC (tecla C): força, intensidade, velocidade, recarga, XP, drops e corações. Nível máximo 50 |
+| Itens e drops | Monstros, mini-chefes, chefes e baús soltam poções, elixires, armas, armaduras e relíquias (4 raridades) |
+| Mochila | **32 blocos**; cada objeto ocupa blocos pelo tamanho, não pela quantidade (poção 1, cajado 3, armadura 5). Equipar, usar e descartar na tela de personagem |
+| Controles | Teclado (A/D, Espaço, J tiro, K forma, S descer, U/I/O/P ou 1–4 poderes, Q poção, C personagem/mochila) e botões na tela para celular |
+| Poderes (U, I, O, P) | 2 ataques unitários (perseguidor e investida), 1 em área comum e 1 super especial em área, liberados desde o início |
+| Cenários | cada rolo tem clima, lua e peças de cenário próprios |
+| Trilha sonora | rock original gerado por código (70s, 80s, 90s), com várias músicas por mundo e efeitos sonoros elaborados, sem gravações e sem direitos autorais |
+| Save | automático no navegador (migra saves da versão anterior) |
 
 ## Como foi feito o 3D
 
@@ -33,7 +36,7 @@ a lógica, as fases e a história foram mantidas, e todo o visual foi refeito em
 
 ## Versão Unity (C#)
 
-A pasta [`unity/`](unity/README.md) traz o mesmo jogo reescrito em C# para o Unity. O jogo web continua sendo o que roda no link do GitHub Pages.
+Ainda **não** existe porte para Unity nesta versão: o jogo roda no navegador (WebGL) pelo link do GitHub Pages. A física foi isolada em `src/game/physics.ts` justamente para facilitar um porte futuro.
 
 ## Rodar no seu computador
 

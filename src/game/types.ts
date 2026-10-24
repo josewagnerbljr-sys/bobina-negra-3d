@@ -18,9 +18,29 @@ export type TileId = (typeof Tile)[keyof typeof Tile];
 export const HERO_IDS = ["ivo", "lena", "osso", "syl"] as const;
 export type HeroId = (typeof HERO_IDS)[number];
 
-export const STAT_KEYS = ["vit", "impeto", "folego", "passo", "mira"] as const;
+export const STAT_KEYS = ["str", "int", "dex", "wis", "rec"] as const;
 export type StatKey = (typeof STAT_KEYS)[number];
 export type Stats = Record<StatKey, number>;
+
+export const BAG_SIZE = 32;
+export const POINTS_PER_LEVEL = 5;
+export const MAX_LEVEL = 50;
+export const MAIN_LEVELS = 50;
+export const BONUS_LEVELS = 10;
+export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
+
+export type ItemSlot = "potion" | "weapon" | "armor" | "relic";
+export type Rarity = 0 | 1 | 2 | 3;
+export type Item = {
+  uid: number;
+  base: string;
+  rarity: Rarity;
+  tier: number;
+  mods: Partial<Stats>;
+};
+export type Equip = { weapon: Item | null; armor: Item | null; relic: Item | null };
+
+export type BuffKind = "haste" | "fury" | "ward";
 
 export type Kind =
   | "imp"
@@ -36,7 +56,18 @@ export type Kind =
   | "dryad"
   | "wraith"
   | "clerk"
+  | "crab"
+  | "gull"
+  | "scorp"
+  | "mummy"
+  | "snowman"
+  | "yeti"
+  | "cherub"
+  | "gargoyle"
+  | "shade"
+  | "jester"
   | "boss"
+  | "chest"
   | "candle";
 
 export type Behavior = "walk" | "jump" | "fly" | "shoot" | "charge" | "still" | "boss" | "item";
@@ -50,21 +81,24 @@ export type Screen =
   | "play"
   | "pause"
   | "levelup"
+  | "char"
   | "dead"
   | "clear"
   | "ending";
 
 export type Line = { who: string; text: string };
 
-export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4";
+export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion";
 
-export type LevelEnt = { kind: Kind; c: number; foot: number };
+export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean };
 
 export type Level = {
   index: number;
   name: string;
   world: number;
   boss: boolean;
+  mini: boolean;
+  bonus: boolean;
   cols: number;
   rows: number;
   tiles: Uint8Array;
@@ -73,21 +107,29 @@ export type Level = {
   exit: { c: number; foot: number };
 };
 
+export type BuffSnap = { kind: BuffKind; left: number };
+
 export type Snap = {
   screen: Screen;
   hasSave: boolean;
   hero: HeroId;
   selectedHero: HeroId;
   next: number;
+  bonusOpen: number;
   level: number;
   xp: number;
   xpNeed: number;
+  /** atributos finais (base do herói + pontos + equipamentos) */
   stats: Stats;
+  /** só os pontos gastos pelo jogador */
+  alloc: Stats;
+  points: number;
   hp: number;
   maxHp: number;
   reel: number;
   reelName: string;
   worldName: string;
+  bonus: boolean;
   bossAlive: boolean;
   bossName: string;
   bossHp: number;
@@ -98,7 +140,6 @@ export type Snap = {
   formDur: number;
   lines: Line[];
   lineIndex: number;
-  choices: StatKey[];
   deadLine: string;
   toast: string;
   mute: boolean;
@@ -108,14 +149,21 @@ export type Snap = {
   hint: boolean;
   progress: number;
   skills: SkillSnap[];
+  bag: Item[];
+  equip: Equip;
+  bagUsed: number;
+  potions: number;
+  buffs: BuffSnap[];
+  derived: Record<string, string>;
+  levelupFresh: boolean;
 };
 
 export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean };
 
-export const EMPTY_STATS: Stats = { vit: 0, impeto: 0, folego: 0, passo: 0, mira: 0 };
+export const EMPTY_STATS: Stats = { str: 0, int: 0, dex: 0, wis: 0, rec: 0 };
 
 export function xpToNext(level: number): number {
-  return 40 + Math.max(0, level - 1) * 20;
+  return 40 + Math.max(0, level - 1) * 26;
 }
 
 export function isSolidTile(t: number): boolean {

@@ -24,7 +24,14 @@ export type Paint = {
   ally: boolean;
   world: number;
   attack: number;
+  /** voa: sem sombra projetada no cenário */
+  fly?: boolean;
+  /** 0..1 animação de morte */
+  dying?: number;
+  mini?: boolean;
 };
+
+export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number };
 
 export type Fx = { kind: "wave" | "slash" | "pillar" | "nova"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number };
 
@@ -47,6 +54,7 @@ export type Frame = {
   attractHero: HeroId;
   fx: Fx[];
   flash: number;
+  loot: LootPaint[];
 };
 
 const S = 1 / TILE;
@@ -81,6 +89,11 @@ const MOONS: { c: string; p: [number, number]; stars: number }[] = [
   { c: "#ff9a4a", p: [0.76, 0.42], stars: 0.25 },
   { c: "#d8e890", p: [0.3, 0.84], stars: 0.8 },
   { c: "#d6c2f0", p: [0.74, 0.8], stars: 1 },
+  { c: "#ffe9a8", p: [0.7, 0.55], stars: 0.35 },
+  { c: "#e8f4ff", p: [0.28, 0.84], stars: 1 },
+  { c: "#b8fff0", p: [0.76, 0.78], stars: 0.9 },
+  { c: "#fff6c0", p: [0.5, 0.86], stars: 0.7 },
+  { c: "#ff6a4a", p: [0.72, 0.7], stars: 0.6 },
 ];
 
 function lightingFor(w: WorldDef): Lighting {
@@ -206,10 +219,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const cur = yawOf.get(m) ?? target;
     const next = cur + (target - cur) * (1 - Math.exp(-16 * dt));
     yawOf.set(m, next);
-    const sc = p.h * S;
+    const d = p.dying ?? 0;
+    const sc = p.h * S * (1 - d * 0.75);
     const X = (p.x + p.w / 2) * S;
     const Y = ROWS - (p.y + p.h) * S;
-    m4.compose(wm, [X, Y, 0], [0, next, 0], [sc, sc, sc]);
+    m4.compose(wm, [X, Y, 0], [0, next, d * 2.5 * (p.facing >= 0 ? -1 : 1)], [sc, sc, sc]);
     return wm;
   }
 
@@ -326,7 +340,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const copy = new Float32Array(mat);
       drawModel(e, m, copy, st, 0);
       pass1.push({ m, mat: copy, st });
-      const gy = groundBelow(L, p.x + p.w / 2, p.y + p.h);
+      const gy = p.fly ? null : groundBelow(L, p.x + p.w / 2, p.y + p.h);
       if (gy !== null) {
         const hgt = Math.max(0, gy - (ROWS - (p.y + p.h) * S));
         shadows.push({ x: (p.x + p.w / 2) * S, y: gy, r: Math.max(0.3, p.w * S * 0.75), h: hgt });
@@ -396,6 +410,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       m4.compose(tmpBlob, [sh.x, sh.y + 0.035, 0.1], [-Math.PI / 2, 0, 0], [k * 2.1, k * 1.5, 0.02]);
       e.draw(e.prims.sphere, tmpBlob, { color: [0.0, 0.0, 0.01], unlit: true, soft: true, alpha: a });
     }
+    for (const lt of f.loot) {
+      if (!near(lt.x * S)) continue;
+      const c = col(lt.color);
+      const bob = Math.sin(f.t * 3 + lt.t) * 0.06;
+      e.prim(lt.rarity > 1 ? "cone" : "cube", [lt.x * S, ROWS - lt.y * S + 0.28 + bob, 0.05], [f.t * 1.4 + lt.t, f.t * 2 + lt.t, 0.5], [0.22, 0.22, 0.22], { color: c, emis: [c[0] * 0.5, c[1] * 0.5, c[2] * 0.5] }, INK_COLOR, 0.06);
+    }
     for (const it of pass1) drawModel(e, it.m, it.mat, it.st, 1);
     e.blend(false);
 
@@ -409,8 +429,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     for (const a of f.actors) {
       if (!near((a.x + a.w / 2) * S)) continue;
+      if (a.kind === "chest") glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + a.h / 2) * S, 0.5, 1.5 + Math.sin(f.t * 3) * 0.2, [1, 0.8, 0.3], 0.4);
       if (a.kind === "candle") glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + 4) * S, 0.5, 1.6, [1, 0.75, 0.3], 0.6);
       if (a.kind === "hero" && a.form) glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + a.h / 2) * S, 0.2, 3.0, hex(heroAccent(a.hero)), 0.28);
+    }
+    for (const lt of f.loot) {
+      if (near(lt.x * S)) glowSprite(lt.x * S, ROWS - lt.y * S + 0.3, 0.2, 1.1 + lt.rarity * 0.45, col(lt.color), 0.55);
     }
     for (const s of f.shots) glowSprite((s.x + s.w / 2) * S, ROWS - (s.y + s.h / 2) * S, 0.3, 1.1, col(s.color), 0.5);
     if (f.playing && f.exit) {
@@ -464,6 +488,35 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         py = cy - 3 + ((i * 2.3) % 6) + Math.cos(f.t * 0.6 + i * 1.7) * 0.9;
         c = [0.85, 1, 0.45];
         a = 0.35 + 0.65 * Math.max(0, Math.sin(f.t * 1.5 + i * 2));
+      } else if (wid === 5) {
+        // vento de areia: riscos horizontais
+        px = cx - 12 + ((i * 7.31 + f.t * (3 + (i % 4))) % 24);
+        py = cy - 4 + ((i * 2.9) % 9) + Math.sin(f.t * 2 + i) * 0.2;
+        c = [0.95, 0.78, 0.45];
+        a *= 0.6;
+        size *= 0.8;
+      } else if (wid === 6) {
+        // neve
+        py = cy + 6 - ((i * 3.7 + f.t * (0.5 + (i % 3) * 0.2)) % 12);
+        px += Math.sin(f.t * 0.9 + i * 2) * 0.7;
+        c = [0.95, 0.98, 1];
+        size *= 1.1;
+      } else if (wid === 7) {
+        // bolhas subindo
+        py = cy - 6 + ((i * 3.7 + f.t * (0.4 + (i % 3) * 0.15)) % 12);
+        px += Math.sin(f.t * 1.1 + i * 3) * 0.5;
+        c = [0.6, 1, 0.95];
+        a *= 0.7;
+      } else if (wid === 8) {
+        // pétalas douradas à deriva
+        py = cy + 6 - ((i * 3.7 + f.t * 0.45) % 12);
+        px += Math.sin(f.t * 0.8 + i) * 1.1 + f.t * 0.2 % 1;
+        c = i % 2 ? [1, 0.9, 0.5] : [1, 0.75, 0.9];
+      } else if (wid === 9) {
+        // brasas e moedas de ouro
+        py = cy - 6 + ((i * 3.7 + f.t * (0.7 + (i % 3) * 0.3)) % 12);
+        px += Math.sin(f.t * 1.3 + i * 3) * 0.6;
+        c = i % 3 ? [1, 0.25, 0.2] : [1, 0.85, 0.3];
       } else {
         // poeira e fagulhas de tinta
         py = cy - 5 + ((i * 3.7 + f.t * 0.25) % 11);
