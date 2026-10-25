@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
-import { BONUS_NAMES, HEROES, REEL_NAMES, WORLDS, heroById } from "../game/content";
+import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, WORLDS, heroById } from "../game/content";
 import { BASE_BY_ID, RARITY_COLOR, RARITY_NAME, baseOf, itemName, itemSize, modText } from "../game/items";
 import { ItemIcon } from "./ItemIcon";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
@@ -14,6 +14,10 @@ const BOOT: Snap = {
   selectedHero: "ivo",
   next: 1,
   bonusOpen: 0,
+  mode: 0,
+  meleeCd: 0,
+  meleeMax: 0.4,
+  cine: false,
   level: 1,
   xp: 0,
   xpNeed: 40,
@@ -95,6 +99,13 @@ export function Bobina() {
   return (
     <main className="sprocket fixed inset-0 select-none overflow-hidden bg-ink font-sans text-paper" onContextMenu={(e) => e.preventDefault()}>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" aria-hidden />
+      {snap.cine && snap.screen === "talk" && (
+        <>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[12%] bg-black" aria-hidden />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[12%] bg-black" aria-hidden />
+          <p className="pointer-events-none absolute inset-x-0 top-[3%] text-center font-display text-2xl tracking-widest text-brass sm:text-4xl">{snap.bossName}</p>
+        </>
+      )}
       <div className="safe-top hud-root pointer-events-none absolute inset-0 flex flex-col">
         {(playing || snap.screen === "pause" || snap.screen === "dead") && (
           <header className="pointer-events-none flex flex-col gap-2 px-4">
@@ -177,7 +188,7 @@ export function Bobina() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {snap.screen === "title" && (
-            <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col justify-end px-4 pb-6">
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
               <div className="rounded-lg border border-brass/50 bg-panel/95 p-5 shadow-lg">
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
@@ -220,7 +231,7 @@ export function Bobina() {
           )}
 
           {snap.screen === "help" && (
-            <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col justify-end px-4 pb-6">
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
               <div className="rounded-lg border border-brass/50 bg-panel/95 p-5">
                 <h2 className="font-display text-3xl">Como se joga</h2>
                 <ul className="mt-3 space-y-2 text-sm leading-relaxed text-paper/85">
@@ -243,7 +254,7 @@ export function Bobina() {
           )}
 
           {snap.screen === "cast" && (
-            <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col justify-end gap-3 px-4 pb-6">
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col menu-sec gap-3 px-4 pb-6">
               <div className="rounded-lg border border-brass/40 bg-panel/95 p-4">
                 <h2 className="font-display text-3xl">Quem assina</h2>
                 <p className="mt-1 text-sm text-paper/75">Os outros sete ficam no camarim, comentando. Você entra no rolo.</p>
@@ -273,7 +284,7 @@ export function Bobina() {
                   {selected.voice} {selected.attack}
                 </p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <Primary onClick={() => rtRef.current?.newGame(snap.selectedHero)}>Assinar com {selected.name}</Primary>
+                  <Primary onClick={() => rtRef.current?.openMode(snap.selectedHero)}>Assinar com {selected.name}</Primary>
                   <Ghost onClick={() => rtRef.current?.backTitle()}>Voltar</Ghost>
                 </div>
               </div>
@@ -281,7 +292,7 @@ export function Bobina() {
           )}
 
           {snap.screen === "map" && (
-            <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col justify-end px-4 pb-6">
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-3xl flex-col menu-sec px-4 pb-6">
               <div className="max-h-[92dvh] overflow-y-auto rounded-lg border border-brass/40 bg-panel/95 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -293,6 +304,7 @@ export function Bobina() {
                   </div>
                   <div className="flex gap-2">
                     <Ghost onClick={() => rtRef.current?.openChar()}>Personagem{snap.points > 0 ? ` (${snap.points})` : ""}</Ghost>
+                    <Ghost onClick={() => rtRef.current?.openMode(null)}>{MODES[snap.mode]?.name ?? "Modo"}</Ghost>
                     <Ghost onClick={() => rtRef.current?.backTitle()}>Título</Ghost>
                   </div>
                 </div>
@@ -358,7 +370,7 @@ export function Bobina() {
           )}
 
           {snap.screen === "talk" && line && (
-            <section className="pointer-events-auto mx-auto flex min-h-full max-w-xl flex-col justify-end px-4 pb-6">
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-xl flex-col menu-sec px-4 pb-6">
               <div className="rounded-lg border border-brass/50 bg-panel/95 p-4">
                 <p className="text-sm text-brass">{line.who}</p>
                 <p className="mt-2 font-display text-2xl leading-snug">{line.text}</p>
@@ -368,6 +380,39 @@ export function Bobina() {
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                   <Primary onClick={() => rtRef.current?.advanceDialogue()}>Seguir</Primary>
                   <Ghost onClick={() => rtRef.current?.skipDialogue()}>Pular fala</Ghost>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {snap.screen === "mode" && (
+            <section className="pointer-events-auto mx-auto flex min-h-full max-w-2xl flex-col menu-sec px-4 pb-6">
+              <div className="rounded-lg border border-brass/50 bg-panel/95 p-4">
+                <p className="text-xs tracking-widest text-brass">COMO VOCÊ QUER SER SERVIDO?</p>
+                <h2 className="font-display text-3xl leading-none">Ponto da panela</h2>
+                <p className="mt-1 text-sm text-paper/70">Muda a vida e a força dos monstros, o dano que você leva e o tesouro que cai. Dá para trocar depois, no Arquivo.</p>
+                <div className="mt-3 grid gap-2">
+                  {MODES.map((m, i) => (
+                    <button
+                      key={m.name}
+                      type="button"
+                      onClick={() => rtRef.current?.setMode(i)}
+                      className={"rounded-md border bg-ink p-3 text-left " + (snap.mode === i ? "ring-2 ring-brass" : "")}
+                      style={{ borderColor: m.color }}
+                    >
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="font-display text-xl" style={{ color: m.color }}>{m.name}</span>
+                        <span className="text-xs text-paper/60">{m.tag}</span>
+                      </span>
+                      <span className="mt-1 block text-sm text-paper/80">{m.text}</span>
+                      <span className="mt-1 block text-xs text-paper/50">
+                        vida dos monstros ×{m.hp} · dano que você leva {m.dmg === 1 ? "normal" : "+1 coração"} · XP ×{m.xp} · drops ×{m.luck}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3">
+                  <Ghost onClick={() => rtRef.current?.backTitle()}>Voltar</Ghost>
                 </div>
               </div>
             </section>
@@ -424,13 +469,23 @@ export function Bobina() {
 
         {playing && (
           <div className="touch-dock dock pointer-events-none">
-            <div className="dock-left pointer-events-auto">
-              <Pad label="Esquerda" onDown={(d) => hold("left", d)} cls="pad-lg">
-                <ArrowLeft className="size-6" />
-              </Pad>
-              <Pad label="Direita" onDown={(d) => hold("right", d)} cls="pad-lg">
-                <ArrowRight className="size-6" />
-              </Pad>
+            <div className="dock-left-col pointer-events-auto">
+              <div className="dock-row">
+                <Pad label="Descer plataforma" onDown={(d) => hold("down", d)} cls="pad-sm">
+                  <ArrowDown className="size-5" />
+                </Pad>
+                <Pad label="Beber poção" onDown={(d) => hold("potion", d)} cls="pad-sm">
+                  <span className="font-display text-xs text-blood">♥{snap.potions}</span>
+                </Pad>
+              </div>
+              <div className="dock-row">
+                <Pad label="Esquerda" onDown={(d) => hold("left", d)} cls="pad-lg">
+                  <ArrowLeft className="size-6" />
+                </Pad>
+                <Pad label="Direita" onDown={(d) => hold("right", d)} cls="pad-lg">
+                  <ArrowRight className="size-6" />
+                </Pad>
+              </div>
             </div>
             <div className="dock-right pointer-events-auto">
               {snap.screen === "play" && (
@@ -441,17 +496,17 @@ export function Bobina() {
                 </div>
               )}
               <div className="dock-main">
-                <Pad label="Descer plataforma" onDown={(d) => hold("down", d)} cls="pad-sm">
-                  <ArrowDown className="size-5" />
-                </Pad>
-                <Pad label="Beber poção" onDown={(d) => hold("potion", d)} cls="pad-sm">
-                  <span className="font-display text-xs text-blood">♥{snap.potions}</span>
-                </Pad>
                 <Pad label={`Forma ${hero.formName}`} onDown={(d) => hold("form", d)} cls="pad-md">
                   <span className="font-display text-xs leading-none">{hero.formName}</span>
                 </Pad>
                 <Pad label="Atirar" onDown={(d) => hold("attack", d)} cls="pad-md">
                   <span className="font-display text-sm">Tiro</span>
+                </Pad>
+                <Pad label="Golpe com a arma" onDown={(d) => hold("melee", d)} cls="pad-md">
+                  <span className="relative font-display text-sm">
+                    <span className="absolute inset-x-0 bottom-0 -z-0 bg-brass/30" style={{ height: `${snap.meleeCd > 0 ? Math.min(100, (snap.meleeCd / Math.max(0.1, snap.meleeMax)) * 100) : 0}%` }} />
+                    Golpe
+                  </span>
                 </Pad>
                 <Pad label="Pular" onDown={(d) => hold("jump", d)} cls="pad-xl">
                   <ArrowUp className="size-7" />
@@ -470,7 +525,7 @@ export function Bobina() {
 
 function CenterCard({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
   return (
-    <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col justify-end px-4 pb-6">
+    <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
       <div className="flex flex-col gap-3 rounded-lg border border-brass/50 bg-panel/95 p-4">{childrenStart(kicker, title, children)}</div>
     </section>
   );
@@ -530,7 +585,7 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
   ];
   const hero = heroById(snap.hero);
   return (
-    <section className="pointer-events-auto mx-auto flex min-h-full max-w-4xl flex-col justify-end px-3 pb-4">
+    <section className="pointer-events-auto mx-auto flex min-h-full max-w-4xl flex-col menu-sec px-3 pb-4">
       <div className="max-h-[92dvh] overflow-y-auto rounded-lg border border-brass/50 bg-panel/97 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>

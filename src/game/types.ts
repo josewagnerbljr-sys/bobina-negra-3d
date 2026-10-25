@@ -82,13 +82,14 @@ export type Screen =
   | "pause"
   | "levelup"
   | "char"
+  | "mode"
   | "dead"
   | "clear"
   | "ending";
 
 export type Line = { who: string; text: string };
 
-export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion";
+export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
 
 export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean };
 
@@ -116,6 +117,10 @@ export type Snap = {
   selectedHero: HeroId;
   next: number;
   bonusOpen: number;
+  mode: number;
+  meleeCd: number;
+  meleeMax: number;
+  cine: boolean;
   level: number;
   xp: number;
   xpNeed: number;

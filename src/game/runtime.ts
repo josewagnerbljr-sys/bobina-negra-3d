@@ -6,6 +6,7 @@ import {
   ending,
   entDef,
   heroById,
+  MODES,
   midEnding,
   miniIntro,
   MINI_NAMES,
@@ -96,6 +97,8 @@ export type Runtime = {
   gl: boolean;
   destroy: () => void;
   newGame: (hero: HeroId) => void;
+  openMode: (hero: HeroId | null) => void;
+  setMode: (m: number) => void;
   continueGame: () => void;
   pickHero: (hero: HeroId) => void;
   enterReel: (index0: number) => void;
@@ -195,7 +198,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     s3: false,
     s4: false,
     potion: false,
+    melee: false,
   };
+  let meleeCd = 0;
+  let meleeMax = 0.4;
+  let wantMelee = false;
+  let prevMelee = false;
+  let cine: Actor | null = null;
+  const seenCine = new Set<number>();
+  let pendingHero: HeroId | null = null;
+  let modeFrom: Screen = "title";
   let prevPotion = false;
   let wantPotion = false;
   let auraT = 0;
@@ -379,6 +391,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       selectedHero: selected,
       next: save.next,
       bonusOpen: Math.min(10, Math.floor((save.next - 1) / 5)),
+      mode: save.mode,
+      meleeCd: Math.max(0, meleeCd),
+      meleeMax: meleeMax,
+      cine: cine !== null,
       level: save.level,
       xp: save.xp,
       xpNeed: xpToNext(save.level),
@@ -445,7 +461,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function spawnActor(kind: Kind, c: number, foot: number, ally = false, mini = false): Actor {
     const world = level?.world ?? 0;
-    const def = entDef(kind, world, mini);
+    const def = entDef(kind, world, mini, save.mode);
     const hp = ally ? Math.max(2, Math.round(def.hp * 0.7)) : def.hp;
     const actor: Actor = {
       kind,
@@ -502,6 +518,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     camY = Math.max(0, player.y - 80);
     reelTime = 0;
     clearText = "";
+    // começa parado: solta qualquer tecla/botão que ficou "preso" da fase anterior
+    keys.clear();
+    for (const k of Object.keys(touch) as Action[]) touch[k] = false;
+    wantJump = false;
+    wantForm = false;
+    wantPotion = false;
+    wantMelee = false;
+    meleeCd = 0;
+    cine = null;
+    seenCine.clear();
+    wantSkill.fill(false);
+    shake = 0;
+    hitStop = 0;
     hint = index0 === 0 && save.level === 1;
     formT = 0;
     iframe = 1;
@@ -541,9 +570,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
   }
 
-  function hurtPlayer(fromX: number, dmg = 1) {
+  function hurtPlayer(fromX: number, dmg = 1, scaled = true) {
     if (iframe > 0 || screen !== "play" || hasBuff("ward")) return;
-    player.hp -= dmg;
+    player.hp -= scaled ? dmg + ((MODES[save.mode]?.dmg ?? 1) - 1) : 1;
     iframe = D().iframe;
     player.vx = player.x + player.w / 2 < fromX ? -220 : 220;
     player.vy = -320;
@@ -583,7 +612,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (a.boss) showToast("A saída destrancou. O carimbo rangeu.");
       if (a.mini) showToast("Mini-chefe caiu! Tesouro no chão.");
       const src = a.boss ? "boss" : a.mini ? "mini" : "mob";
-      const drops = rollDrops(src, level?.world ?? 0, D().luck, Math.random);
+      const drops = rollDrops(src, level?.world ?? 0, D().luck * (MODES[save.mode]?.luck ?? 1), Math.random);
       if (drops.length) dropLoot(drops, a.x + a.w / 2, a.y + a.h / 2);
     }
   }
@@ -662,6 +691,63 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       hit: new Set(),
     });
     if (shots.length > 48) shots.splice(0, shots.length - 48);
+  }
+
+  /** golpe corpo a corpo com a arma equipada (alcance, dano e recarga dependem da arma) */
+  const MELEE: Record<string, { reach: number; cd: number; dmg: number; hits: number; knock: number; arc: number }> = {
+    none: { reach: 62, cd: 0.34, dmg: 0.9, hits: 1, knock: 40, arc: 0.9 },
+    knife: { reach: 70, cd: 0.26, dmg: 1.2, hits: 2, knock: 30, arc: 0.9 },
+    sword: { reach: 104, cd: 0.4, dmg: 1.9, hits: 3, knock: 60, arc: 1.2 },
+    axe: { reach: 100, cd: 0.7, dmg: 3.2, hits: 9, knock: 110, arc: 1.4 },
+    staff: { reach: 118, cd: 0.5, dmg: 1.6, hits: 3, knock: 90, arc: 1.0 },
+    scepter: { reach: 112, cd: 0.46, dmg: 1.7, hits: 4, knock: 70, arc: 1.2 },
+    bow: { reach: 80, cd: 0.36, dmg: 1.2, hits: 2, knock: 40, arc: 0.9 },
+  };
+
+  function meleeAttack() {
+    if (!level || screen !== "play" || meleeCd > 0) return;
+    const w = save.equip.weapon;
+    const id = w ? baseOf(w).id : "none";
+    const def = MELEE[id] ?? MELEE.none!;
+    const tierK = w ? (1 + 0.14 * (w.tier - 1)) * (1 + 0.28 * w.rarity) : 1;
+    const dmg = def.dmg * tierK * dmgPhys();
+    meleeMax = def.cd * (hasBuff("haste") ? 0.8 : 1) * Math.max(0.6, D().atkCd / 0.36);
+    meleeCd = meleeMax;
+    atkT = 0.28;
+    const cx = player.x + player.w / 2;
+    const cy = player.y + player.h / 2;
+    const color = w ? RARITY_COLOR[w.rarity]! : "#f4e4c8";
+    const reach = def.reach;
+    fx.push({ kind: "slash", x: cx + player.facing * 10, y: cy, t: 0, max: 0.26, color, r: reach * def.arc, dir: player.facing });
+    audio.skill(1);
+    let hit = 0;
+    for (const a of actors) {
+      if (a.dead || a.ally || inert(a)) continue;
+      const ax = a.x + a.w / 2;
+      const front = (ax - cx) * player.facing > -14;
+      if (!front || Math.abs(ax - cx) - a.w / 2 > reach || Math.abs(a.y + a.h / 2 - cy) > 56 + a.h / 2) continue;
+      if (hit >= def.hits) break;
+      hit += 1;
+      hurtFoe(a, dmg, color);
+      if (!a.boss && !a.mini && a.behavior !== "still") {
+        a.x += player.facing * def.knock * 0.4;
+        a.vy = Math.min(a.vy, -140);
+      }
+    }
+    for (const sh of shots) {
+      if (!sh.foe) continue;
+      const sx = sh.x + sh.w / 2;
+      if ((sx - cx) * player.facing > 0 && Math.abs(sx - cx) < reach + 10 && Math.abs(sh.y - cy) < 60) {
+        sh.life = 0;
+        burst(sh.x, sh.y, color, 5, 90);
+      }
+    }
+    if (hit > 0) {
+      shake = Math.max(shake, 3 + hit);
+      hitStop = Math.max(hitStop, 0.04);
+    }
+    // dá um passinho à frente: o golpe tem peso
+    player.vx += player.facing * 120;
   }
 
   function playerAttack() {
@@ -757,6 +843,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (wantPotion || (hold.potion && !prevPotion)) quick();
     wantPotion = false;
     prevPotion = hold.potion;
+    meleeCd = Math.max(0, meleeCd - dt);
+    if (wantMelee || (hold.melee && !prevMelee)) meleeAttack();
+    wantMelee = false;
+    prevMelee = hold.melee;
     if (wantJump || (hold.jump && !prevJump)) buffer = 0.13;
     if (wantForm || (hold.form && !prevForm)) activateForm();
     wantJump = false;
@@ -887,8 +977,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         audio.jump();
       }
     }
-    if ((hit.spike || touchesSpike(player, level)) && iframe <= 0) hurtPlayer(player.x + (player.facing > 0 ? 40 : -40));
-    if (player.y > level.rows * TILE) hurtPlayer(player.x);
+    if ((hit.spike || touchesSpike(player, level)) && iframe <= 0) hurtPlayer(player.x + (player.facing > 0 ? 40 : -40), 1, false);
+    if (player.y > level.rows * TILE) hurtPlayer(player.x, 1, false);
 
     // checkpoints
     const c0 = Math.floor(player.x / TILE);
@@ -905,6 +995,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
           if (player.hp < maxHp()) player.hp = Math.min(maxHp(), player.hp + 1 + bonusBoost());
           audio.pickup();
           showToast("Lanterna acesa. O rolo lembra daqui.");
+        }
+      }
+    }
+
+    if (!cine && screen === "play") {
+      for (const a of actors) {
+        if ((!a.boss && !a.mini) || a.dead || seenCine.has(Math.round(a.x))) continue;
+        if (Math.abs(a.x - player.x) < 640) {
+          seenCine.add(Math.round(a.x));
+          cine = a;
+          lines = a.boss ? bossIntro(level.world) : miniIntro(level.world);
+          lineIndex = 0;
+          screen = "talk";
+          afterTalk = "play";
+          player.vx = 0;
+          burst(a.x + a.w / 2, a.y + a.h, WORLDS[level.world]?.accent ?? "#e0b15a", 16, 200);
+          shake = 8;
+          audio.setBoss(true);
+          emit();
+          break;
         }
       }
     }
@@ -1271,6 +1381,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       form: touch.form || down("KeyK") || down("KeyL") || down("ShiftLeft"),
       s: [touch.s1 || down("KeyU") || down("Digit1"), touch.s2 || down("KeyI") || down("Digit2"), touch.s3 || down("KeyO") || down("Digit3"), touch.s4 || down("KeyP") || down("Digit4")],
       potion: touch.potion || down("KeyQ"),
+      melee: touch.melee || down("KeyH") || down("KeyX"),
     };
   }
 
@@ -1383,6 +1494,17 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       attractHero: selected,
       fx,
       flash: flashT,
+      cam: playing
+        ? {
+            t: reelTime,
+            moving: Math.min(1, Math.abs(player.vx) / 240),
+            boss: (() => {
+              const b = actors.find((a) => (a.boss || a.mini) && !a.dead);
+              return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2 } : null;
+            })(),
+            cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
+          }
+        : undefined,
       loot: playing ? loot.map<LootPaint>((l) => ({ x: l.x + l.w / 2, y: l.y + l.h / 2, color: l.item.rarity > 0 ? RARITY_COLOR[l.item.rarity]! : baseOf(l.item).color, rarity: l.item.rarity, t: l.t, slot: baseOf(l.item).slot })) : [],
     });
 
@@ -1411,6 +1533,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     for (const f of fx) f.t += dt;
     fx = fx.filter((f) => f.t < f.max);
     flashT = Math.max(0, flashT - dt * 1.6);
+    // o tremor decai em qualquer tela (antes só decaía jogando: ficava tremendo no portal/telas de fim)
+    shake = Math.max(0, shake - dt * 16);
+    if (screen !== "play") {
+      hitStop = 0;
+      // botões de toque desmontam fora do jogo e podem não soltar: garante que nada fica pressionado
+      if (screen !== "dead") for (const k of Object.keys(touch) as Action[]) touch[k] = false;
+    }
 
     if (screen === "play") {
       acc += dt;
@@ -1503,6 +1632,29 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       const probe = window as unknown as { __controlsTest?: unknown };
       delete probe.__controlsTest;
     },
+    openMode(hero: HeroId | null) {
+      audio.ui();
+      pendingHero = hero;
+      modeFrom = screen;
+      screen = "mode";
+      emit();
+    },
+    setMode(m: number) {
+      audio.ui();
+      const mode = Math.max(0, Math.min(4, Math.floor(m)));
+      if (pendingHero) {
+        const h = pendingHero;
+        pendingHero = null;
+        api.newGame(h);
+        save.mode = mode;
+        persist();
+        return;
+      }
+      save.mode = mode;
+      persist();
+      screen = modeFrom === "pause" ? "pause" : "map";
+      emit();
+    },
     newGame(hero: HeroId) {
       audio.unlock();
       audio.ui();
@@ -1549,12 +1701,6 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         save.seen |= 1 << world;
         persist();
       }
-      if (index0 < MAIN_LEVELS && index0 % 5 === 4) fresh.push(...bossIntro(world));
-      if (level?.mini && (save.seen & (1 << (10 + world))) === 0) {
-        fresh.push(...miniIntro(world));
-        save.seen |= 1 << (10 + world);
-        persist();
-      }
       if (fresh.length) {
         lines = fresh;
         lineIndex = 0;
@@ -1586,6 +1732,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         emit();
         return;
       }
+      cine = null;
       screen = "play";
       prevJump = true;
       prevForm = true;
@@ -1732,9 +1879,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (down && action === "form") wantForm = true;
       if (down && (action === "s1" || action === "s2" || action === "s3" || action === "s4")) wantSkill[Number(action[1]) - 1] = true;
       if (down && action === "potion") wantPotion = true;
+      if (down && action === "melee") wantMelee = true;
       if (down) audio.unlock();
     },
     backTitle() {
+      if (screen === "mode" && !pendingHero) {
+        screen = "map";
+        emit();
+        return;
+      }
+      pendingHero = null;
       screen = "title";
       emit();
     },

@@ -87,3 +87,11 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Câmera mais próxima, acompanhando os pulos.
 - Trilha de rock original (estilos 70/80/90) e efeitos sonoros sintetizados, sem amostras de terceiros.
 - Teste rápido: abra o jogo com `?all=1` no endereço para liberar todos os poderes.
+
+## v5 — modos, golpe físico, câmera cinematográfica
+
+- **Modos de jogo** (escolhidos ao assinar o contrato e no mapa): Banho-maria (fácil), Queimadurinha (médio), Panela de Vidro (difícil), Frigideira de Ferro (muito difícil), Panela do Cramunhão (expert). Vida dos monstros ×1 / ×1,9 / ×3,6 / ×6,8 / ×13; nos dois últimos cada golpe tira 2 corações; XP e drops crescem junto.
+- **Botão Golpe** (tecla H ou X): ataque corpo a corpo com a arma equipada; alcance, dano, recarga e número de alvos dependem da arma (faca rápida, espada, machado pesado, cajado longo…).
+- **Câmera**: mais próxima, abertura 2D → 3/4 em 3,4 s, fica atrás/ao lado do herói com suavização, abre para mostrar o chefe.
+- **Cenas de chefe e miniboss**: câmera orbita o inimigo com tarjas pretas e o texto do roteiro, antes da luta.
+- **Correções**: rolagem na seleção de personagens, herói parado no início da fase, tremor de tela nos portais, toques presos nos botões.

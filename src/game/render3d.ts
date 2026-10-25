@@ -56,6 +56,8 @@ export type Frame = {
   fx: Fx[];
   flash: number;
   loot: LootPaint[];
+  /** câmera dinâmica: tempo de fase, chefe próximo e alvo de cinemática */
+  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null };
 };
 
 const S = 1 / TILE;
@@ -237,6 +239,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const formPrev = new WeakMap<object, boolean>();
   const bursts: { x: number; y: number; foot: number; t0: number; c: Vec3; on: boolean }[] = [];
   let camInit = false;
+  let camYawS = 0;
+  let camRS = 1.5;
+  let camBossK = 0;
+  let camCineK = 0;
+  let camCX = 0;
+  let camCY = 0;
   let camPX = 0;
   let camPY = 0;
   let attractLevel: Level | null = null;
@@ -256,40 +264,72 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const level = f.level ?? attractLevel!;
     const g = gfxFor(level);
     const L = g.level;
-    const halfW = (Math.max(5.2, 9.0 / aspect) * aspect) / 2 * 1.2 + 4;
 
-    // câmera: mais próxima e presa ao herói; sobe nos pulos e antecipa quedas
-    const visH = Math.max(5.2, 9.0 / aspect);
-    const dist = visH / 2 / Math.tan(FOV / 2);
+    // câmera: mais próxima, presa ao herói, orbita para trás dele (ângulo 3/4) e abre da visão 2D lateral
+    const visH = Math.max(4.3, 7.4 / aspect);
+    const dist0 = visH / 2 / Math.tan(FOV / 2);
     let cx: number;
     let cy: number;
     let heroX = 0;
+    let eye: Vec3;
+    let at: Vec3;
     if (f.playing && f.focus) {
       const fo = f.focus;
+      const cam = f.cam ?? { t: 99, moving: 0, boss: null, cine: null };
       const hx = fo.x * S;
       const hy = ROWS - fo.y * S;
-      const lookX = fo.facing * 1.6;
+      const lookX = fo.facing * 1.4;
       const tx = hx + lookX;
-      // chão de referência: segue o herói no ar, mas relaxa ao pousar
       if (!camInit) {
         camPX = tx;
         camPY = hy + 0.6;
+        camYawS = 0;
+        camRS = 1.5;
+        camBossK = 0;
+        camCineK = 0;
         camInit = true;
       }
-      const airUp = fo.grounded ? 0 : Math.max(0, -fo.vy) / 60; // vy>0 = caindo
+      const airUp = fo.grounded ? 0 : Math.max(0, -fo.vy) / 60;
       const airDown = fo.grounded ? 0 : Math.max(0, fo.vy) / 90;
       const ty = hy + 0.7 - Math.min(2.2, airDown) + Math.min(1.2, airUp * 0.4);
-      const kx = 1 - Math.exp(-5.2 * dt);
-      const ky = 1 - Math.exp(-(fo.grounded ? 3.2 : 7.5) * dt);
+      const kx = 1 - Math.exp(-4.2 * dt);
+      const ky = 1 - Math.exp(-(fo.grounded ? 2.8 : 6.0) * dt);
       camPX += (tx - camPX) * kx;
       camPY += (ty - camPY) * ky;
-      // não mostra o vazio além das paredes da fase
+      // abertura: começa aberta e lateral (como o 2D) e vai aproximando e girando para trás do herói
+      const intro = cam.t >= 99 ? 1 : Math.min(1, cam.t / 3.4);
+      const ease = intro * intro * (3 - 2 * intro);
+      // chefe por perto: abre o plano para ver chão, cenário e chefe
+      const bossNear = cam.boss && Math.abs(cam.boss.x * S - hx) < 15 ? 1 : 0;
+      camBossK += (bossNear - camBossK) * (1 - Math.exp(-1.6 * dt));
+      const cineOn = cam.cine ? 1 : 0;
+      camCineK += (cineOn - camCineK) * (1 - Math.exp(-2.4 * dt));
+      // ângulo: atrás do herói, mais forte em movimento
+      const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
+      camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
+      const rT = (1.5 - 0.5 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
+      let ax = camPX;
+      let ay = camPY;
+      if (cam.boss && camBossK > 0.01) {
+        ax += (cam.boss.x * S - ax) * 0.34 * camBossK;
+        ay += (ROWS - cam.boss.y * S + 0.3 - ay) * 0.2 * camBossK;
+      }
+      if (cam.cine && camCineK > 0.01) {
+        ax += (cam.cine.x * S - ax) * camCineK;
+        ay += (ROWS - cam.cine.y * S + 0.6 - ay) * camCineK;
+      }
       const halfWv = (visH * aspect) / 2;
-      cx = Math.min(L.cols - halfWv + 1.5, Math.max(halfWv - 1.5, camPX));
-      cy = Math.max(visH / 2 - 1.2, Math.min(ROWS + 1, camPY));
+      cx = Math.min(L.cols - halfWv + 1.5, Math.max(halfWv - 1.5, ax));
+      cy = Math.max(visH / 2 - 1.0, Math.min(ROWS + 1, ay));
       const sh = f.shake * 0.012;
-      cx += (Math.random() - 0.5) * sh * 2;
-      cy += (Math.random() - 0.5) * sh * 2;
+      const R = dist0 * camRS;
+      const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
+      const lift = 1.0 + 0.9 * (1 - camCineK * 0.8);
+      at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, 0];
+      eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), Math.cos(yaw) * R];
+      camCX = cx;
+      camCY = cy;
     } else {
       camInit = false;
       const span = Math.max(1, L.cols - 40);
@@ -297,11 +337,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       cx = 20 + ph;
       cy = ROWS - GROUND + 1.2 - Math.min(1.8, visH * 0.1) + 1.0;
       heroX = cx - 3.2;
+      const sway = Math.sin(f.t * 0.2) * 3.0;
+      eye = [cx + sway, cy + 1.9, dist0 * 1.35];
+      at = [cx, cy - 0.15, 0];
     }
+    const halfW = (Math.max(5.2, 9.0 / aspect) * aspect) / 2 * 1.2 + 6;
     const near = (xTiles: number) => Math.abs(xTiles - cx) < halfW;
-    const sway = f.playing ? 0 : Math.sin(f.t * 0.2) * 3.0;
-    const eye: Vec3 = [cx + sway, cy + 1.1 + (f.playing ? 0 : 0.8), dist];
-    const at: Vec3 = [cx, cy - 0.15, 0];
     e.begin(g.world ? hex(g.world.fog) : [0, 0, 0]);
     e.setCamera(eye, at, FOV, 0.5, 260);
 

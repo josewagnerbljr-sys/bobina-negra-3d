@@ -435,7 +435,35 @@ export const ENT: Record<Kind, EntDef> = {
   candle: { hp: 1, w: 16, h: 24, speed: 0, xp: 0, behavior: "item", touch: 0 },
 };
 
-export function entDef(kind: Kind, world: number, mini = false): EntDef {
+export type ModeDef = {
+  name: string;
+  tag: string;
+  text: string;
+  hp: number;
+  speed: number;
+  dmg: number;
+  xp: number;
+  luck: number;
+  color: string;
+};
+
+/** modos de jogo: a cozinha do inferno, do fogo baixo ao caldeirão do Cramunhão */
+export const MODES: ModeDef[] = [
+  { name: "Banho-maria", tag: "Fácil", text: "Fogo baixinho. O contrato manda você relaxar enquanto os monstros derretem devagar.", hp: 1, speed: 1, dmg: 1, xp: 1, luck: 1, color: "#8fd0c8" },
+  { name: "Queimadurinha", tag: "Médio", text: "Dá para comer, mas a língua avisa. Monstros com quase o dobro de vida.", hp: 1.9, speed: 1.05, dmg: 1, xp: 1.3, luck: 1.15, color: "#e0b15a" },
+  { name: "Panela de Vidro", tag: "Difícil", text: "Bonita e frágil: se você escorregar, estoura. Monstros muito mais resistentes.", hp: 3.6, speed: 1.1, dmg: 1, xp: 1.7, luck: 1.3, color: "#9fd4ff" },
+  { name: "Frigideira de Ferro", tag: "Muito difícil", text: "Pesada, quente e sem perdão. Cada pancada tira dois corações.", hp: 6.8, speed: 1.15, dmg: 2, xp: 2.2, luck: 1.6, color: "#ff8a3a" },
+  { name: "Panela do Cramunhão", tag: "Expert", text: "O caldeirão do próprio diabo. Monstros enormes, ritmo cruel e o melhor tesouro da casa.", hp: 13, speed: 1.25, dmg: 2, xp: 3, luck: 2.2, color: "#c4373a" },
+];
+
+export function entDef(kind: Kind, world: number, mini = false, mode = 0): EntDef {
+  const m = MODES[mode] ?? MODES[0]!;
+  const d = entDefBase(kind, world, mini);
+  if (kind === "candle" || kind === "chest") return d;
+  return { ...d, hp: Math.max(1, Math.round(d.hp * m.hp)), speed: d.speed * m.speed, xp: Math.round(d.xp * m.xp) };
+}
+
+function entDefBase(kind: Kind, world: number, mini = false): EntDef {
   const base = ENT[kind];
   if (kind === "candle" || kind === "chest") return base;
   const scale = 1.4 + world * 0.34;

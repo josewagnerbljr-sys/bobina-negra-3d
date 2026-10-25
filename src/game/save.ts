@@ -20,6 +20,7 @@ export type Save = {
   bag: Item[];
   equip: Equip;
   uid: number;
+  mode: number;
 };
 
 export function emptySave(hero: HeroId): Save {
@@ -36,6 +37,7 @@ export function emptySave(hero: HeroId): Save {
     bag: [],
     equip: emptyEquip(),
     uid: 1,
+    mode: 0,
   };
 }
 
@@ -87,6 +89,7 @@ function parse(raw: string): Save | null {
     bag,
     equip: eq,
     uid,
+    mode: clampInt(data.mode, 0, 4),
   };
 }
 

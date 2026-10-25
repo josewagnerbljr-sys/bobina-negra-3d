@@ -185,7 +185,19 @@ button {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+}
+canvas {
   touch-action: none;
+}
+button {
+  touch-action: manipulation;
+}
+/* menus longos: o cartão fica embaixo, mas a rolagem alcança o topo (justify-end escondia o início) */
+.menu-sec > :first-child {
+  margin-top: auto;
+}
+.menu-sec {
+  -webkit-overflow-scrolling: touch;
 }
 
 html,
