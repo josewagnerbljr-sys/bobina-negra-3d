@@ -364,6 +364,38 @@ void main(){
   outColor = vec4(col, al);
 }`;
 
+
+const SKIN_VS = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aNor;
+layout(location=2) in vec3 aCol;
+layout(location=3) in vec4 aJoints;
+layout(location=4) in vec4 aWeights;
+uniform mat4 uVP;
+uniform mat4 uModel;
+uniform mat3 uNor;
+uniform float uOutline;
+uniform sampler2D uBones;
+uniform vec3 uRegion[9];
+out vec3 vN;
+out vec3 vCol;
+out vec3 vW;
+mat4 bone(int j){
+  return mat4(texelFetch(uBones, ivec2(0, j), 0), texelFetch(uBones, ivec2(1, j), 0), texelFetch(uBones, ivec2(2, j), 0), texelFetch(uBones, ivec2(3, j), 0));
+}
+void main(){
+  mat4 sk = bone(int(aJoints.x + 0.5)) * aWeights.x + bone(int(aJoints.y + 0.5)) * aWeights.y + bone(int(aJoints.z + 0.5)) * aWeights.z + bone(int(aJoints.w + 0.5)) * aWeights.w;
+  vec3 n = normalize(mat3(sk) * aNor);
+  vec3 p = (sk * vec4(aPos, 1.0)).xyz + n * uOutline;
+  vec4 w = uModel * vec4(p, 1.0);
+  vW = w.xyz;
+  vN = normalize(uNor * n);
+  vCol = uRegion[int(aCol.x + 0.5)] * aCol.y;
+  gl_Position = uVP * w;
+}`;
+
 const SKY_VS = `#version 300 es
 out vec2 vUv;
 void main(){
@@ -439,6 +471,11 @@ export class Engine {
   canvas: HTMLCanvasElement;
   private lit: WebGLProgram;
   private sky: WebGLProgram;
+  private skinP: WebGLProgram;
+  private us2: Record<string, WebGLUniformLocation | null> = {};
+  private boneTex: WebGLTexture;
+  private light: Lighting | null = null;
+  private skinFresh = false;
   private u: Record<string, WebGLUniformLocation | null> = {};
   private us: Record<string, WebGLUniformLocation | null> = {};
   private emptyVao: WebGLVertexArrayObject;
@@ -477,6 +514,15 @@ export class Engine {
     ]) {
       this.u[n] = gl.getUniformLocation(this.lit, n);
     }
+    this.skinP = this.program(SKIN_VS, LIT_FS);
+    for (const n of [...Object.keys(this.u), "uBones", "uRegion"]) this.us2[n] = gl.getUniformLocation(this.skinP, n);
+    this.boneTex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, this.boneTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, 96, 0, gl.RGBA, gl.FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     for (const n of ["uTop", "uMid", "uBot", "uTime", "uStars", "uMoon", "uMoonCol", "uAspect", "uScroll"]) {
       this.us[n] = gl.getUniformLocation(this.sky, n);
     }
@@ -649,6 +695,8 @@ export class Engine {
 
   useLit(l: Lighting) {
     const gl = this.gl;
+    this.light = l;
+    this.skinFresh = false;
     gl.useProgram(this.lit);
     gl.uniformMatrix4fv(this.u.uVP!, false, this.vp);
     gl.uniform3fv(this.u.uSun!, l.sun);
@@ -660,16 +708,89 @@ export class Engine {
     gl.uniform2f(this.u.uFogRange!, l.fogNear, l.fogFar);
   }
 
-  private setMat(opts: DrawOpts) {
+  private setMat(opts: DrawOpts, u: Record<string, WebGLUniformLocation | null> = this.u) {
     const gl = this.gl;
-    gl.uniform3fv(this.u.uColor!, opts.color ?? [1, 1, 1]);
-    gl.uniform3fv(this.u.uEmis!, opts.emis ?? [0, 0, 0]);
-    gl.uniform1f(this.u.uAlpha!, opts.alpha ?? 1);
-    gl.uniform1f(this.u.uFlash!, opts.flash ?? 0);
-    gl.uniform1f(this.u.uUnlit!, opts.unlit ? 1 : 0);
-    gl.uniform1f(this.u.uCel!, opts.cel === false ? 0 : 1);
-    gl.uniform1f(this.u.uOutline!, opts.outline ?? 0);
-    gl.uniform1f(this.u.uSoft!, opts.soft ? 1 : 0);
+    gl.uniform3fv(u.uColor!, opts.color ?? [1, 1, 1]);
+    gl.uniform3fv(u.uEmis!, opts.emis ?? [0, 0, 0]);
+    gl.uniform1f(u.uAlpha!, opts.alpha ?? 1);
+    gl.uniform1f(u.uFlash!, opts.flash ?? 0);
+    gl.uniform1f(u.uUnlit!, opts.unlit ? 1 : 0);
+    gl.uniform1f(u.uCel!, opts.cel === false ? 0 : 1);
+    gl.uniform1f(u.uOutline!, opts.outline ?? 0);
+    gl.uniform1f(u.uSoft!, opts.soft ? 1 : 0);
+  }
+
+  /** malha com pele (ossos numa textura float): vértices, normais, [região, sombra, junta], ossos, pesos */
+  uploadSkin(pos: Float32Array, nor: Float32Array, col: Float32Array, joints: Uint8Array, weights: Uint8Array, idx: Uint16Array): GpuMesh {
+    const gl = this.gl;
+    const n = pos.length / 3;
+    const buf = new ArrayBuffer(n * 44);
+    const f = new Float32Array(buf);
+    const u8 = new Uint8Array(buf);
+    for (let i = 0; i < n; i++) {
+      f.set(pos.subarray(i * 3, i * 3 + 3), i * 11);
+      f.set(nor.subarray(i * 3, i * 3 + 3), i * 11 + 3);
+      f.set(col.subarray(i * 3, i * 3 + 3), i * 11 + 6);
+      u8.set(joints.subarray(i * 4, i * 4 + 4), i * 44 + 36);
+      u8.set(weights.subarray(i * 4, i * 4 + 4), i * 44 + 40);
+    }
+    const vao = gl.createVertexArray()!;
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
+    for (let a = 0; a < 3; a++) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribPointer(a, 3, gl.FLOAT, false, 44, a * 12);
+    }
+    gl.enableVertexAttribArray(3);
+    gl.vertexAttribPointer(3, 4, gl.UNSIGNED_BYTE, false, 44, 36);
+    gl.enableVertexAttribArray(4);
+    gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, 44, 40);
+    const ibo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    return { vao, count: idx.length, vbo, ibo };
+  }
+
+  /** desenha malha com pele; `bones` = J matrizes 4x4 (colunas), `region` = 9 cores */
+  drawSkin(mesh: GpuMesh, model: Mat4, bones: Float32Array, nBones: number, region: Float32Array, opts: DrawOpts, ink: Vec3, thick: number) {
+    const gl = this.gl;
+    const u = this.us2;
+    gl.useProgram(this.skinP);
+    if (!this.skinFresh && this.light) {
+      const l = this.light;
+      gl.uniformMatrix4fv(u.uVP!, false, this.vp);
+      gl.uniform3fv(u.uSun!, l.sun);
+      gl.uniform3fv(u.uSunDir!, l.sunDir);
+      gl.uniform3fv(u.uSky!, l.sky);
+      gl.uniform3fv(u.uGround!, l.ground);
+      gl.uniform3fv(u.uFog!, l.fog);
+      gl.uniform3fv(u.uCam!, this.camPos);
+      gl.uniform2f(u.uFogRange!, l.fogNear, l.fogFar);
+      gl.uniform1i(u.uBones!, 3);
+      this.skinFresh = true;
+    }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.boneTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, nBones, gl.RGBA, gl.FLOAT, bones);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniformMatrix4fv(u.uModel!, false, model);
+    gl.uniformMatrix3fv(u.uNor!, false, m4.normal(this.nmat, model));
+    gl.uniform3fv(u.uRegion!, region);
+    gl.bindVertexArray(mesh.vao);
+    if (thick > 0) {
+      gl.cullFace(gl.FRONT);
+      this.setMat({ color: ink, unlit: true, outline: thick, alpha: opts.alpha ?? 1 }, u);
+      gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+      gl.cullFace(gl.BACK);
+      this.drawCalls++;
+    }
+    this.setMat(opts, u);
+    gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+    this.drawCalls++;
+    gl.useProgram(this.lit);
   }
 
   /** desenha uma malha com a matriz de modelo informada */

@@ -29,7 +29,7 @@ export const MAIN_LEVELS = 50;
 export const BONUS_LEVELS = 10;
 export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
 
-export type ItemSlot = "potion" | "weapon" | "armor" | "relic";
+export type ItemSlot = "potion" | "weapon" | "offhand" | "helmet" | "necklace" | "ring" | "armor" | "cape" | "gloves" | "pants" | "boots";
 export type Rarity = 0 | 1 | 2 | 3;
 export type Item = {
   uid: number;
@@ -38,7 +38,23 @@ export type Item = {
   tier: number;
   mods: Partial<Stats>;
 };
-export type Equip = { weapon: Item | null; armor: Item | null; relic: Item | null };
+/** os 11 espaços de equipamento do personagem */
+export const EQUIP_KEYS = ["helmet", "necklace", "armor", "cape", "gloves", "pants", "boots", "weapon", "offhand", "ring1", "ring2"] as const;
+export type EquipKey = (typeof EQUIP_KEYS)[number];
+export type Equip = Record<EquipKey, Item | null>;
+export const SLOT_LABEL: Record<EquipKey, string> = {
+  helmet: "Capacete",
+  necklace: "Colar",
+  armor: "Armadura",
+  cape: "Capa",
+  gloves: "Luvas",
+  pants: "Calça",
+  boots: "Botas",
+  weapon: "Arma",
+  offhand: "Mão secundária",
+  ring1: "Anel",
+  ring2: "Anel",
+};
 
 export type BuffKind = "haste" | "fury" | "ward";
 

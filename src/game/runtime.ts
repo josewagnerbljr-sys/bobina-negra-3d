@@ -23,7 +23,7 @@ import {
   WORLDS,
 } from "./content";
 import { buildLevel } from "./maps";
-import { baseOf, bagUsed, canFit, countPotions, itemName, itemSize, makeItem, peekUid, rollDrops, RARITY_COLOR } from "./items";
+import { baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
@@ -31,6 +31,7 @@ import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, overlaps, touchesSpike, type Bo
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
 import {
   BAG_SIZE,
+  EQUIP_KEYS,
   GROUND,
   HERO_IDS,
   MAIN_LEVELS,
@@ -45,6 +46,7 @@ import {
   xpToNext,
   type Action,
   type BuffKind,
+  type EquipKey,
   type HeroId,
   type Item,
   type Kind,
@@ -91,7 +93,11 @@ type Shot = Body & {
   hit: Set<Actor>;
   home?: Actor | null;
   seek?: boolean;
+  el?: string;
 };
+
+/** elemento de cada herói: define o visual dos tiros e poderes */
+const ELEMENT: Record<string, string> = { ivo: "lunar", lena: "blood", osso: "spirit", syl: "nature", tito: "fire", mari: "water", pia: "stone", lumen: "lightning" };
 
 export type Runtime = {
   gl: boolean;
@@ -109,7 +115,7 @@ export type Runtime = {
   allocate: (id: StatKey, n?: number) => void;
   respec: () => void;
   equipItem: (uid: number) => void;
-  unequip: (slot: "weapon" | "armor" | "relic") => void;
+  unequip: (slot: EquipKey) => void;
   useItem: (uid: number) => void;
   discardItem: (uid: number) => void;
   quickPotion: () => void;
@@ -277,6 +283,35 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (a.hp <= 0) killActor(a);
   }
 
+  /** efeito de impacto do tiro: bola de fogo explode em área, raio salta para outro inimigo */
+  function shotImpact(s: Shot, a: Actor) {
+    const ax = a.x + a.w / 2;
+    const ay = a.y + a.h / 2;
+    if (s.el === "fire") {
+      fx.push({ kind: "blast", x: ax, y: ay, t: 0, max: 0.5, color: "#ff8a2a", r: 90, dir: 0, el: "fire" });
+      for (const o of foesNear(ax, ay, 90, 70)) if (o !== a) hurtFoe(o, s.dmg * 0.5, "#ff8a2a");
+      shake = Math.max(shake, 3);
+    } else if (s.el === "lightning") {
+      fx.push({ kind: "bolt", x: ax, y: a.y + a.h, t: 0, max: 0.35, color: "#ffee6a", r: 0, dir: 0, el: "lightning" });
+      let near: Actor | null = null;
+      let nd = 190;
+      for (const o of actors) {
+        if (o === a || o.dead || o.ally || inert(o)) continue;
+        const dd = Math.hypot(o.x + o.w / 2 - ax, o.y + o.h / 2 - ay);
+        if (dd < nd) {
+          nd = dd;
+          near = o;
+        }
+      }
+      if (near) {
+        hurtFoe(near, s.dmg * 0.5, "#ffee6a");
+        fx.push({ kind: "bolt", x: near.x + near.w / 2, y: near.y + near.h, t: -0.06, max: 0.35, color: "#ffee6a", r: 0, dir: 0, el: "lightning" });
+      }
+    } else if (s.el === "water") {
+      fx.push({ kind: "wave", x: ax, y: ay, t: 0, max: 0.35, color: "#8fe4ff", r: 46, dir: 0, el: "water" });
+    }
+  }
+
   function foesNear(cx: number, cy: number, rx: number, ry: number) {
     return actors.filter((a) => !a.dead && !a.ally && !inert(a) && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry);
   }
@@ -297,7 +332,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       for (const a of actors) {
         if (a.dead || a.ally || inert(a)) continue;
         const dist = Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy);
-        const front = (a.x + a.w / 2 - cx) * player.facing > -60;
+        const dxf = (a.x + a.w / 2 - cx) * player.facing;
+        const front = dxf > 20 && dxf < 460 && Math.abs(a.y + a.h / 2 - cy) < 110;
         if (front && dist < bd) {
           bd = dist;
           best = a;
@@ -317,6 +353,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         pierce: 0,
         hit: new Set(),
         home: best,
+        el: ELEMENT[save.hero],
       });
       fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.35, color: def.color, r: 40, dir: player.facing });
     } else if (i === 1) {
@@ -325,8 +362,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       fx.push({ kind: "slash", x: cx, y: cy, t: 0, max: 0.3, color: def.color, r: 150, dir: player.facing });
     } else if (i === 2) {
       const R = 175 * d.radius;
-      fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: def.color, r: R, dir: 0 });
+      const el = ELEMENT[save.hero];
+      fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: def.color, r: R, dir: 0, el });
+      if (el === "fire" || el === "stone") fx.push({ kind: "blast", x: cx, y: cy, t: 0, max: 0.75, color: def.color, r: R, dir: 0, el });
+      let nb = 0;
       for (const a of foesNear(cx, cy, R, R * 0.8)) {
+        if (el === "lightning" && nb < 6) fx.push({ kind: "bolt", x: a.x + a.w / 2, y: a.y + a.h, t: -nb++ * 0.07, max: 0.4, color: def.color, r: 0, dir: 0, el });
+        else if (el !== "fire" && el !== "lightning" && nb < 6) fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -nb++ * 0.05, max: 0.6, color: def.color, r: 0, dir: 0, el });
         hurtFoe(a, 2.1 * dmgMagic(), def.color);
         if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * 30;
       }
@@ -335,9 +377,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     } else {
       // super especial: tela inteira
       const hit = foesNear(cx, cy, 560 * d.radius, 380 * d.radius);
-      fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: def.color, r: 640 * d.radius, dir: 0 });
+      fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: def.color, r: 640 * d.radius, dir: 0, el: ELEMENT[save.hero] });
+      if (ELEMENT[save.hero] === "lightning") for (let k = 0; k < 9; k++) fx.push({ kind: "bolt", x: cx + (Math.random() - 0.5) * 900, y: cy + 60, t: -k * 0.07, max: 0.45, color: def.color, r: 0, dir: 0, el: "lightning" });
+      if (ELEMENT[save.hero] === "fire") for (let k = 0; k < 7; k++) fx.push({ kind: "blast", x: cx + (Math.random() - 0.5) * 800, y: cy + 20, t: -k * 0.08, max: 0.6, color: "#ff8a2a", r: 110, dir: 0, el: "fire" });
       for (const a of hit) {
-        fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: def.color, r: 0, dir: 0 });
+        fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: def.color, r: 0, dir: 0, el: ELEMENT[save.hero] });
         hurtFoe(a, 7.5 * dmgMagic(), def.color);
       }
       for (const sh of shots) if (sh.foe) sh.life = 0;
@@ -689,6 +733,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       foe: owner === "foe",
       pierce,
       hit: new Set(),
+      el: owner === "foe" ? undefined : ELEMENT[save.hero],
     });
     if (shots.length > 48) shots.splice(0, shots.length - 48);
   }
@@ -1123,7 +1168,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (lt.age > 0.5 && overlaps(player, lt)) {
         if (addToBag(lt.item)) {
           audio.loot(lt.item.rarity);
-          showToast(`${itemName(lt.item)} (${itemSize(lt.item)} bl.)`);
+          showToast(lootLine(lt.item));
           burst(lt.x + 10, lt.y + 10, RARITY_COLOR[lt.item.rarity]!, 8, 90);
           loot.splice(i, 1);
           persist();
@@ -1150,7 +1195,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         const ty = s.home.y + s.home.h / 2 - (s.y + s.h / 2);
         const d = Math.hypot(tx, ty) || 1;
         const sp = 520;
-        const k = 1 - Math.exp(-9 * dt);
+        // só corrige a mira enquanto o alvo está à frente; passou do alvo, segue em linha reta
+        if (tx * Math.sign(s.vx || 1) <= 0) s.home = null;
+        const k = s.home ? 1 - Math.exp(-5 * dt) : 0;
         s.vx += ((tx / d) * sp - s.vx) * k;
         s.vy += ((ty / d) * sp - s.vy) * k;
       }
@@ -1179,6 +1226,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         s.hit.add(a);
         burst(a.x + a.w / 2, a.y + a.h / 2, s.color, 5, 90);
         audio.hit();
+        shotImpact(s, a);
         if (a.hp <= 0) killActor(a);
         s.pierce -= 1;
         if (s.pierce < 0) {
@@ -1404,16 +1452,24 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     shake = Math.max(0, shake - dt * 16);
   }
 
+  /** linha do aviso de drop: nome, espaço, tamanho e o que ele melhora em relação ao equipado */
+  function lootLine(it: Item): string {
+    const b = baseOf(it);
+    if (b.slot === "potion") return `${itemName(it)} · consumível (${itemSize(it)} bl.)`;
+    const cmp = compareItem(it, save.equip);
+    let tag = "";
+    if (cmp) {
+      const sum = Object.values(cmp.diff).reduce((a, v) => a + (v ?? 0), 0);
+      tag = !cmp.current ? " · espaço livre, equipe!" : sum > 0 ? " · melhor que o equipado" : sum < 0 ? " · pior que o equipado" : "";
+    }
+    return `${itemName(it)} · ${SLOT_NAME[b.slot]} · ${modText(it)}${tag}`;
+  }
+
   function gearLook(): GearLook {
     const eq = save.equip;
-    return {
-      armor: eq.armor ? eq.armor.base : null,
-      armorRarity: eq.armor?.rarity ?? 0,
-      weapon: eq.weapon ? eq.weapon.base : null,
-      weaponRarity: eq.weapon?.rarity ?? 0,
-      relic: eq.relic ? eq.relic.base : null,
-      relicColor: eq.relic ? baseOf(eq.relic).color : "#ffffff",
-    };
+    const out = {} as GearLook;
+    for (const k of EQUIP_KEYS) out[k] = eq[k] ? { base: eq[k]!.base, rarity: eq[k]!.rarity, color: baseOf(eq[k]!).color } : null;
+    return out;
   }
 
   function paintList(): Paint[] {
@@ -1429,7 +1485,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         vx: a.vx,
         vy: a.vy,
         speed: Math.max(1, a.speed),
-        facing: a.facing,
+        // o monstro olha para onde anda (nunca de costas); chefes e parados olham para o herói
+        facing: !a.boss && a.behavior !== "still" && Math.abs(a.vx) > 14 ? (a.vx > 0 ? 1 : -1) : a.facing,
         phase: a.phase,
         kind: a.kind,
         hero: save.hero,
@@ -1487,7 +1544,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       t: clock,
       playing,
       actors: playing ? paintList() : [],
-      shots: shots.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h, color: s.color, vx: s.vx, foe: s.foe })),
+      shots: shots.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h, color: s.color, vx: s.vx, foe: s.foe, el: s.el })),
       sparks,
       exit: playing && door ? { x: door.x, y: door.y, w: door.w, h: door.h, open } : null,
       lit,
@@ -1788,8 +1845,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       const i = save.bag.findIndex((x) => x.uid === uid);
       if (i < 0) return;
       const it = save.bag[i]!;
-      const slot = baseOf(it).slot;
-      if (slot === "potion") return;
+      const slot = equipKeyFor(it, save.equip);
+      if (!slot) return;
       const old = save.equip[slot];
       save.bag.splice(i, 1);
       if (old && !canFit(save.bag, old)) {
@@ -1805,7 +1862,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       persist();
       emit();
     },
-    unequip(slot: "weapon" | "armor" | "relic") {
+    unequip(slot: EquipKey) {
       const it = save.equip[slot];
       if (!it) return;
       if (!canFit(save.bag, it)) {
@@ -1932,10 +1989,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     getX: () => player.x,
     getCols: () => level?.cols ?? 0,
     getFoes: () => actors.filter((a) => !a.dead && !a.ally && !inert(a)).length,
-    setGear: (armor: string, weapon: string, relic: string, rarity: number) => {
-      save.equip.armor = armor ? makeItem(armor, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
-      save.equip.weapon = weapon ? makeItem(weapon, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
-      save.equip.relic = relic ? makeItem(relic, rarity as 0 | 1 | 2 | 3, 3, Math.random) : null;
+    setGear: (ids: string, rarity: number) => {
+      for (const k of EQUIP_KEYS) save.equip[k] = null;
+      for (const id of ids.split(",").filter(Boolean)) {
+        const it = makeItem(id, rarity as 0 | 1 | 2 | 3, 3, Math.random);
+        const key = equipKeyFor(it, save.equip);
+        if (key) save.equip[key] = it;
+      }
     },
     getLoot: () => loot.length,
     killAll: () => {

@@ -1,5 +1,5 @@
 import { emptyEquip, setUidSeed } from "./items";
-import { EMPTY_STATS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
+import { EMPTY_STATS, EQUIP_KEYS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
 
 const KEY = "bobina-negra-v2";
 const OLD_KEY = "bobina-negra-v1";
@@ -50,8 +50,8 @@ function okItem(v: unknown): v is Item {
   return Boolean(i && typeof i.uid === "number" && typeof i.base === "string" && typeof i.rarity === "number" && typeof i.tier === "number" && i.mods && typeof i.mods === "object");
 }
 
-function parse(raw: string): Save | null {
-  const data = JSON.parse(raw) as Partial<Omit<Save, "v">> & { v?: number };
+function parse(text: string): Save | null {
+  const data = JSON.parse(text) as Partial<Omit<Save, "v">> & { v?: number };
   if (!okHero(data.hero)) return null;
   const level = clampInt(data.level, 1, MAX_LEVEL);
   const best = Array.from({ length: TOTAL_REELS }, (_, i) => {
@@ -72,8 +72,20 @@ function parse(raw: string): Save | null {
   if (data.v !== 2) return null;
   const alloc: Stats = { ...EMPTY_STATS, ...(data.alloc ?? {}) };
   const bag = Array.isArray(data.bag) ? data.bag.filter(okItem) : [];
-  const eq: Equip = { ...emptyEquip(), ...(data.equip ?? {}) };
-  for (const k of ["weapon", "armor", "relic"] as const) if (eq[k] && !okItem(eq[k])) eq[k] = null;
+  const eq: Equip = emptyEquip();
+  const raw = (data.equip ?? {}) as Record<string, Item | null>;
+  for (const k of EQUIP_KEYS) if (raw[k] && okItem(raw[k])) eq[k] = raw[k]!;
+  // v4: "armadura" podia ser capa; "relíquia" vira anel, colar ou mão secundária
+  if (raw.armor && okItem(raw.armor) && raw.armor.base === "cape") {
+    eq.armor = null;
+    eq.cape = raw.armor;
+  }
+  if (raw.relic && okItem(raw.relic)) {
+    const b = raw.relic.base;
+    if (b === "ring") eq.ring1 = raw.relic;
+    else if (b === "orb") eq.offhand = raw.relic;
+    else eq.necklace = raw.relic;
+  }
   const uid = clampInt(data.uid, 1, 1e9);
   setUidSeed(uid);
   return {

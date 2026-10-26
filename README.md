@@ -95,3 +95,11 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - **Câmera**: mais próxima, abertura 2D → 3/4 em 3,4 s, fica atrás/ao lado do herói com suavização, abre para mostrar o chefe.
 - **Cenas de chefe e miniboss**: câmera orbita o inimigo com tarjas pretas e o texto do roteiro, antes da luta.
 - **Correções**: rolagem na seleção de personagens, herói parado no início da fase, tremor de tela nos portais, toques presos nos botões.
+
+## v6 — personagens animados, 11 espaços de equipamento, efeitos por elemento
+
+- **Heróis e monstros com esqueleto**: o manequim e as animações CC0 do pacote *Universal Animation Library* (Quaternius) rodam num carregador próprio (`src/engine/skin.ts`; modelos convertidos em `public/models/`). Heróis: `skinhero.ts`; 13 monstros humanoides: `skinmob.ts`. Os demais monstros seguem procedurais.
+- **11 espaços de equipamento**: capacete, colar, armadura, capa, luvas, calça, botas, arma, mão secundária e 2 anéis; todos aparecem no boneco.
+- **Efeitos por elemento**: bola de fogo que explode em área (Tito), raios encadeados (Lúmen), maré (Marina), espinhos de pedra (Pia), raízes (Syl), sangue (Lena), espíritos (Osso), lua (Ivo).
+- **Correções**: monstros olham para onde andam, tiro reto não desvia mais, mira só persegue alvo à frente.
+- Selo de versão na tela inicial ("v6 · build …") para conferir se o link atualizou.

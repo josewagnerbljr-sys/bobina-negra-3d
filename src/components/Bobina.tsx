@@ -5,7 +5,7 @@ import { BASE_BY_ID, RARITY_COLOR, RARITY_NAME, baseOf, itemName, itemSize, modT
 import { ItemIcon } from "./ItemIcon";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
-import { BAG_SIZE, EMPTY_STATS, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
+import { BAG_SIZE, EMPTY_STATS, EQUIP_KEYS, SLOT_LABEL, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
 
 const BOOT: Snap = {
   screen: "title",
@@ -50,7 +50,7 @@ const BOOT: Snap = {
   progress: 0,
   skills: [],
   bag: [],
-  equip: { weapon: null, armor: null, relic: null },
+  equip: { helmet: null, necklace: null, armor: null, cape: null, gloves: null, pants: null, boots: null, weapon: null, offhand: null, ring1: null, ring2: null },
   bagUsed: 0,
   potions: 0,
   buffs: [],
@@ -193,8 +193,9 @@ export function Bobina() {
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
-                  Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Quatro amaldiçoados. Um contrato que ninguém leu até a cláusula final.
+                  Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
+                <p className="mt-2 text-xs text-paper/40">v6 · build {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -578,11 +579,7 @@ function ItemChip({ it }: { it: Item }) {
 function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; setSel: (n: number | null) => void; rt: Runtime | null }) {
   const cells = layoutBag(snap.bag);
   const chosen = snap.bag.find((i) => i.uid === sel) ?? null;
-  const equipped = [
-    { slot: "weapon" as const, label: "Arma", item: snap.equip.weapon },
-    { slot: "armor" as const, label: "Armadura", item: snap.equip.armor },
-    { slot: "relic" as const, label: "Relíquia", item: snap.equip.relic },
-  ];
+  const equipped = EQUIP_KEYS.map((k) => ({ slot: k, label: SLOT_LABEL[k], item: snap.equip[k] }));
   const hero = heroById(snap.hero);
   return (
     <section className="pointer-events-auto mx-auto flex min-h-full max-w-4xl flex-col menu-sec px-3 pb-4">
@@ -653,22 +650,25 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
 
           <div>
             <h3 className="font-display text-xl text-brass">Equipado</h3>
-            <ul className="mt-2 grid gap-2">
+            <ul className="mt-2 grid grid-cols-2 gap-1.5">
               {equipped.map((e) => (
-                <li key={e.slot} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink p-2 text-sm">
-                  <span>
-                    <span className="block text-xs text-paper/50">{e.label}</span>
+                <li key={e.slot} className="flex min-h-14 items-center gap-2 rounded-md border border-paper/15 bg-ink p-1.5 text-sm" style={e.item ? { borderColor: RARITY_COLOR[e.item.rarity] } : undefined}>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-sm bg-black/30">
+                    {e.item ? <ItemIcon item={e.item} size={34} ring={false} /> : <span className="text-xs text-paper/25">▫</span>}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] uppercase tracking-wide text-paper/50">{e.label}</span>
                     {e.item ? (
                       <>
-                        <ItemChip it={e.item} />
-                        <span className="block text-xs text-moon">{modText(e.item)}</span>
+                        <span className="block truncate text-xs" style={{ color: RARITY_COLOR[e.item.rarity] }}>{itemName(e.item)}</span>
+                        <span className="block truncate text-[11px] text-moon">{modText(e.item)}</span>
                       </>
                     ) : (
-                      <span className="text-paper/40">vazio</span>
+                      <span className="text-xs text-paper/35">vazio</span>
                     )}
                   </span>
                   {e.item && (
-                    <button type="button" onClick={() => rt?.unequip(e.slot)} className="min-h-10 rounded-md border border-paper/25 px-3 text-sm">
+                    <button type="button" onClick={() => rt?.unequip(e.slot)} aria-label={`Tirar ${e.label}`} className="min-h-10 shrink-0 rounded-md border border-paper/25 px-2 text-xs">
                       Tirar
                     </button>
                   )}

@@ -34,9 +34,9 @@ export type Paint = {
 
 export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number; slot: string };
 
-export type Fx = { kind: "wave" | "slash" | "pillar" | "nova"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number };
+export type Fx = { kind: "wave" | "slash" | "pillar" | "nova" | "blast" | "bolt"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number; el?: string };
 
-export type ShotPaint = { x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean };
+export type ShotPaint = { x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
 
 export type Frame = {
   level: Level | null;
@@ -217,6 +217,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       world: p.world,
       attack: p.attack,
       gear: p.gear,
+      dying: p.dying ?? 0,
     };
     m.update(pose);
     const target = p.facing >= 0 ? Math.PI / 2 - 0.5 : -(Math.PI / 2 - 0.5);
@@ -224,10 +225,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const next = cur + (target - cur) * (1 - Math.exp(-16 * dt));
     yawOf.set(m, next);
     const d = p.dying ?? 0;
-    const sc = p.h * S * (1 - d * 0.75);
+    const sc = p.h * S * (1 - d * (m.skin ? 0.35 : 0.75));
     const X = (p.x + p.w / 2) * S;
     const Y = ROWS - (p.y + p.h) * S;
-    m4.compose(wm, [X, Y, 0], [0, next, d * 2.5 * (p.facing >= 0 ? -1 : 1)], [sc, sc, sc]);
+    m4.compose(wm, [X, Y, 0], [0, next, m.skin ? 0 : d * 2.5 * (p.facing >= 0 ? -1 : 1)], [sc, sc, sc]);
     return wm;
   }
 
@@ -497,7 +498,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     for (const lt of f.loot) {
       if (near(lt.x * S)) glowSprite(lt.x * S, ROWS - lt.y * S + 0.3, 0.2, 1.1 + lt.rarity * 0.45, col(lt.color), 0.55);
     }
-    for (const s of f.shots) glowSprite((s.x + s.w / 2) * S, ROWS - (s.y + s.h / 2) * S, 0.3, 1.1, col(s.color), 0.5);
+    for (const s of f.shots) drawShotGlow(s, f.t);
     if (f.playing && f.exit) {
       const ex = f.exit;
       const X = (ex.x + ex.w / 2) * S;
@@ -634,6 +635,56 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
           m4.compose(tmpBlob, [X + fxx.dir * len * 0.5, Y + (k - 1.5) * 0.12, 0.3], [0, 0, (k - 1.5) * 0.06 * fxx.dir], [len, 0.34 * (1 - u * 0.7) * (k % 2 ? 0.6 : 1), 0.25]);
           e.draw(e.prims.sphere, tmpBlob, { color: k % 2 ? [1, 1, 1] : c, unlit: true, soft: true, alpha: 0.9 * fade });
         }
+      } else if (fxx.kind === "bolt") {
+        const fl = Math.sin(fxx.t * 70) > -0.4 ? 1 : 0.4;
+        drawBolt(X, Y + 7.5, Y, Math.floor(fxx.x) + Math.floor(fxx.t * 14), [1, 0.97, 0.55], 0.95 * fade * fl, 0.09);
+        drawBolt(X, Y + 7.5, Y, Math.floor(fxx.x) + 99 + Math.floor(fxx.t * 14), [1, 1, 1], 0.9 * fade * fl, 0.04);
+        glowSprite(X, Y + 0.2, 0.4, 2.8 * (0.4 + fade), [1, 0.95, 0.5], 0.7 * fade);
+        e.prim("ring", [X, Y + 0.05, 0.1], [0, 0, 0], [0.8 + u * 2.6, 1, 0.8 + u * 2.6], { color: [1, 1, 0.8], unlit: true, alpha: 0.7 * fade });
+      } else if (fxx.kind === "blast") {
+        const rr = Math.max(1.2, R / 14);
+        glowSprite(X, Y, 0.5, rr * (0.6 + u * 1.5), [1, 0.45, 0.1], 0.6 * fade);
+        glowSprite(X, Y, 0.6, rr * (0.3 + u * 0.9), [1, 0.9, 0.4], 0.8 * fade);
+        glowSprite(X, Y, 0.7, rr * 0.35 * fade, [1, 1, 0.95], 0.9 * fade);
+        e.prim("ring", [X, Y - 0.2, 0.3], [Math.PI / 2, 0, 0], [rr * (0.8 + u * 2.2), 1.2, rr * (0.8 + u * 2.2)], { color: [1, 0.7, 0.25], unlit: true, alpha: 0.7 * fade });
+        e.prim("ring", [X, Y - 0.4, 0.1], [0, 0, 0], [rr * (1 + u * 2.6), 1, rr * (1 + u * 1.2)], { color: [1, 0.55, 0.15], unlit: true, alpha: 0.55 * fade });
+        for (let k = 0; k < 14; k++) {
+          const a = (k / 14) * Math.PI * 2 + rnd(k + fxx.x) * 0.5;
+          const dd = rr * (0.3 + u * (1.3 + rnd(k * 1.7) * 0.9));
+          glowSprite(X + Math.cos(a) * dd, Y + Math.sin(a) * dd * 0.9 + u * 0.6, 0.5, 0.35 * (1 - u * 0.7), k % 2 ? [1, 0.75, 0.2] : [1, 0.4, 0.1], 0.9 * fade);
+        }
+      } else if (fxx.kind === "pillar" && fxx.el && fxx.el !== "fire" && fxx.el !== "lightning") {
+        const el = fxx.el;
+        const grow = Math.min(1, u * 3.5);
+        if (el === "stone" || el === "nature" || el === "blood") {
+          for (let k = 0; k < 5; k++) {
+            const hh = (1.5 + rnd(k + fxx.x) * 1.6) * grow * (1 - u * 0.3);
+            const cc: Vec3 = el === "stone" ? (k % 2 ? [0.62, 0.58, 0.52] : [0.75, 0.7, 0.62]) : el === "nature" ? (k % 2 ? [0.3, 0.7, 0.3] : [0.55, 0.9, 0.35]) : k % 2 ? [0.7, 0.05, 0.15] : [0.95, 0.15, 0.25];
+            m4.compose(tmpBlob, [X + (k - 2) * 0.28, Y + hh * 0.5, 0.1 + (k % 2) * 0.1], [0, 0, (k - 2) * 0.12], [0.3, hh, 0.3]);
+            e.draw(e.prims.cone, tmpBlob, { color: cc, emis: cc.map((v) => v * 0.35) as Vec3, alpha: 0.95 * (1 - u * u) });
+          }
+          glowSprite(X, Y + 0.3, 0.3, 2.6 * grow, el === "blood" ? [0.9, 0.1, 0.2] : el === "nature" ? [0.5, 1, 0.4] : [0.8, 0.75, 0.6], 0.35 * fade);
+        } else if (el === "water") {
+          m4.compose(tmpBlob, [X, Y + 2.0 * grow, 0.2], [0, 0, 0], [0.9 * (1 - u * 0.4), 4.2 * grow, 0.9 * (1 - u * 0.4)]);
+          e.draw(e.prims.sphere, tmpBlob, { color: [0.4, 0.85, 1], unlit: true, soft: true, alpha: 0.6 * fade });
+          for (let k = 0; k < 8; k++) glowSprite(X + (rnd(k * 3.3 + fxx.x) - 0.5) * 1.8, Y + 1 + grow * 3 * rnd(k) + Math.sin(u * 6 + k) * 0.2, 0.3, 0.35, [0.85, 0.97, 1], 0.8 * fade);
+          e.prim("ring", [X, Y + 0.05, 0.1], [0, 0, 0], [1.2 + u * 3, 1, 1.2 + u * 3], { color: [0.7, 0.95, 1], unlit: true, alpha: 0.7 * fade });
+        } else if (el === "spirit") {
+          m4.compose(tmpBlob, [X, Y + 3, 0.2], [0, 0, 0], [0.8, 6.5 * grow, 0.8]);
+          e.draw(e.prims.sphere, tmpBlob, { color: [0.45, 1, 0.75], unlit: true, soft: true, alpha: 0.45 * fade });
+          for (let k = 0; k < 3; k++) {
+            const hh = 0.5 + ((u * 3 + k * 0.33) % 1) * 5;
+            glowSprite(X + Math.sin(hh * 2 + k) * 0.4, Y + hh, 0.4, 0.75, [0.8, 1, 0.9], 0.8 * fade);
+            glowSprite(X + Math.sin(hh * 2 + k) * 0.4 - 0.12, Y + hh + 0.05, 0.5, 0.14, [0.05, 0.1, 0.1], 0.9 * fade);
+            glowSprite(X + Math.sin(hh * 2 + k) * 0.4 + 0.12, Y + hh + 0.05, 0.5, 0.14, [0.05, 0.1, 0.1], 0.9 * fade);
+          }
+        } else {
+          const w2 = 1.3 * (1 - u * 0.4);
+          m4.compose(tmpBlob, [X, Y + 3.5, 0.2], [0, 0, 0], [w2, 8 * grow, w2]);
+          e.draw(e.prims.sphere, tmpBlob, { color: [0.9, 0.95, 1], unlit: true, soft: true, alpha: 0.7 * fade });
+          glowSprite(X, Y + 0.3, 0.3, 3.2 * grow, [0.85, 0.92, 1], 0.5 * fade);
+        }
+        e.prim("ring", [X, Y + 0.05, 0.1], [0, 0, 0], [1.2 + u * 2.4, 1, 1.2 + u * 2.4], { color: [1, 1, 1], unlit: true, alpha: 0.5 * fade });
       } else if (fxx.kind === "pillar") {
         const w = 0.6 * (1 - u * 0.55);
         m4.compose(tmpBlob, [X, Y + 3, 0.2], [0, 0, 0], [w, 7.5 * (0.4 + 0.6 * Math.min(1, u * 4)), w]);
@@ -652,6 +703,81 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if (f.flash > 0.02) glowSprite(cx, cy, 6, 30, [1, 1, 1], 0.14 * f.flash);
     e.additive(false);
     (window as unknown as { __drawCalls?: number }).__drawCalls = e.drawCalls;
+  }
+
+  const rnd = (n: number) => {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+
+  /** raio em zigue-zague do alto até o chão */
+  function drawBolt(X: number, yTop: number, yBot: number, seed: number, c: Vec3, alpha: number, thick: number) {
+    const n = 9;
+    let px = X + (rnd(seed) - 0.5) * 1.2;
+    let py = yTop;
+    for (let i = 1; i <= n; i++) {
+      const u = i / n;
+      const nx = i === n ? X : X + (rnd(seed + i * 3.1) - 0.5) * 1.5 * (1 - u * 0.5);
+      const ny = yTop + (yBot - yTop) * u;
+      const dx = nx - px;
+      const dy = ny - py;
+      const len = Math.hypot(dx, dy);
+      m4.compose(tmpBlob, [(px + nx) / 2, (py + ny) / 2, 0.3], [0, 0, Math.atan2(dy, dx)], [len * 1.08, thick, thick]);
+      e.draw(e.prims.cube, tmpBlob, { color: c, unlit: true, alpha });
+      m4.compose(tmpBlob, [(px + nx) / 2, (py + ny) / 2, 0.28], [0, 0, Math.atan2(dy, dx)], [len * 1.08, thick * 3.2, thick * 3.2]);
+      e.draw(e.prims.sphere, tmpBlob, { color: c, unlit: true, soft: true, alpha: alpha * 0.28 });
+      px = nx;
+      py = ny;
+    }
+  }
+
+  /** brilho e rastro do projétil de acordo com o elemento do herói */
+  function drawShotGlow(s: ShotPaint, t: number) {
+    const X = (s.x + s.w / 2) * S;
+    const Y = ROWS - (s.y + s.h / 2) * S;
+    const c = col(s.color);
+    const dir = s.vx >= 0 ? 1 : -1;
+    const el = s.el;
+    if (!el || s.foe) {
+      glowSprite(X, Y, 0.3, 1.1, c, 0.5);
+      return;
+    }
+    const fl = 0.85 + Math.sin(t * 40 + X * 3) * 0.15;
+    if (el === "fire") {
+      glowSprite(X, Y, 0.3, 2.3 * fl, [1, 0.45, 0.1], 0.55);
+      glowSprite(X, Y, 0.35, 1.3, [1, 0.9, 0.4], 0.8);
+      glowSprite(X, Y, 0.4, 0.6, [1, 1, 0.9], 0.95);
+      for (let k = 1; k <= 6; k++) glowSprite(X - dir * k * 0.42, Y + Math.sin(t * 18 + k) * 0.12 + k * 0.03, 0.25, (1.5 - k * 0.2) * fl, k % 2 ? [1, 0.45, 0.12] : [1, 0.75, 0.2], 0.5 - k * 0.06);
+    } else if (el === "lightning") {
+      glowSprite(X, Y, 0.3, 1.6 * fl, [1, 0.95, 0.4], 0.5);
+      glowSprite(X, Y, 0.4, 0.55, [1, 1, 1], 0.95);
+      for (let k = 0; k < 3; k++) {
+        const a = rnd(Math.floor(t * 30) + k * 7) * Math.PI * 2;
+        m4.compose(tmpBlob, [X + Math.cos(a) * 0.35, Y + Math.sin(a) * 0.35, 0.35], [0, 0, a], [0.7, 0.05, 0.05]);
+        e.draw(e.prims.cube, tmpBlob, { color: [0.9, 0.95, 1], unlit: true, alpha: 0.9 });
+      }
+    } else if (el === "water") {
+      glowSprite(X, Y, 0.3, 1.5, [0.4, 0.85, 1], 0.45);
+      e.prim("ring", [X, Y, 0.3], [Math.PI / 2, 0, 0], [0.9 + Math.sin(t * 12) * 0.1, 1, 0.9], { color: [0.8, 0.97, 1], unlit: true, alpha: 0.7 });
+      for (let k = 1; k <= 4; k++) glowSprite(X - dir * k * 0.35, Y + Math.sin(t * 10 + k) * 0.1, 0.25, 0.7 - k * 0.1, [0.5, 0.9, 1], 0.4);
+    } else if (el === "stone") {
+      glowSprite(X, Y, 0.3, 1.3, [0.8, 0.75, 0.65], 0.3);
+      for (let k = 1; k <= 4; k++) glowSprite(X - dir * k * 0.3, Y - k * 0.04, 0.25, 0.6, [0.7, 0.65, 0.58], 0.3 - k * 0.05);
+    } else if (el === "nature") {
+      glowSprite(X, Y, 0.3, 1.3, [0.5, 1, 0.45], 0.4);
+      for (let k = 1; k <= 5; k++) glowSprite(X - dir * k * 0.34, Y + Math.sin(t * 14 + k * 1.3) * 0.18, 0.25, 0.65, k % 2 ? [0.55, 1, 0.4] : [1, 0.9, 0.5], 0.45 - k * 0.06);
+    } else if (el === "blood") {
+      glowSprite(X, Y, 0.3, 1.6, [0.9, 0.1, 0.2], 0.5);
+      for (let k = 1; k <= 5; k++) glowSprite(X - dir * k * 0.3, Y - k * 0.08, 0.25, 0.7 - k * 0.08, [0.75, 0.05, 0.15], 0.5 - k * 0.07);
+    } else if (el === "spirit") {
+      glowSprite(X, Y, 0.3, 1.8 * fl, [0.5, 1, 0.8], 0.45);
+      glowSprite(X, Y, 0.4, 0.8, [0.9, 1, 0.95], 0.8);
+      for (let k = 1; k <= 5; k++) glowSprite(X - dir * k * 0.4, Y + Math.sin(t * 8 + k * 1.7) * 0.25, 0.25, 1.0 - k * 0.14, [0.45, 1, 0.75], 0.4 - k * 0.05);
+    } else {
+      glowSprite(X, Y, 0.3, 1.8, [0.85, 0.9, 1], 0.5);
+      e.prim("ring", [X, Y, 0.3], [0, Math.PI / 2, 0.5 * dir], [1.1, 1, 1.1], { color: [0.95, 0.97, 1], unlit: true, alpha: 0.75 });
+      for (let k = 1; k <= 5; k++) glowSprite(X - dir * k * 0.36, Y, 0.25, 0.8 - k * 0.1, [0.8, 0.88, 1], 0.4 - k * 0.06);
+    }
   }
 
   function glowSprite(x: number, y: number, z: number, size: number, c: Vec3, a: number) {

@@ -22,6 +22,7 @@ async function walk(dir) {
   return out;
 }
 
+const stamp = Date.now().toString(36);
 await rm(dist, { recursive: true, force: true });
 await mkdir(path.join(dist, "assets"), { recursive: true });
 
@@ -35,7 +36,7 @@ await build({
   target: ["es2020"],
   jsx: "automatic",
   outfile: path.join(dist, "assets/app.js"),
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: { "process.env.NODE_ENV": '"production"', __BUILD__: JSON.stringify(stamp) },
   legalComments: "none",
 });
 
@@ -63,8 +64,8 @@ await writeFile(path.join(dist, "assets/app.css"), css);
 
 // 3) HTML + estáticos
 // cache-busting: app.js/app.css têm nome fixo, então o navegador (e o CDN do GitHub Pages) guardavam a versão velha
-const stamp = Date.now().toString(36);
-const html = (await readFile(path.join(root, "index.html"), "utf8")).replace("./assets/app.css", `./assets/app.css?v=${stamp}`).replace("./assets/app.js", `./assets/app.js?v=${stamp}`);
+const guard = `<meta name="build" content="${stamp}" />\n    <script>(function(){try{var m="${stamp}";fetch(location.pathname+"?nc="+Date.now(),{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){var x=t.match(/name="build" content="([^"]+)"/);if(x&&x[1]!==m&&!sessionStorage.getItem("bn-r"+x[1])){sessionStorage.setItem("bn-r"+x[1],"1");location.replace(location.pathname+"?v="+x[1])}}).catch(function(){})}catch(e){}})();</script>`;
+const html = (await readFile(path.join(root, "index.html"), "utf8")).replace("</head>", `    ${guard}\n  </head>`).replace("./assets/app.css", `./assets/app.css?v=${stamp}`).replace("./assets/app.js", `./assets/app.js?v=${stamp}`);
 await writeFile(path.join(dist, "index.html"), html);
 await cp(path.join(root, "public"), dist, { recursive: true });
 await writeFile(path.join(dist, ".nojekyll"), "");

@@ -1,11 +1,14 @@
 import { m4, hex, type Engine, type Mat4, type Vec3 } from "./gl";
 import { HEROES } from "../game/content";
-import type { HeroId, Kind } from "../game/types";
+import type { EquipKey, HeroId, Kind } from "../game/types";
+import { buildSkinHero, drawSkinModel, type SkinPart } from "./skinhero";
+import { buildSkinMonster } from "./skinmob";
+import { charAsset } from "./skin";
 
 /* Grafo de cena minúsculo: cada Node é um grupo (pos/rot/scl) que pode ter uma
    primitiva desenhada com `size`. Os filhos herdam só o grupo (não o size). */
 
-type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring";
+export type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring";
 
 export class Node {
   prim: Prim | null = null;
@@ -30,18 +33,18 @@ export class Node {
 
 const INK: Vec3 = [0.078, 0.031, 0.047];
 
-function mix(a: string, b: string, k: number): string {
+export function mix(a: string, b: string, k: number): string {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
   const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
   return "#" + pa.map((v, i) => Math.round(v + (pb[i]! - v) * k).toString(16).padStart(2, "0")).join("");
 }
 
-function G(x = 0, y = 0, z = 0): Node {
+export function G(x = 0, y = 0, z = 0): Node {
   const n = new Node();
   n.pos = [x, y, z];
   return n;
 }
-function P(prim: Prim, size: Vec3, color: string | Vec3, pos: Vec3 = [0, 0, 0], rot: Vec3 = [0, 0, 0], emis = false): Node {
+export function P(prim: Prim, size: Vec3, color: string | Vec3, pos: Vec3 = [0, 0, 0], rot: Vec3 = [0, 0, 0], emis = false): Node {
   const n = new Node();
   n.prim = prim;
   n.size = size;
@@ -51,7 +54,7 @@ function P(prim: Prim, size: Vec3, color: string | Vec3, pos: Vec3 = [0, 0, 0], 
   if (emis) n.emis = n.color.map((v) => v * 0.9) as Vec3;
   return n;
 }
-function glow(n: Node, k = 1) {
+export function glow(n: Node, k = 1) {
   n.emis = n.color.map((v) => v * k) as Vec3;
   n.ink = false;
   return n;
@@ -67,7 +70,8 @@ function eyes(parent: Node, y: number, z: number, spread: number, s: number, iri
 }
 
 /** o que o herói está vestindo/segurando (vem do equipamento) */
-export type GearLook = { armor: string | null; armorRarity: number; weapon: string | null; weaponRarity: number; relic: string | null; relicColor: string };
+export type GearPiece = { base: string; rarity: number; color: string };
+export type GearLook = Record<EquipKey, GearPiece | null>;
 
 const ARMOR_COLOR: Record<string, string> = { plate: "#c9d1db", vest: "#1b1b22", robe: "#c3101e", cape: "#7b2bd1" };
 const GOLD = "#e8b72e";
@@ -85,6 +89,16 @@ export type Pose = {
   world: number;
   attack: number; // 0..1 (pulso depois de atirar)
   gear?: GearLook;
+  /** no chão? */
+  ground?: boolean;
+  /** 0..1: progresso do golpe corpo a corpo (0 = sem golpe) */
+  swing?: number;
+  /** 0..1 animação de morte */
+  dying?: number;
+  /** comportamento do monstro (andar, voar, parado…) */
+  behavior?: string;
+  /** 0..1 carga/ataque do monstro */
+  windup?: number;
 };
 
 export type Model = {
@@ -96,6 +110,8 @@ export type Model = {
   update: (p: Pose) => void;
   formNodes: Node[];
   fly: boolean;
+  /** esqueleto animado (quando o pacote de modelos carregou) */
+  skin?: SkinPart;
 };
 
 function swing(n: Node | undefined, a: number) {
@@ -555,30 +571,38 @@ export function buildHero(id: HeroId): Model {
     if (emisK > 0) n.emis = n.color.map((v) => v * emisK) as Vec3;
     if (!n.baseColor) n.baseColor = n.color;
   };
+  const ARMOR_MAP: Record<string, string> = { plate: "plate", cuirass: "plate", vest: "vest", tunic: "vest", robe: "robe" };
+  const WEAPON_MAP: Record<string, string> = { knife: "knife", claws: "knife", wand: "scepter", sword: "sword", staff: "staff", scepter: "scepter", bow: "bow", axe: "axe", hammer: "axe" };
   const applyGear = (g: GearLook | undefined) => {
-    const key = g ? `${g.armor}|${g.armorRarity}|${g.weapon}|${g.weaponRarity}|${g.relic}` : "";
+    const ak = g?.cape ? "cape" : g?.armor ? ARMOR_MAP[g.armor.base] ?? "vest" : null;
+    const wk = g?.weapon ? WEAPON_MAP[g.weapon.base] ?? "sword" : null;
+    const ar = g?.cape ? g.cape.rarity : g?.armor?.rarity ?? 0;
+    const wr = g?.weapon?.rarity ?? 0;
+    const rel = g?.necklace ?? g?.ring1 ?? g?.offhand ?? null;
+    const key = `${ak}|${ar}|${wk}|${wr}|${rel?.base}|${g?.armor?.color}`;
     if (key === gearKey) return;
     gearKey = key;
-    for (const k of Object.keys(armorSets)) armorSets[k]!.root.visible = Boolean(g && g.armor === k);
-    for (const k of Object.keys(weaponSets)) weaponSets[k]!.root.visible = Boolean(g && g.weapon === k);
-    if (parts.sylBow) parts.sylBow.visible = !g || !g.weapon;
-    if (g?.armor && armorSets[g.armor]) {
-      const set = armorSets[g.armor]!;
-      const base = g.armorRarity >= 3 ? GOLD : (ARMOR_COLOR[g.armor] ?? "#c9d1db");
-      const trim = g.armorRarity >= 2 ? (g.armorRarity >= 3 ? "#fff2b0" : GOLD) : g.armor === "vest" ? "#8a1620" : g.armor === "plate" ? "#2a2a34" : g.armor === "robe" ? "#e8b72e" : "#e8b72e";
+    for (const k of Object.keys(armorSets)) armorSets[k]!.root.visible = k === ak;
+    for (const k of Object.keys(weaponSets)) weaponSets[k]!.root.visible = k === wk;
+    if (parts.sylBow) parts.sylBow.visible = !wk;
+    if (ak && armorSets[ak]) {
+      const set = armorSets[ak]!;
+      const col = g?.cape ? g.cape.color : g?.armor?.color ?? "#c9d1db";
+      const base = ar >= 3 ? GOLD : col;
+      const trim = ar >= 2 ? (ar >= 3 ? "#fff2b0" : GOLD) : "#e8b72e";
       for (const n of set.main) paint(n, base);
       for (const n of set.trim) paint(n, trim);
     }
-    if (g?.weapon && weaponSets[g.weapon]) {
-      const set = weaponSets[g.weapon]!;
-      const rc = RAR_GLOW[Math.min(3, g.weaponRarity)]!;
-      const blade = g.weapon === "staff" || g.weapon === "scepter" ? rc : g.weapon === "bow" ? "#f4efe0" : g.weaponRarity >= 3 ? GOLD : "#dfe5ee";
+    if (wk && weaponSets[wk]) {
+      const set = weaponSets[wk]!;
+      const rc = RAR_GLOW[Math.min(3, wr)]!;
+      const blade = wk === "staff" || wk === "scepter" ? rc : wk === "bow" ? "#f4efe0" : wr >= 3 ? GOLD : "#dfe5ee";
       for (const n of set.main) paint(n, blade, n.emis[0] > 0 ? 0.8 : 0);
-      for (const n of set.trim) paint(n, g.weapon === "staff" || g.weapon === "scepter" ? rc : rc, n.emis[0] > 0 ? 0.9 : 0);
+      for (const n of set.trim) paint(n, rc, n.emis[0] > 0 ? 0.9 : 0);
     }
-    relicGem.visible = Boolean(g?.relic);
-    relicChain.visible = Boolean(g?.relic);
-    if (g?.relic) paint(relicGem, g.relicColor, 0.9);
+    relicGem.visible = Boolean(rel);
+    relicChain.visible = Boolean(rel);
+    if (rel) paint(relicGem, rel.color, 0.9);
   };
 
   /* ---- efeitos da transformação: anéis de energia, colunas e brilho ---- */
@@ -1521,8 +1545,8 @@ const cache = new Map<string, number>();
 void cache;
 
 export function buildModel(kind: Kind | "hero", hero: HeroId, world: number): Model {
-  if (kind === "hero") return buildHero(hero);
-  return buildEnemy(kind, world);
+  if (kind === "hero") return (charAsset() && buildSkinHero(hero)) || buildHero(hero);
+  return (charAsset() && buildSkinMonster(kind)) || buildEnemy(kind, world);
 }
 
 /* ---------------------------------------------------------------- desenho */
@@ -1561,6 +1585,7 @@ function drawNode(e: Engine, n: Node, parent: Mat4, depth: number, st: DrawState
 
 export function drawModel(e: Engine, model: Model, world: Mat4, st: DrawState, pass: 0 | 1) {
   drawNode(e, model.root, world, 0, st, pass);
+  if (model.skin) drawSkinModel(e, model.skin, world, st, pass, drawNode);
 }
 
 export const INK_COLOR = INK;

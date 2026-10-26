@@ -1,4 +1,4 @@
-import { STAT_KEYS, type Equip, type HeroId, type Stats, type StatKey } from "./types";
+import { EQUIP_KEYS, STAT_KEYS, type Equip, type HeroId, type Stats, type StatKey } from "./types";
 
 /** pontos base de cada herói no nível 1 */
 export const BASE_STATS: Record<HeroId, Stats> = {
@@ -22,7 +22,8 @@ export const STAT_INFO: Record<StatKey, { abbr: string; name: string; text: stri
 
 export function sumEquip(eq: Equip): Stats {
   const out: Stats = { str: 0, int: 0, dex: 0, wis: 0, rec: 0 };
-  for (const it of [eq.weapon, eq.armor, eq.relic]) {
+  for (const k of EQUIP_KEYS) {
+    const it = eq[k];
     if (!it) continue;
     for (const k of STAT_KEYS) out[k] += it.mods[k] ?? 0;
   }
