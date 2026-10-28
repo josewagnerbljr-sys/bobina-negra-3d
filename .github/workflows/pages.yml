@@ -22,7 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm install -g npm@10.9.2
+      - run: npm install --no-audit --no-fund --legacy-peer-deps || (rm -rf node_modules package-lock.json && npm cache clean --force && npm install --no-audit --no-fund --legacy-peer-deps)
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
