@@ -1,6 +1,6 @@
 import { hex, m4, type Engine, type Mat4, type Vec3 } from "./gl";
 import { G, glow, mix, Node, P, type DrawState, type GearLook, type GearPiece, type Model, type Pose } from "./models";
-import { charAsset, RIG_SCALE, SkinRig, type CharAsset } from "./skin";
+import { charAsset, RIG_SCALE, skinMeshFor, SkinRig, type CharAsset } from "./skin";
 import { HEROES } from "../game/content";
 import type { EquipKey, HeroId } from "../game/types";
 
@@ -28,7 +28,7 @@ export function drawSkinModel(
   m4.compose(sc, FA, FA, [RIG_SCALE, RIG_SCALE, RIG_SCALE]);
   m4.mul(sw, world, sc);
   if (pass === 0) {
-    e.drawSkin(sk.a.mesh, sw, sk.rig.bones, sk.a.J, sk.rig.region, { color: st.tint ?? [1, 1, 1], emis: st.emis ?? [0, 0, 0], flash: st.flash, alpha: st.alphaMul }, st.ink, st.thick * 0.26);
+    e.drawSkin(skinMeshFor(e, sk.a), sw, sk.rig.bones, sk.a.J, sk.rig.region, { color: st.tint ?? [1, 1, 1], emis: st.emis ?? [0, 0, 0], flash: st.flash, alpha: st.alphaMul }, st.ink, st.thick * 0.26);
   }
   for (const m of sk.mounts) {
     if (!m.node.visible) continue;

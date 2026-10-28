@@ -103,3 +103,8 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - **Efeitos por elemento**: bola de fogo que explode em área (Tito), raios encadeados (Lúmen), maré (Marina), espinhos de pedra (Pia), raízes (Syl), sangue (Lena), espíritos (Osso), lua (Ivo).
 - **Correções**: monstros olham para onde andam, tiro reto não desvia mais, mira só persegue alvo à frente.
 - Selo de versão na tela inicial ("v6 · build …") para conferir se o link atualizou.
+
+## v7 — pacote único e completo
+- Cenários dinâmicos: cada fase tem um clima (amanhecer, dia, entardecer, noite, tempestade) que muda céu, luz e névoa e vai virando o próximo ao longo do caminho; relâmpago suave; nuvens em parallax; bandos de morcegos/aves/gaivotas; balões, engrenagens, páginas voando, aurora, holofotes, bolhas, faíscas, moedas brilhando, etc. por mundo (`src/game/ambient.ts`).
+- Resolução dinâmica (baixa a nitidez sozinha se o aparelho engasgar).
+- Tudo de v5/v6: heróis e 13 monstros com esqueleto (pacotes UAL), 11 slots, 5 modos, golpe, câmera, drops 3D, ícones de itens, efeitos elementais, seleção de personagens com rolagem horizontal.

@@ -1,4 +1,6 @@
+import { moodFor, tintSky, tintLight, drawAmbientOpaque, drawAmbientBlend, type AmbientCtx } from "./ambient";
 import { Engine, hex, m4, mix3, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
+import { loadCharAsset } from "../engine/skin";
 import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
@@ -32,7 +34,7 @@ export type Paint = {
   gear?: GearLook;
 };
 
-export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number; slot: string };
+export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number; slot: string; fam: string; acc: string };
 
 export type Fx = { kind: "wave" | "slash" | "pillar" | "nova" | "blast" | "bolt"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number; el?: string };
 
@@ -134,9 +136,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const prevModels = new Map<string, Model>();
 
   const gfxCache = new Map<Level, Gfx>();
-  const models = new WeakMap<object, Model>();
+  let models = new WeakMap<object, Model>();
   const heroModels = new Map<HeroId, Model>();
   const yawOf = new WeakMap<Model, number>();
+
+  // modelos animados (esqueleto + animações): quando chegam, todos os bonecos são refeitos com eles
+  let skinTried = false;
+  function startSkinLoad() {
+    if (skinTried) return;
+    skinTried = true;
+    loadCharAsset(e)
+      .then((a) => {
+        if (!a) return;
+        heroModels.clear();
+        models = new WeakMap<object, Model>();
+        prevModels.clear();
+      })
+      .catch(() => undefined);
+  }
+  startSkinLoad();
 
   function gfxFor(level: Level): Gfx {
     let g = gfxCache.get(level);
@@ -251,6 +269,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let attractLevel: Level | null = null;
   let lastT = 0;
   const tmpBlob = m4.create();
+  let frameAvg = 0.016, lastScale = 0, resScale = 1;
+  const moodLight: Lighting = { sun: [0, 0, 0], sunDir: [0, 1, 0], sky: [0, 0, 0], ground: [0, 0, 0], fog: [0, 0, 0], fogNear: 0, fogFar: 0 };
 
   function render(f: Frame) {
     if (e.lost) return;
@@ -258,7 +278,14 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     lastT = f.t;
     const cssW = canvas.clientWidth || 640;
     const cssH = canvas.clientHeight || 360;
-    e.resize(cssW, cssH, 1.5);
+    // resolução dinâmica: se o aparelho engasga, baixa a nitidez; se sobra, sobe
+    frameAvg = frameAvg * 0.94 + dt * 0.06;
+    if (f.t - lastScale > 1.5) {
+      lastScale = f.t;
+      if (frameAvg > 0.026 && resScale > 0.6) resScale = Math.max(0.6, resScale - 0.12);
+      else if (frameAvg < 0.019 && resScale < 1) resScale = Math.min(1, resScale + 0.06);
+    }
+    e.resize(cssW, cssH, 1.5 * resScale);
     const aspect = canvas.width / Math.max(1, canvas.height);
 
     // fase: a do jogo ou uma de vitrine nos menus
@@ -308,7 +335,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.5 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      const rT = (1.5 - 0.6 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
@@ -347,13 +374,17 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     e.begin(g.world ? hex(g.world.fog) : [0, 0, 0]);
     e.setCamera(eye, at, FOV, 0.5, 260);
 
-    e.drawSky(g.sky.top, g.sky.mid, g.sky.bot, f.t, g.sky.stars, g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
-    e.useLit(g.light);
+    const mood = moodFor(L.index % 5, f.playing ? heroX / Math.max(1, L.cols) : 0.3, f.t);
+    e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
+    e.useLit(tintLight(g.light, mood, moodLight));
 
     // estáticos
     e.draw(g.back, null, { cel: false });
     e.draw(g.glow, null, { unlit: true });
     e.draw(g.terrain, null, {});
+
+    const ambCtx: AmbientCtx = { e, wid: g.world ? g.world.id : 0, t: f.t, cx, cy, halfW, mood, dark: [0.04, 0.04, 0.07], accent: g.accent, fog: mood.flash > 0 ? [0.9, 0.93, 1] : tintSky(hex(g.world ? g.world.fog : "#444455"), mood), hero: null, glow: glowSprite, tmp: tmpBlob };
+    drawAmbientOpaque(ambCtx);
 
     // lanternas dos checkpoints
     for (const lan of g.parts.lanterns) {
@@ -454,29 +485,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       m4.compose(tmpBlob, [sh.x, sh.y + 0.035, 0.1], [-Math.PI / 2, 0, 0], [k * 2.1, k * 1.5, 0.02]);
       e.draw(e.prims.sphere, tmpBlob, { color: [0.0, 0.0, 0.01], unlit: true, soft: true, alpha: a });
     }
+    drawAmbientBlend(ambCtx);
     for (const lt of f.loot) {
       if (!near(lt.x * S)) continue;
-      const c = col(lt.color);
-      const bob = Math.sin(f.t * 3 + lt.t) * 0.06;
-      const X = lt.x * S;
-      const Y = ROWS - lt.y * S + 0.3 + bob;
-      const spin = f.t * 1.6 + lt.t;
-      const em: Vec3 = [c[0] * 0.45, c[1] * 0.45, c[2] * 0.45];
-      const mat = { color: c, emis: em };
-      const metal = { color: [0.82, 0.85, 0.9] as Vec3, emis: [0.1, 0.1, 0.12] as Vec3 };
-      if (lt.slot === "potion") {
-        e.prim("sphere", [X, Y, 0.05], [0, spin, 0], [0.26, 0.28, 0.26], mat, INK_COLOR, 0.05);
-        e.prim("cyl", [X, Y + 0.2, 0.05], [0, spin, 0], [0.09, 0.14, 0.09], metal, INK_COLOR, 0.04);
-      } else if (lt.slot === "weapon") {
-        e.prim("cube", [X, Y, 0.05], [0, spin, 0.7], [0.08, 0.52, 0.08], mat, INK_COLOR, 0.05);
-        e.prim("cube", [X - 0.08, Y - 0.1, 0.05], [0, spin, 0.7], [0.26, 0.06, 0.1], metal, INK_COLOR, 0.04);
-      } else if (lt.slot === "armor") {
-        e.prim("cube", [X, Y, 0.05], [0, spin, 0], [0.34, 0.34, 0.16], mat, INK_COLOR, 0.05);
-        e.prim("cube", [X, Y + 0.17, 0.05], [0, spin, 0], [0.4, 0.06, 0.18], metal, INK_COLOR, 0.04);
-      } else {
-        e.prim("ring", [X, Y, 0.05], [Math.PI / 2 * 0.4, spin, 0], [0.3, 0.3, 0.3], mat, INK_COLOR, 0.04);
-        e.prim("sphere", [X, Y + 0.17, 0.05], [0, 0, 0], [0.1, 0.1, 0.1], { color: [1, 0.9, 0.5] as Vec3, emis: [0.6, 0.5, 0.2] as Vec3 }, INK_COLOR, 0.03);
-      }
+      drawLoot(lt, f.t);
     }
     for (const it of pass1) drawModel(e, it.m, it.mat, it.st, 1);
     e.blend(false);
@@ -496,7 +508,18 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (a.kind === "hero" && a.form) glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + a.h / 2) * S, 0.2, 3.0, hex(heroAccent(a.hero)), 0.28);
     }
     for (const lt of f.loot) {
-      if (near(lt.x * S)) glowSprite(lt.x * S, ROWS - lt.y * S + 0.3, 0.2, 1.1 + lt.rarity * 0.45, col(lt.color), 0.55);
+      if (!near(lt.x * S)) continue;
+      const c = col(lt.color);
+      glowSprite(lt.x * S, ROWS - lt.y * S + 0.3, 0.2, 0.9 + lt.rarity * 0.3, c, 0.4);
+      if (lt.rarity > 0) {
+        const h = 1.3 + lt.rarity * 0.9;
+        m4.compose(tmpBlob, [lt.x * S, ROWS - lt.y * S + h * 0.5, 0.1], [0, 0, 0], [0.12 + lt.rarity * 0.03, h, 0.12]);
+        e.draw(e.prims.sphere, tmpBlob, { color: c, unlit: true, soft: true, alpha: 0.12 + lt.rarity * 0.04 });
+        for (let q = 0; q < lt.rarity * 2; q++) {
+          const u = (f.t * 0.6 + q * 0.37 + lt.t) % 1;
+          glowSprite(lt.x * S + Math.sin(f.t * 2 + q * 2) * 0.35, ROWS - lt.y * S + 0.3 + u * h, 0.3, 0.16, [1, 1, 0.9], 0.8 * (1 - u));
+        }
+      }
     }
     for (const s of f.shots) drawShotGlow(s, f.t);
     if (f.playing && f.exit) {
@@ -777,6 +800,123 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       glowSprite(X, Y, 0.3, 1.8, [0.85, 0.9, 1], 0.5);
       e.prim("ring", [X, Y, 0.3], [0, Math.PI / 2, 0.5 * dir], [1.1, 1, 1.1], { color: [0.95, 0.97, 1], unlit: true, alpha: 0.75 });
       for (let k = 1; k <= 5; k++) glowSprite(X - dir * k * 0.36, Y, 0.25, 0.8 - k * 0.1, [0.8, 0.88, 1], 0.4 - k * 0.06);
+    }
+  }
+
+  /** objeto 3D do drop: cada família de item tem uma miniatura própria, girando e flutuando */
+  function drawLoot(lt: LootPaint, t: number) {
+    const c = col(lt.color);
+    const ac = col(lt.acc);
+    const k = 1 + lt.rarity * 0.14;
+    const bob = Math.sin(t * 3 + lt.t) * 0.07;
+    const X0 = lt.x * S;
+    const Y0 = ROWS - lt.y * S + 0.34 + bob;
+    const spin = t * 1.6 + lt.t;
+    const cs = Math.cos(spin);
+    const sn = Math.sin(spin);
+    const em = (v: Vec3, m = 0.4): Vec3 => [v[0] * m, v[1] * m, v[2] * m];
+    const steel: Vec3 = [0.84, 0.87, 0.92];
+    const wood: Vec3 = [0.5, 0.33, 0.2];
+    const gold: Vec3 = [0.95, 0.75, 0.2];
+    const part = (kind: "cube" | "sphere" | "cone" | "cyl" | "ring", ox: number, oy: number, oz: number, sx: number, sy: number, sz: number, color: Vec3, rot: Vec3 = [0, 0, 0], emis = 0.3) => {
+      const rx = (ox * cs - oz * sn) * k;
+      const rz = (ox * sn + oz * cs) * k;
+      e.prim(kind, [X0 + rx, Y0 + oy * k, 0.05 + rz], [rot[0], rot[1] + spin, rot[2]], [sx * k, sy * k, sz * k], { color, emis: em(color, emis) }, INK_COLOR, 0.04);
+    };
+    const f = lt.fam;
+    if (f === "flask" || f === "bottle") {
+      part("sphere", 0, -0.02, 0, 0.3, f === "flask" ? 0.28 : 0.34, 0.3, c, [0, 0, 0], 0.55);
+      part("cyl", 0, 0.2, 0, 0.1, 0.16, 0.1, [0.85, 0.9, 0.95]);
+      part("cyl", 0, 0.3, 0, 0.12, 0.05, 0.12, wood);
+    } else if (f === "bread") {
+      part("sphere", 0, 0, 0, 0.5, 0.26, 0.3, [0.85, 0.6, 0.3]);
+    } else if (f === "scroll") {
+      part("cyl", 0, 0, 0, 0.14, 0.42, 0.14, [0.94, 0.88, 0.74], [0, 0, 1.2]);
+      part("sphere", 0, 0, 0.1, 0.11, 0.11, 0.06, c, [0, 0, 0], 0.6);
+    } else if (f === "sword" || f === "foil" || f === "knife" || f === "scimitar" || f === "spear" || f === "claws") {
+      const len = f === "knife" ? 0.3 : f === "spear" ? 0.8 : 0.55;
+      part("cube", 0, 0.05, 0, f === "foil" || f === "spear" ? 0.04 : 0.08, len, 0.025, f === "knife" ? steel : steel, [0, 0, 0.55]);
+      part("cube", -0.05, -len * 0.45, 0, 0.28, 0.06, 0.08, f === "spear" ? ac : gold, [0, 0, 0.55]);
+      part("cyl", -0.1, -len * 0.62, 0, 0.05, 0.16, 0.05, wood, [0, 0, 0.55]);
+      part("sphere", 0, len * 0.5, 0, 0.1, 0.1, 0.1, c, [0, 0, 0], 0.5);
+    } else if (f === "wand" || f === "staff" || f === "scepter") {
+      part("cyl", 0, 0, 0, 0.05, 0.72, 0.05, f === "scepter" ? gold : wood, [0, 0, 0.5]);
+      part("sphere", 0.17, 0.3, 0, 0.17, 0.17, 0.17, c, [0, 0, 0], 0.9);
+      part("ring", 0.17, 0.3, 0, 0.3, 0.3, 0.3, ac, [0.5, 0, 0]);
+    } else if (f === "axe" || f === "hammer") {
+      part("cyl", 0, 0, 0, 0.05, 0.7, 0.05, wood, [0, 0, 0.5]);
+      part(f === "axe" ? "cone" : "cube", 0.2, 0.3, 0, f === "axe" ? 0.34 : 0.3, f === "axe" ? 0.34 : 0.22, 0.1, f === "axe" ? steel : c, [0, 0, f === "axe" ? -1.57 : 0.5]);
+    } else if (f === "bow" || f === "crossbow") {
+      part("ring", 0, 0, 0, 0.55, 0.55, 0.55, wood, [Math.PI / 2, 0, 0.3]);
+      part("cube", 0.02, 0, 0, 0.02, 0.6, 0.02, [0.95, 0.93, 0.85]);
+    } else if (f === "shield" || f === "orb" || f === "tome" || f === "lantern" || f === "quiver") {
+      if (f === "shield") {
+        part("cyl", 0, 0, 0, 0.5, 0.07, 0.5, c, [Math.PI / 2, 0, 0], 0.4);
+        part("sphere", 0, 0, 0.05, 0.16, 0.16, 0.1, gold);
+      } else if (f === "orb") {
+        part("sphere", 0, 0.05, 0, 0.36, 0.36, 0.36, c, [0, 0, 0], 0.9);
+        part("cyl", 0, -0.2, 0, 0.2, 0.08, 0.2, gold);
+      } else if (f === "tome") {
+        part("cube", 0, 0, 0, 0.42, 0.52, 0.14, c, [0, 0, 0], 0.4);
+        part("cube", 0.02, 0, 0, 0.36, 0.46, 0.15, [0.95, 0.92, 0.82]);
+        part("cube", -0.2, 0, 0, 0.05, 0.54, 0.16, ac);
+      } else if (f === "lantern") {
+        part("cube", 0, 0, 0, 0.3, 0.38, 0.3, c, [0, 0, 0], 0.9);
+        part("cube", 0, 0.24, 0, 0.36, 0.06, 0.36, gold);
+        part("cube", 0, -0.24, 0, 0.36, 0.06, 0.36, gold);
+      } else {
+        part("cyl", 0, 0, 0, 0.22, 0.5, 0.22, wood);
+        for (let i = -1; i <= 1; i++) part("cube", i * 0.06, 0.34, 0, 0.03, 0.2, 0.03, [0.9, 0.85, 0.7]);
+      }
+    } else if (f === "cap" || f === "tophat" || f === "hood" || f === "helm" || f === "crown" || f === "mask") {
+      if (f === "tophat") {
+        part("cyl", 0, 0.05, 0, 0.26, 0.4, 0.26, c);
+        part("cyl", 0, -0.14, 0, 0.5, 0.05, 0.5, c);
+        part("cyl", 0, -0.04, 0, 0.27, 0.07, 0.27, ac);
+      } else if (f === "crown") {
+        part("cyl", 0, -0.04, 0, 0.42, 0.14, 0.42, gold, [0, 0, 0], 0.6);
+        for (let i = 0; i < 5; i++) part("cone", Math.cos(i * 1.256) * 0.17, 0.1, Math.sin(i * 1.256) * 0.17, 0.1, 0.18, 0.1, gold, [0, 0, 0], 0.6);
+      } else if (f === "mask") {
+        part("sphere", 0, 0, 0, 0.4, 0.46, 0.14, [0.96, 0.94, 0.9]);
+        part("sphere", -0.1, 0.05, 0.07, 0.1, 0.06, 0.04, [0.1, 0.05, 0.08]);
+        part("sphere", 0.1, 0.05, 0.07, 0.1, 0.06, 0.04, [0.1, 0.05, 0.08]);
+      } else {
+        part("sphere", 0, 0, 0, 0.44, f === "cap" ? 0.3 : 0.4, 0.44, f === "helm" ? steel : c);
+        if (f === "helm") part("cube", 0, 0.02, 0.2, 0.34, 0.06, 0.04, [0.08, 0.04, 0.06]);
+        if (f === "cap") part("cube", 0, -0.08, 0.22, 0.34, 0.04, 0.24, ac);
+      }
+    } else if (f === "amulet" || f === "charm" || f === "locket" || f === "whistle" || f === "pearls" || f === "scarab" || f === "medal") {
+      part("ring", 0, 0.12, 0, 0.5, 0.5, 0.5, [0.75, 0.62, 0.42], [Math.PI / 2 * 0.2, 0, 0]);
+      part(f === "charm" ? "cone" : "sphere", 0, -0.14, 0, 0.2, 0.26, 0.12, c, [0, 0, 0], 0.9);
+      part("sphere", 0, -0.14, 0.05, 0.08, 0.08, 0.08, ac, [0, 0, 0], 0.9);
+    } else if (f === "ring" || f === "ringthin") {
+      part("ring", 0, -0.04, 0, 0.34, 0.34, 0.34, gold, [Math.PI / 2 * 0.3, 0, 0], 0.5);
+      part("sphere", 0, 0.14, 0, 0.12, 0.14, 0.12, ac, [0, 0, 0], 1);
+    } else if (f === "vest" || f === "plate" || f === "tunic" || f === "robe") {
+      part("cube", 0, 0, 0, 0.42, f === "robe" ? 0.56 : 0.42, 0.2, f === "plate" ? steel : c, [0, 0, 0], 0.35);
+      part("cube", 0, 0.24, 0, 0.5, 0.08, 0.22, f === "plate" ? c : ac);
+      part("cube", 0, 0, 0.1, 0.08, 0.4, 0.04, ac);
+    } else if (f === "cape" || f === "cloak") {
+      part("cone", 0, -0.02, 0, 0.5, 0.5, 0.14, c, [Math.PI, 0, 0], 0.35);
+      part("cyl", 0, 0.24, 0, 0.36, 0.05, 0.12, ac);
+    } else if (f === "gloves" || f === "gauntlet" || f === "boxing") {
+      part("cube", 0, 0, 0, 0.3, f === "boxing" ? 0.3 : 0.34, 0.16, f === "gauntlet" ? steel : c, [0, 0, 0], 0.3);
+      part("cube", 0, -0.2, 0, 0.34, 0.1, 0.2, ac);
+      for (let i = -1; i <= 1; i++) part("cube", i * 0.08, 0.2, 0, 0.06, 0.12, 0.1, f === "gauntlet" ? steel : c);
+    } else if (f === "pants" || f === "greaves") {
+      for (const sx of [-1, 1]) part("cube", sx * 0.1, 0, 0, 0.16, 0.5, 0.14, f === "greaves" ? steel : c, [0, 0, sx * -0.05], 0.3);
+      part("cube", 0, 0.26, 0, 0.4, 0.08, 0.16, ac);
+    } else if (f === "boots" || f === "slippers") {
+      part("cube", 0, 0.04, -0.04, 0.2, 0.4, 0.2, c, [0, 0, 0], 0.3);
+      part("cube", 0.08, -0.14, 0.08, 0.34, 0.14, 0.22, c, [0, 0, 0], 0.3);
+      part("cube", 0, 0.24, -0.04, 0.24, 0.06, 0.24, ac);
+    } else {
+      part("sphere", 0, 0, 0, 0.3, 0.3, 0.3, c, [0, 0, 0], 0.6);
+    }
+    // raridade: anel no chão, feixe de luz e faíscas
+    if (lt.rarity > 0) {
+      const gy = ROWS - lt.y * S + 0.05;
+      e.prim("ring", [X0, gy, 0.05], [0, 0, 0], [0.7 + Math.sin(t * 3 + lt.t) * 0.06, 1, 0.7], { color: c, emis: em(c, 0.9), unlit: true }, undefined, 0);
     }
   }
 

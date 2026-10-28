@@ -17,6 +17,9 @@ export type CharAsset = {
   hip: Float32Array;
   clips: Map<string, Clip>;
   mesh: GpuMesh;
+  /** geometria bruta, para criar a malha em outro contexto GL (a prévia do personagem usa outro) */
+  raw: { pos: Float32Array; nor: Float32Array; col: Float32Array; ji: Uint8Array; w: Uint8Array; idx: Uint16Array };
+  meshes: Map<Engine, GpuMesh>;
   height: number;
   version: number;
 };
@@ -35,7 +38,8 @@ export function loadCharAsset(e: Engine): Promise<CharAsset | null> {
   loading = (async () => {
     try {
       const base = new URL("./models/", document.baseURI).href;
-      const [jr, br] = await Promise.all([fetch(base + "char.json"), fetch(base + "char.bin")]);
+      const q = typeof __BUILD__ === "string" ? "?v=" + __BUILD__ : "";
+      const [jr, br] = await Promise.all([fetch(base + "char.json" + q), fetch(base + "char.bin" + q)]);
       if (!jr.ok || !br.ok) return null;
       const info = await jr.json();
       const buf = await br.arrayBuffer();
@@ -54,7 +58,8 @@ export function loadCharAsset(e: Engine): Promise<CharAsset | null> {
         col[i * 3 + 2] = mat[i]!;
       }
       const idx = new Uint16Array(buf, B.idx!.off, B.idx!.n);
-      const mesh = e.uploadSkin(pos, nor, col, u8("ji"), u8("w"), idx);
+      const raw = { pos, nor, col, ji: u8("ji"), w: u8("w"), idx };
+      const mesh = e.uploadSkin(raw.pos, raw.nor, raw.col, raw.ji, raw.w, raw.idx);
       const parent = new Int16Array(J);
       const restT = new Float32Array(J * 3);
       const restR = new Float32Array(J * 4);
@@ -81,6 +86,8 @@ export function loadCharAsset(e: Engine): Promise<CharAsset | null> {
         hip: f32("hip"),
         clips,
         mesh,
+        raw,
+        meshes: new Map([[e, mesh]]),
         height: info.height as number,
         version: ++version,
       };
@@ -479,3 +486,14 @@ export function skinReady() {
 }
 
 export const _m4 = m4;
+
+/** malha do personagem para um contexto GL específico (cria sob demanda) */
+export function skinMeshFor(e: Engine, a: CharAsset): GpuMesh {
+  let m = a.meshes.get(e);
+  if (!m) {
+    const r = a.raw;
+    m = e.uploadSkin(r.pos, r.nor, r.col, r.ji, r.w, r.idx);
+    a.meshes.set(e, m);
+  }
+  return m;
+}

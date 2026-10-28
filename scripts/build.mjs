@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dist = path.join(root, "dist");
+const dist = process.env.BN_OUT ? path.resolve(process.env.BN_OUT) : path.join(root, "dist");
 const require = createRequire(import.meta.url);
 
 async function walk(dir) {
@@ -35,7 +35,7 @@ await build({
   format: "esm",
   target: ["es2020"],
   jsx: "automatic",
-  outfile: path.join(dist, "assets/app.js"),
+  outfile: path.join(dist, `assets/app-${stamp}.js`),
   define: { "process.env.NODE_ENV": '"production"', __BUILD__: JSON.stringify(stamp) },
   legalComments: "none",
 });
@@ -60,12 +60,12 @@ for (const f of [...files, path.join(root, "index.html")]) {
   for (const m of text.matchAll(/[^\s"'`<>=(){}\[\]\;,]+(?:\[[^\]\s]*\])?[^\s"'`<>=(){}\;,]*/g)) candidates.add(m[0]);
 }
 const css = compiler.build([...candidates]);
-await writeFile(path.join(dist, "assets/app.css"), css);
+await writeFile(path.join(dist, `assets/app-${stamp}.css`), css);
 
 // 3) HTML + estáticos
 // cache-busting: app.js/app.css têm nome fixo, então o navegador (e o CDN do GitHub Pages) guardavam a versão velha
 const guard = `<meta name="build" content="${stamp}" />\n    <script>(function(){try{var m="${stamp}";fetch(location.pathname+"?nc="+Date.now(),{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){var x=t.match(/name="build" content="([^"]+)"/);if(x&&x[1]!==m&&!sessionStorage.getItem("bn-r"+x[1])){sessionStorage.setItem("bn-r"+x[1],"1");location.replace(location.pathname+"?v="+x[1])}}).catch(function(){})}catch(e){}})();</script>`;
-const html = (await readFile(path.join(root, "index.html"), "utf8")).replace("</head>", `    ${guard}\n  </head>`).replace("./assets/app.css", `./assets/app.css?v=${stamp}`).replace("./assets/app.js", `./assets/app.js?v=${stamp}`);
+const html = (await readFile(path.join(root, "index.html"), "utf8")).replace("</head>", `    ${guard}\n  </head>`).replace("./assets/app.css", `./assets/app-${stamp}.css`).replace("./assets/app.js", `./assets/app-${stamp}.js`);
 await writeFile(path.join(dist, "index.html"), html);
 await cp(path.join(root, "public"), dist, { recursive: true });
 await writeFile(path.join(dist, ".nojekyll"), "");
