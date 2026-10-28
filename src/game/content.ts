@@ -1,14 +1,8 @@
 import {
-  GROUND,
-  ROWS,
-  Tile,
   type Behavior,
   type HeroId,
   type Kind,
-  type Level,
-  type LevelEnt,
   type Line,
-  type StatKey,
 } from "./types";
 
 export type HeroDef = {
@@ -88,19 +82,71 @@ export const HEROES: HeroDef[] = [
     shoe: "#4a3024",
     accent: "#d2e39a",
   },
+  {
+    id: "tito",
+    name: "Tito Brasa",
+    role: "Engolidor de fogo",
+    formName: "Dragão",
+    blurb: "Assinou por seguro de vida. O seguro assinou por ele e sumiu.",
+    voice: "Fogo não é truque. Truque é a cláusula de incêndio.",
+    attack: "Bola de brasa. Em forma de dragão, queima tudo em volta.",
+    skin: "#d79a6a",
+    hair: "#2a140c",
+    cloth: "#7a1410",
+    cloth2: "#1c1210",
+    shoe: "#3a2418",
+    accent: "#ff7a2a",
+  },
+  {
+    id: "mari",
+    name: "Marina Sal",
+    role: "Sereia de aquário",
+    formName: "Maré",
+    blurb: "Trabalhava no tanque da entrada. Trocaram a água pelo contrato.",
+    voice: "Pernas são um aluguel caro. Eu pago em tinta e em sal.",
+    attack: "Bolha salgada em arco. Em forma de maré, nada pelo ar.",
+    skin: "#bfe4e0",
+    hair: "#1f6f86",
+    cloth: "#1c8a9a",
+    cloth2: "#e0b15a",
+    shoe: "#146070",
+    accent: "#4ac0e0",
+  },
+  {
+    id: "pia",
+    name: "Pia Granito",
+    role: "Gárgula de torre",
+    formName: "Pedra",
+    blurb: "Vigiava o telhado do cinema. Foi demitida por piscar.",
+    voice: "Eu não sou pesada. Eu sou definitiva.",
+    attack: "Estilhaço de pedra. Em forma de pedra, aguenta e esmaga.",
+    skin: "#9aa0a8",
+    hair: "#4a4e56",
+    cloth: "#6a6e78",
+    cloth2: "#3a3d46",
+    shoe: "#2a2c32",
+    accent: "#c0c8d4",
+  },
+  {
+    id: "lumen",
+    name: "Doutor Lúmen",
+    role: "Eletricista fantasma",
+    formName: "Raio",
+    blurb: "Morreu religando o refletor. O refletor continua aceso. Ele, também.",
+    voice: "Todo mundo teme o escuro. Eu temo a fiação.",
+    attack: "Faísca perfurante. Em forma de raio, corre e dispara em leque.",
+    skin: "#d8e6f0",
+    hair: "#e8e0a0",
+    cloth: "#2a4a8a",
+    cloth2: "#e0c030",
+    shoe: "#1a1c28",
+    accent: "#ffe24a",
+  },
 ];
 
 export function heroById(id: HeroId): HeroDef {
   return HEROES.find((h) => h.id === id) ?? HEROES[0]!;
 }
-
-export const UPGRADES: { id: StatKey; name: string; text: string }[] = [
-  { id: "vit", name: "Vitalidade", text: "+1 coração. O contrato aceita carne como cláusula." },
-  { id: "impeto", name: "Ímpeto", text: "+dano. A plateia antiga gosta de impacto, infelizmente." },
-  { id: "folego", name: "Fôlego", text: "A forma dura mais e volta antes. Até maldição cansa." },
-  { id: "passo", name: "Passo", text: "+velocidade. A fase continua longa. Você é que encurta." },
-  { id: "mira", name: "Mira", text: "Atira mais rápido. Flecha, osso ou estalo: dói igual." },
-];
 
 export type WorldDef = {
   id: number;
@@ -194,6 +240,81 @@ export const WORLDS: WorldDef[] = [
     accent: "#c9b6e0",
     fog: "#100c14",
   },
+  {
+    id: 5,
+    name: "Dunas do Sol Morto",
+    boss: "Faraó Sem Fim",
+    sky0: "#2a1a10",
+    sky1: "#6a3a1c",
+    sky2: "#c47a34",
+    hill: "#4a2c18",
+    hill2: "#7a4a24",
+    ground: "#b88a50",
+    groundDark: "#7a5a30",
+    trim: "#ffd27a",
+    accent: "#ffb23a",
+    fog: "#2a1a10",
+  },
+  {
+    id: 6,
+    name: "Geleira Silenciosa",
+    boss: "Rainha do Gelo Fino",
+    sky0: "#0a1424",
+    sky1: "#1c3a5a",
+    sky2: "#5a8ab0",
+    hill: "#142a42",
+    hill2: "#2a4a6a",
+    ground: "#a8c4d8",
+    groundDark: "#6a8aa4",
+    trim: "#e8f6ff",
+    accent: "#7ad8ff",
+    fog: "#0c1a2c",
+  },
+  {
+    id: 7,
+    name: "Lagoa dos Náufragos",
+    boss: "Capitão Maré",
+    sky0: "#04121a",
+    sky1: "#0c3a4a",
+    sky2: "#1a7a84",
+    hill: "#082a34",
+    hill2: "#104a54",
+    ground: "#4a7a74",
+    groundDark: "#2a4a48",
+    trim: "#a8f0e0",
+    accent: "#3ad8b4",
+    fog: "#06181e",
+  },
+  {
+    id: 8,
+    name: "Cidadela Celeste",
+    boss: "Arcanjo do Contrato",
+    sky0: "#1a1840",
+    sky1: "#4a4a9a",
+    sky2: "#c4a4e0",
+    hill: "#2a2a6a",
+    hill2: "#5a5aa0",
+    ground: "#d8d0e8",
+    groundDark: "#9a90b8",
+    trim: "#fff2b0",
+    accent: "#ffe27a",
+    fog: "#1a1a44",
+  },
+  {
+    id: 9,
+    name: "Palácio do Empresário",
+    boss: "O Empresário",
+    sky0: "#14040a",
+    sky1: "#4a0c1c",
+    sky2: "#8a1a2c",
+    hill: "#22060e",
+    hill2: "#4a0e1a",
+    ground: "#3a2a2e",
+    groundDark: "#1e1418",
+    trim: "#ffd24a",
+    accent: "#ff3a4a",
+    fog: "#14040a",
+  },
 ];
 
 export const REEL_NAMES = [
@@ -222,14 +343,57 @@ export const REEL_NAMES = [
   "Sala das cláusulas",
   "Carimbo final",
   "O Arquivista",
+  "Areia com prazo",
+  "Duna de segunda mão",
+  "Oásis de fachada",
+  "Tumba sem luz",
+  "Trono do Faraó",
+  "Neve que não derrete",
+  "Lago de vidro fosco",
+  "Ponte de gelo fino",
+  "Caverna do eco azul",
+  "Palácio da Rainha",
+  "Maré baixa de nós",
+  "Cais dos desaparecidos",
+  "Recife com opinião",
+  "Naufrágio em cartaz",
+  "Convés do Capitão",
+  "Escada de nuvem",
+  "Jardim suspenso",
+  "Ponte de harpas",
+  "Torre dos querubins",
+  "Coroa do Arcanjo",
+  "Foyer do fim",
+  "Corredor de ouro velho",
+  "Salão dos bufões",
+  "Cofre sem fundo",
+  "O Empresário",
 ];
 
-const POOLS: Kind[][] = [
+export const BONUS_NAMES = [
+  "Bis: Tesouro do Picadeiro",
+  "Bis: Cofre da Abadessa",
+  "Bis: Mina da Forja",
+  "Bis: Clareira do Dízimo",
+  "Bis: Gaveta Dourada",
+  "Bis: Oásis do Faraó",
+  "Bis: Lago Congelado",
+  "Bis: Baú do Capitão",
+  "Bis: Nuvem de Prata",
+  "Bis: Camarote do Dono",
+];
+
+export const POOLS: Kind[][] = [
   ["imp", "mask", "balloon"],
   ["skel", "witch", "undead"],
   ["golem", "troll", "imp"],
   ["thorn", "hound", "dryad"],
   ["wraith", "clerk", "witch"],
+  ["scorp", "mummy", "gull"],
+  ["snowman", "yeti", "wraith"],
+  ["crab", "gull", "shade"],
+  ["cherub", "gargoyle", "wraith"],
+  ["jester", "gargoyle", "shade"],
 ];
 
 export type EntDef = {
@@ -242,7 +406,7 @@ export type EntDef = {
   touch: number;
 };
 
-const ENT: Record<Kind, EntDef> = {
+export const ENT: Record<Kind, EntDef> = {
   imp: { hp: 2, w: 28, h: 32, speed: 70, xp: 8, behavior: "walk", touch: 1 },
   mask: { hp: 2, w: 30, h: 34, speed: 90, xp: 9, behavior: "jump", touch: 1 },
   balloon: { hp: 3, w: 34, h: 40, speed: 55, xp: 10, behavior: "fly", touch: 1 },
@@ -256,16 +420,67 @@ const ENT: Record<Kind, EntDef> = {
   dryad: { hp: 4, w: 30, h: 50, speed: 40, xp: 13, behavior: "shoot", touch: 1 },
   wraith: { hp: 3, w: 32, h: 40, speed: 80, xp: 12, behavior: "fly", touch: 1 },
   clerk: { hp: 2, w: 28, h: 42, speed: 64, xp: 9, behavior: "shoot", touch: 1 },
+  crab: { hp: 4, w: 36, h: 26, speed: 95, xp: 12, behavior: "walk", touch: 1 },
+  gull: { hp: 3, w: 36, h: 26, speed: 100, xp: 12, behavior: "fly", touch: 1 },
+  scorp: { hp: 4, w: 40, h: 26, speed: 70, xp: 13, behavior: "shoot", touch: 1 },
+  mummy: { hp: 7, w: 30, h: 46, speed: 38, xp: 14, behavior: "walk", touch: 1 },
+  snowman: { hp: 5, w: 36, h: 46, speed: 30, xp: 13, behavior: "shoot", touch: 1 },
+  yeti: { hp: 9, w: 48, h: 54, speed: 52, xp: 17, behavior: "charge", touch: 1 },
+  cherub: { hp: 4, w: 30, h: 34, speed: 78, xp: 14, behavior: "fly", touch: 1 },
+  gargoyle: { hp: 8, w: 40, h: 46, speed: 80, xp: 17, behavior: "jump", touch: 1 },
+  shade: { hp: 5, w: 30, h: 42, speed: 92, xp: 15, behavior: "fly", touch: 1 },
+  jester: { hp: 6, w: 30, h: 44, speed: 112, xp: 16, behavior: "jump", touch: 1 },
+  chest: { hp: 1, w: 34, h: 28, speed: 0, xp: 0, behavior: "item", touch: 0 },
   boss: { hp: 18, w: 84, h: 92, speed: 60, xp: 70, behavior: "boss", touch: 1 },
   candle: { hp: 1, w: 16, h: 24, speed: 0, xp: 0, behavior: "item", touch: 0 },
 };
 
-export function entDef(kind: Kind, world: number): EntDef {
+export type ModeDef = {
+  name: string;
+  tag: string;
+  text: string;
+  hp: number;
+  speed: number;
+  dmg: number;
+  xp: number;
+  luck: number;
+  color: string;
+};
+
+/** modos de jogo: a cozinha do inferno, do fogo baixo ao caldeirão do Cramunhão */
+export const MODES: ModeDef[] = [
+  { name: "Banho-maria", tag: "Fácil", text: "Fogo baixinho. O contrato manda você relaxar enquanto os monstros derretem devagar.", hp: 1, speed: 1, dmg: 1, xp: 1, luck: 1, color: "#8fd0c8" },
+  { name: "Queimadurinha", tag: "Médio", text: "Dá para comer, mas a língua avisa. Monstros com quase o dobro de vida.", hp: 1.9, speed: 1.05, dmg: 1, xp: 1.3, luck: 1.15, color: "#e0b15a" },
+  { name: "Panela de Vidro", tag: "Difícil", text: "Bonita e frágil: se você escorregar, estoura. Monstros muito mais resistentes.", hp: 3.6, speed: 1.1, dmg: 1, xp: 1.7, luck: 1.3, color: "#9fd4ff" },
+  { name: "Frigideira de Ferro", tag: "Muito difícil", text: "Pesada, quente e sem perdão. Cada pancada tira dois corações.", hp: 6.8, speed: 1.15, dmg: 2, xp: 2.2, luck: 1.6, color: "#ff8a3a" },
+  { name: "Panela do Cramunhão", tag: "Expert", text: "O caldeirão do próprio diabo. Monstros enormes, ritmo cruel e o melhor tesouro da casa.", hp: 13, speed: 1.25, dmg: 2, xp: 3, luck: 2.2, color: "#c4373a" },
+];
+
+export function entDef(kind: Kind, world: number, mini = false, mode = 0): EntDef {
+  const m = MODES[mode] ?? MODES[0]!;
+  const d = entDefBase(kind, world, mini);
+  if (kind === "candle" || kind === "chest") return d;
+  return { ...d, hp: Math.max(1, Math.round(d.hp * m.hp)), speed: d.speed * m.speed, xp: Math.round(d.xp * m.xp) };
+}
+
+function entDefBase(kind: Kind, world: number, mini = false): EntDef {
   const base = ENT[kind];
-  if (kind === "candle") return base;
-  const scale = 1 + world * 0.15;
-  const hp = kind === "boss" ? 18 + world * 6 : Math.max(1, Math.round(base.hp * scale));
-  return { ...base, hp, speed: base.speed * (1 + world * 0.04) };
+  if (kind === "candle" || kind === "chest") return base;
+  const scale = 1.4 + world * 0.34;
+  const xpK = 1 + world * 0.4;
+  if (kind === "boss") {
+    const hp = mini ? 18 + world * 7 : 34 + world * 15;
+    return {
+      ...base,
+      hp,
+      w: mini ? 60 : base.w,
+      h: mini ? 66 : base.h,
+      xp: Math.round((mini ? 40 : 90) * xpK),
+      speed: base.speed * (mini ? 0.9 : 1),
+    };
+  }
+  const hp = Math.max(1, Math.round(base.hp * scale));
+  return { ...base, hp, xp: Math.round(base.xp * xpK), speed: base.speed * (1 + world * 0.035) };
 }
 
 export function prologue(): Line[] {
@@ -336,6 +551,40 @@ export function worldIntro(world: number): Line[] {
       { who: "Syl Auber", text: "Então é isso. O final fica num arquivo. Típico de quem nunca soube terminar uma piada." },
     ];
   }
+  if (world === 5) {
+    return [
+      { who: "Arquivista", text: "Vocês acharam que o carimbo final era final. Adorável. O contrato tinha um aditivo, e o aditivo tem areia." },
+      { who: "Ivo Marr", text: "Areia. Claro. Todo roteiro que perde o orçamento manda a gente para o deserto." },
+      { who: "Lena Vesper", text: "Sol morto. Pelo menos aqui ninguém me pede para sair do camarim." },
+    ];
+  }
+  if (world === 6) {
+    return [
+      { who: "Syl Auber", text: "Gelo. Do tipo que não racha, só julga. Pisa leve e cala a boca." },
+      { who: "Osso Quill", text: "Os mortos aqui estão conservados. Conservados e ressentidos. Combinação perigosa." },
+    ];
+  }
+  if (world === 7) {
+    return [
+      { who: "Lena Vesper", text: "Lagoa. Água parada com opinião. Eu já morri em lugares menos úmidos." },
+      { who: "Ivo Marr", text: "Se um caranguejo perguntar do contrato, a resposta é não. A pinça é só retórica." },
+      { who: "Osso Quill", text: "Naufrágio é só um funeral com maré. Eu respeito o formato." },
+    ];
+  }
+  if (world === 8) {
+    return [
+      { who: "Syl Auber", text: "Céu. Eu só subo em árvore, não em fórum de anjo." },
+      { who: "Osso Quill", text: "Querubim é bebê com ficha criminal. Não encosta, não amamenta, não perdoa." },
+      { who: "Lena Vesper", text: "Se eu cair daqui, tenho asas. Se vocês caírem, tenho pena. Pouca." },
+    ];
+  }
+  if (world === 9) {
+    return [
+      { who: "Empresário", text: "Entrem. O contrato nunca foi do Arquivista. Ele só guardava. Eu assino." },
+      { who: "Ivo Marr", text: "Então o dono do circo era um gerente de contas." },
+      { who: "Lena Vesper", text: "Última porta. Se o carpete for macio, é armadilha." },
+    ];
+  }
   return [];
 }
 
@@ -376,28 +625,55 @@ export function bossIntro(world: number): Line[] {
       },
       { who: "Lena Vesper", text: "Então é você. O monstro final é atendimento ao cliente. Eu devia ter adivinhado no rolo um." },
     ],
+    [
+      { who: "Ivo Marr", text: "Faraó Sem Fim. O fim já era com ele, mas ele não aceitou o aviso." },
+      { who: "Osso Quill", text: "Múmia de gabinete. Enrolado em prazos que venceram na era errada." },
+    ],
+    [
+      { who: "Syl Auber", text: "A Rainha do Gelo Fino. Fino para ela. Para nós, gelo suficiente para uma queda longa." },
+      { who: "Lena Vesper", text: "Não encara. Vidro fosco também reflete, e reflexo morde." },
+    ],
+    [
+      { who: "Osso Quill", text: "O Capitão Maré nunca naufragou. Foram os outros que afundaram ao redor dele." },
+      { who: "Ivo Marr", text: "Capitão sem navio é gerente de crise. Vamos tirar o crachá." },
+    ],
+    [
+      { who: "Lena Vesper", text: "O Arcanjo do Contrato. Anjo com cláusula. Quando ele sorri, alguém perde algo." },
+      { who: "Syl Auber", text: "Fiquem fora das sombras das asas. Penas pesam mais que parecem." },
+    ],
+    [
+      { who: "Empresário", text: "Vocês rendem bem em audiência. Rendem melhor em bilheteria. Fiquem. A plateia paga." },
+      { who: "Ivo Marr", text: "Eu nunca briguei por dinheiro. Hoje abro exceção. É por mim, pelos três e pelo rolo." },
+    ],
   ];
   return lines[world] ?? [];
 }
 
-export function ending(): Line[] {
+export function miniIntro(world: number): Line[] {
+  const names = ["o Contorcionista de Verniz", "um Frade Sem Ata", "o Capataz de Rebite", "o Guardião do Tronco", "um Escriba Furioso", "o Escaravelho Real", "o Urso de Geada", "o Fiscal da Maré", "o Serafim Menor", "o Mordomo Dourado"];
+  return [{ who: "Arquivista", text: `No meio do caminho, ${names[world % 10]}. Mini-chefe: derrote para ganhar tesouro.` }];
+}
+
+export function midEnding(): Line[] {
   return [
     { who: "Arquivista", text: "Rolo vinte e cinco. Carimbo. Rescisão. Vocês estão livres para ir embora." },
     { who: "Ivo Marr", text: "E o mundo? Fica no escuro, fazendo bico de cenário?" },
-    {
-      who: "Arquivista",
-      text: "O mundo era a cláusula de rodapé. Ninguém lê. Ele fica. Vocês saem. Ou ficam para o bis, porque alguém sempre pede bis.",
-    },
-    { who: "Syl Auber", text: "Bis é maldição com aplauso. Eu já vi as duas coisas matarem do mesmo jeito." },
-    {
-      who: "Osso Quill",
-      text: "Eu convoquei metade desse elenco do chão. Pediram crédito. Eu disse que o gênero não paga crédito, paga sequela.",
-    },
-    { who: "Lena Vesper", text: "Se isso foi um final feliz, o feliz estava na letra miúda, entre uma vírgula e um dente." },
-    {
-      who: "Arquivista",
-      text: "Pode fechar. Eu continuo aqui. Alguém sempre reabre um arquivo. De preferência sem ler.",
-    },
+    { who: "Arquivista", text: "O mundo era a cláusula de rodapé. Ninguém lê. Mas alguém assinou o rodapé, e não fui eu." },
+    { who: "Lena Vesper", text: "Então tem outro dono. Um que usa mais areia, mais gelo e mais ouro." },
+    { who: "Syl Auber", text: "O bis. Eu sabia. Bis é maldição com aplauso." },
+    { who: "Osso Quill", text: "Mais vinte e cinco rolos. O estágio não acabou. Só mudou de cidade." },
+  ];
+}
+
+export function ending(): Line[] {
+  return [
+    { who: "Empresário", text: "Rolo cinquenta. Rescisão. Sem cláusula. Sem bis. Sem mim." },
+    { who: "Ivo Marr", text: "Então acabou. De verdade, dessa vez? Sem aditivo?" },
+    { who: "Arquivista", text: "Sem aditivo. Eu mesmo li o rodapé. Ninguém mais assina por vocês." },
+    { who: "Syl Auber", text: "Bis, só se for por vontade. Sem plateia invisível dizendo o que fazer." },
+    { who: "Osso Quill", text: "Convoquei metade desse elenco do chão. Hoje eles pedem folga. Concedida." },
+    { who: "Lena Vesper", text: "Se isso foi um final feliz, o feliz estava na letra miúda. Mas dessa vez eu li." },
+    { who: "Arquivista", text: "Pode fechar. Ou reabrir, se quiser rejogar com tudo que ganhou. O arquivo é seu." },
   ];
 }
 
@@ -422,6 +698,26 @@ const DEATHS: Record<HeroId, string[]> = {
     "A mata não perdoa pressa. Eu também não. Empate.",
     "Respawn não é poesia. É teimosia com sprite.",
   ],
+  tito: [
+    "Apagaram o artista. Ficou só a fumaça e o boletim de ocorrência.",
+    "Eu cuspo fogo. O chão cospe de volta, e com mais pontaria.",
+    "Seguro não cobre morte recorrente. Já li a letra miúda duas vezes.",
+  ],
+  mari: [
+    "Afoguei no seco. É uma habilidade que eu não pedi.",
+    "O tanque era menor e mais seguro. Ninguém me escuta.",
+    "Sal na ferida é figura de linguagem. Aqui é rotina.",
+  ],
+  pia: [
+    "Caí. Gárgula cai de telhado. Só não costuma ter plateia.",
+    "Pedra não quebra. Racha com dignidade. Já racho de novo.",
+    "Eu avisei que era pesada. Ninguém leu o aviso.",
+  ],
+  lumen: [
+    "Curto-circuito. Dessa vez, o meu.",
+    "Morri de novo. A conta de luz do além deve estar enorme.",
+    "Fiz tudo certo. A fiação discordou, como sempre.",
+  ],
 };
 
 const CLEARS: Record<HeroId, string[]> = {
@@ -441,6 +737,22 @@ const CLEARS: Record<HeroId, string[]> = {
     "Trilha fechada. Sem fita no peito. Sem plateia. Serve.",
     "A flecha chegou. Eu também. Nessa ordem, de preferência.",
   ],
+  tito: [
+    "Rolo queimado. Literalmente, e dessa vez fui eu.",
+    "Apaguem as luzes. Eu faço o resto, com educação e com gasolina.",
+  ],
+  mari: [
+    "Atravessei mais um rolo a nado, mesmo sem água. Anotem o recorde.",
+    "O rolo secou. Eu não. Ainda.",
+  ],
+  pia: [
+    "Pronto. Pedra no caminho agora é de quem passa.",
+    "Terminei. Pode me colocar no telhado de novo.",
+  ],
+  lumen: [
+    "Luz acesa. Nem eu acredito.",
+    "Rolo ligado na tomada certa. Raro.",
+  ],
 };
 
 const TOASTS: Record<HeroId, string> = {
@@ -448,6 +760,10 @@ const TOASTS: Record<HeroId, string> = {
   lena: "Asas fora. Se alguém comentar a orelha, eu comento a jugular.",
   osso: "Caveira à mostra. O último que eu derrubei ganhou um crachá e uma ordem.",
   syl: "Orelha pontuda, três flechas, zero paciência. A mata que se explique.",
+  tito: "Dragão. O contrato disse 'efeito pirotécnico'. Eu interpretei com generosidade.",
+  mari: "Maré alta! Se alguém falar de pernas de novo, eu vazo.",
+  pia: "Pedra. Agora eu posso ser a parede que vocês nunca tiveram.",
+  lumen: "Raio. Se alguém perguntar, foi tudo dentro da norma.",
 };
 
 export function deathLine(hero: HeroId, n: number): string {
@@ -464,238 +780,106 @@ export function transformLine(hero: HeroId): string {
   return TOASTS[hero];
 }
 
-function mulberry32(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-class Sketch {
-  cols = 0;
-  tiles: number[] = [];
-  ents: LevelEnt[] = [];
-  spawnC = 3;
-  exitC = 4;
-
-  private ensure(cols: number) {
-    const next = new Array(ROWS * cols).fill(Tile.Air);
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < this.cols; c++) next[r * cols + c] = this.tiles[r * this.cols + c] ?? Tile.Air;
-    }
-    this.tiles = next;
-    this.cols = cols;
-  }
-
-  widen(w: number) {
-    const start = this.cols;
-    this.ensure(this.cols + w);
-    return start;
-  }
-
-  get(c: number, r: number) {
-    if (c < 0 || r < 0 || c >= this.cols || r >= ROWS) return Tile.Air;
-    return this.tiles[r * this.cols + c] ?? Tile.Air;
-  }
-
-  set(c: number, r: number, t: number) {
-    if (c < 0 || r < 0 || c >= this.cols || r >= ROWS) return;
-    this.tiles[r * this.cols + c] = t;
-  }
-
-  fillFloor(c0: number, c1: number) {
-    for (let c = c0; c < c1; c++) {
-      for (let r = GROUND; r < ROWS; r++) this.set(c, r, Tile.Solid);
-    }
-  }
-
-  ent(kind: Kind, c: number, foot = GROUND) {
-    this.ents.push({ kind, c, foot });
-  }
-}
-
-function segPlaza(sk: Sketch) {
-  const x = sk.widen(28);
-  sk.fillFloor(x, x + 28);
-  sk.spawnC = x + 3;
-  sk.set(x + 8, GROUND - 1, Tile.Checkpoint);
-  for (let c = x + 14; c < x + 20; c++) sk.set(c, GROUND - 3, Tile.OneWay);
-  sk.ent("candle", x + 12);
-}
-
-function segGap(sk: Sketch, gap: number) {
-  const x = sk.widen(gap + 10);
-  sk.fillFloor(x, x + 5);
-  sk.fillFloor(x + 5 + gap, x + 10 + gap);
-}
-
-function segPlatforms(sk: Sketch, pool: Kind[], rng: () => number) {
-  const x = sk.widen(30);
-  sk.fillFloor(x, x + 30);
-  const hs = [3, 4, 3];
-  hs.forEach((h, i) => {
-    const c0 = x + 3 + i * 9;
-    for (let c = c0; c < c0 + 5; c++) sk.set(c, GROUND - h, Tile.OneWay);
-  });
-  sk.ent(pool[Math.floor(rng() * pool.length)] ?? "imp", x + 22);
-  sk.ent(pool[0] ?? "imp", x + 8, GROUND - 3);
-}
-
-function segCombat(sk: Sketch, pool: Kind[], n: number, rng: () => number) {
-  const x = sk.widen(32);
-  sk.fillFloor(x, x + 32);
-  for (let c = x + 6; c < x + 12; c++) sk.set(c, GROUND - 3, Tile.OneWay);
-  for (let c = x + 18; c < x + 25; c++) sk.set(c, GROUND - 4, Tile.OneWay);
-  for (let i = 0; i < n; i++) {
-    const kind = pool[Math.floor(rng() * pool.length)] ?? "imp";
-    const fly = kind === "balloon" || kind === "wraith";
-    sk.ent(kind, x + 8 + i * 6, fly ? GROUND - 5 : GROUND);
-  }
-}
-
-function segSpikes(sk: Sketch) {
-  const x = sk.widen(26);
-  sk.fillFloor(x, x + 26);
-  for (let c = x + 6; c < x + 20; c++) sk.set(c, GROUND, Tile.Spike);
-  for (let c = x + 7; c < x + 12; c++) sk.set(c, GROUND - 3, Tile.OneWay);
-  for (let c = x + 15; c < x + 20; c++) sk.set(c, GROUND - 3, Tile.OneWay);
-}
-
-function segStairs(sk: Sketch, pool: Kind[]) {
-  const x = sk.widen(36);
-  sk.fillFloor(x, x + 36);
-  let h = 0;
-  for (let i = 0; i < 5; i++) {
-    if (i > 0) h += 2;
-    const c0 = x + 2 + i * 5;
-    for (let c = c0; c < c0 + 4; c++) {
-      for (let dy = 0; dy <= h; dy++) sk.set(c, GROUND - dy, Tile.Solid);
-    }
-  }
-  sk.ent(pool[1] ?? pool[0] ?? "imp", x + 30);
-}
-
-function segClimb(sk: Sketch, pool: Kind[]) {
-  const x = sk.widen(24);
-  sk.fillFloor(x, x + 24);
-  for (let i = 0; i < 4; i++) {
-    const c0 = x + 2 + (i % 2) * 10;
-    const row = GROUND - 3 - i * 2;
-    for (let k = 0; k < 6; k++) sk.set(c0 + k, row, Tile.OneWay);
-  }
-  const fly = pool.find((k) => k === "balloon" || k === "wraith");
-  if (fly) sk.ent(fly, x + 16, GROUND - 6);
-  else sk.ent(pool[0] ?? "imp", x + 18);
-}
-
-function segSpring(sk: Sketch) {
-  const x = sk.widen(26);
-  sk.fillFloor(x, x + 26);
-  sk.set(x + 4, GROUND, Tile.Spring);
-  for (let c = x + 14; c < x + 24; c++) sk.set(c, GROUND - 5, Tile.Solid);
-  for (let r = GROUND - 5; r < ROWS; r++) sk.set(x + 23, r, Tile.Solid);
-  sk.ent("candle", x + 18, GROUND - 5);
-}
-
-function segTunnel(sk: Sketch, pool: Kind[]) {
-  const x = sk.widen(28);
-  sk.fillFloor(x, x + 28);
-  for (let c = x + 4; c < x + 22; c++) sk.set(c, GROUND - 3, Tile.Solid);
-  sk.ent(pool[0] ?? "imp", x + 12);
-  sk.ent(pool[2] ?? pool[0] ?? "imp", x + 18);
-}
-
-function segCheckpoint(sk: Sketch) {
-  const x = sk.widen(12);
-  sk.fillFloor(x, x + 12);
-  sk.set(x + 6, GROUND - 1, Tile.Checkpoint);
-  sk.ent("candle", x + 9);
-}
-
-function segArena(sk: Sketch) {
-  const x = sk.widen(40);
-  sk.fillFloor(x, x + 40);
-  sk.set(x + 3, GROUND - 1, Tile.Checkpoint);
-  for (let c = x + 8; c < x + 15; c++) sk.set(c, GROUND - 4, Tile.OneWay);
-  for (let c = x + 24; c < x + 31; c++) sk.set(c, GROUND - 4, Tile.OneWay);
-  sk.ent("boss", x + 30);
-  sk.exitC = x + 36;
-}
-
-function segFinale(sk: Sketch) {
-  const x = sk.widen(18);
-  sk.fillFloor(x, x + 18);
-  sk.set(x + 6, GROUND - 1, Tile.Checkpoint);
-  sk.ent("candle", x + 4);
-  sk.exitC = x + 14;
-}
-
-function fixEnts(sk: Sketch) {
-  for (const e of sk.ents) {
-    const def = ENT[e.kind];
-    if (def.behavior === "fly") {
-      e.foot = Math.min(GROUND - 4, Math.max(3, e.foot));
-      continue;
-    }
-    if (e.c < 1) e.c = 1;
-    if (e.c >= sk.cols - 1) e.c = sk.cols - 2;
-    let guard = 0;
-    while (guard++ < 8) {
-      const t = sk.get(e.c, e.foot);
-      const surface = t === Tile.Solid || t === Tile.OneWay || t === Tile.Spring;
-      if (surface) break;
-      if (sk.get(e.c, GROUND) === Tile.Solid || sk.get(e.c, GROUND) === Tile.Spring) {
-        e.foot = GROUND;
-        break;
-      }
-      e.c += 1;
-    }
-  }
-}
-
-export function buildLevel(index: number): Level {
-  const i = Math.max(0, Math.min(24, index));
-  const world = Math.floor(i / 5);
-  const stage = i % 5;
-  const boss = stage === 4;
-  const rng = mulberry32(900 + i * 131);
-  const pool = POOLS[world] ?? POOLS[0]!;
-  const sk = new Sketch();
-  segPlaza(sk);
-  const beats = boss ? 8 : 10 + stage * 2;
-  for (let b = 0; b < beats; b++) {
-    const pick = (i * 3 + b * 5) % 9;
-    if (pick === 0) segGap(sk, 2 + ((stage + b) % 2));
-    else if (pick === 1) segPlatforms(sk, pool, rng);
-    else if (pick === 2) segCombat(sk, pool, 2 + (stage > 1 ? 1 : 0), rng);
-    else if (pick === 3) segSpikes(sk);
-    else if (pick === 4) segStairs(sk, pool);
-    else if (pick === 5) segClimb(sk, pool);
-    else if (pick === 6) segSpring(sk);
-    else if (pick === 7) segTunnel(sk, pool);
-    else segCombat(sk, pool, 3, rng);
-    if (b === 3 || b === 7 || b === 11) segCheckpoint(sk);
-  }
-  if (boss) segArena(sk);
-  else segFinale(sk);
-  fixEnts(sk);
-  return {
-    index: i,
-    name: REEL_NAMES[i] ?? `Rolo ${i + 1}`,
-    world,
-    boss,
-    cols: sk.cols,
-    rows: ROWS,
-    tiles: Uint8Array.from(sk.tiles),
-    ents: sk.ents,
-    spawn: { c: sk.spawnC, foot: GROUND },
-    exit: { c: sk.exitC, foot: GROUND },
-  };
-}
-
 export function reelWorld(index0: number) {
-  return WORLDS[Math.floor(index0 / 5)] ?? WORLDS[0]!;
+  const w = index0 >= 50 ? index0 - 50 : Math.floor(index0 / 5);
+  return WORLDS[w] ?? WORLDS[0]!;
 }
+
+export const MINI_NAMES = ["Contorcionista", "Frade Sem Ata", "Capataz de Rebite", "Guardião do Tronco", "Escriba Furioso", "Escaravelho Real", "Urso de Geada", "Fiscal da Maré", "Serafim Menor", "Mordomo Dourado"];
+
+/* Cada fase de um mundo ganha um clima próprio (entardecer, noite funda, névoa, chefe...). */
+const STAGE_TINT: { c: string; k: number }[][] = [
+  [{ c: "#000000", k: 0 }, { c: "#ff7a3a", k: 0.2 }, { c: "#2a4fa0", k: 0.24 }, { c: "#7a2aa0", k: 0.22 }, { c: "#a01820", k: 0.3 }],
+  [{ c: "#000000", k: 0 }, { c: "#3a8a9a", k: 0.22 }, { c: "#5a3a8a", k: 0.24 }, { c: "#8a8a4a", k: 0.18 }, { c: "#8a1a3a", k: 0.28 }],
+  [{ c: "#000000", k: 0 }, { c: "#ff5a1a", k: 0.22 }, { c: "#aa2a0a", k: 0.26 }, { c: "#3a3a5a", k: 0.24 }, { c: "#ffaa30", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#8aca3a", k: 0.2 }, { c: "#1a5a8a", k: 0.24 }, { c: "#aa5ac0", k: 0.22 }, { c: "#3aaa6a", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#c0a050", k: 0.22 }, { c: "#3a4a9a", k: 0.24 }, { c: "#9a3a6a", k: 0.22 }, { c: "#e0d0ff", k: 0.2 }],
+  [{ c: "#000000", k: 0 }, { c: "#ffcc60", k: 0.2 }, { c: "#a0482a", k: 0.24 }, { c: "#2a2a5a", k: 0.28 }, { c: "#ffe090", k: 0.22 }],
+  [{ c: "#000000", k: 0 }, { c: "#a8e0ff", k: 0.2 }, { c: "#3a4a9a", k: 0.24 }, { c: "#a0f0e0", k: 0.2 }, { c: "#c0d8ff", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#ff9a5a", k: 0.2 }, { c: "#1a3a7a", k: 0.28 }, { c: "#3aaa8a", k: 0.22 }, { c: "#7a2a4a", k: 0.24 }],
+  [{ c: "#000000", k: 0 }, { c: "#ffd0a0", k: 0.2 }, { c: "#7a5ad0", k: 0.24 }, { c: "#ff9ac0", k: 0.2 }, { c: "#fff2c0", k: 0.26 }],
+  [{ c: "#000000", k: 0 }, { c: "#c0302a", k: 0.22 }, { c: "#ffb020", k: 0.2 }, { c: "#6a1a6a", k: 0.26 }, { c: "#ff2030", k: 0.3 }],
+];
+
+function mixHex(a: string, b: string, k: number): string {
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+  const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  const o = pa.map((v, i) => Math.round(v + (pb[i]! - v) * k));
+  return "#" + o.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+export function themedWorld(world: number, stage: number): WorldDef {
+  const base = WORLDS[world] ?? WORLDS[0]!;
+  const t = STAGE_TINT[world]?.[stage % 5];
+  if (!t || t.k === 0) return base;
+  const m = (c: string, k = 1) => mixHex(c, t.c, t.k * k);
+  return {
+    ...base,
+    sky0: m(base.sky0, 0.8),
+    sky1: m(base.sky1),
+    sky2: m(base.sky2, 1.2),
+    hill: m(base.hill, 0.8),
+    hill2: m(base.hill2),
+    ground: m(base.ground, 0.5),
+    groundDark: m(base.groundDark, 0.5),
+    fog: m(base.fog, 0.9),
+    accent: m(base.accent, 0.4),
+  };
+}
+
+/* ---- poderes novos: 2 unitários, 1 em área comum, 1 super em área ---- */
+export const SKILL_LV = [1, 1, 1, 1];
+export const SKILL_CD = [1.4, 2.2, 3.4, 18];
+export const SKILL_KEYS = ["U", "I", "O", "P"];
+export const SKILL_KINDS = ["Unitário", "Unitário", "Área", "Super área"];
+
+export const SKILLS: Record<HeroId, { name: string; color: string; text: string }[]> = {
+  ivo: [
+    { name: "Bala de Prata", color: "#d8dce8", text: "Projétil que persegue o alvo mais próximo." },
+    { name: "Garra do Lobo", color: "#e0b15a", text: "Investida cortante: atravessa o espaço e rasga um alvo." },
+    { name: "Estouro de Palco", color: "#ff9a4a", text: "Onda de choque em volta; empurra e fere todos perto." },
+    { name: "Noite de Lua Cheia", color: "#f4e4c8", text: "Uivo em tela inteira: fere todos os monstros visíveis." },
+  ],
+  lena: [
+    { name: "Dardo Sanguíneo", color: "#ff3a4a", text: "Dardo de tinta que caça o alvo mais próximo." },
+    { name: "Mordida Sombria", color: "#c4373a", text: "Salta em sombra e crava num alvo à frente." },
+    { name: "Revoada", color: "#b06ad0", text: "Morcegos em espiral ferem tudo em volta." },
+    { name: "Eclipse Carmesim", color: "#ff2a5a", text: "A tela escurece e sangra: dano enorme em todos os visíveis." },
+  ],
+  osso: [
+    { name: "Osso Teleguiado", color: "#f1ead8", text: "Osso que gira atrás do alvo mais próximo." },
+    { name: "Pancada de Cajado", color: "#9fd4d8", text: "Avanço com cajado fantoche: golpe pesado em um alvo." },
+    { name: "Dança dos Fios", color: "#c8c2b4", text: "Fios cortam todos que estão por perto." },
+    { name: "Grande Final", color: "#9fd4d8", text: "Aplausos fatais: dano enorme em todos os monstros visíveis." },
+  ],
+  syl: [
+    { name: "Flecha Caçadora", color: "#d2e39a", text: "Flecha que curva até o alvo mais próximo." },
+    { name: "Corte Ágil", color: "#9bd46a", text: "Rolamento cortante: atravessa e fere um alvo." },
+    { name: "Chuva de Folhas", color: "#6aaa48", text: "Folhas afiadas em volta ferem todos perto." },
+    { name: "Floresta Viva", color: "#d2ff7a", text: "Raízes e luz da mata atingem todos os monstros visíveis." },
+  ],
+  tito: [
+    { name: "Cometa de Brasa", color: "#ff9a3a", text: "Bola de fogo que persegue o alvo mais próximo." },
+    { name: "Cuspe de Dragão", color: "#ff5a1a", text: "Avanço em chamas: atravessa e queima um alvo." },
+    { name: "Anel de Fogo", color: "#ffb04a", text: "Círculo de chamas em volta; empurra e fere quem está perto." },
+    { name: "Grande Incêndio", color: "#ff3a1a", text: "Tempestade de fogo: dano enorme em todos os monstros visíveis." },
+  ],
+  mari: [
+    { name: "Bolha Caçadora", color: "#8fe4ff", text: "Bolha salgada que segue o alvo mais próximo." },
+    { name: "Mergulho Cortante", color: "#4ac0e0", text: "Mergulho no ar: atravessa e fere um alvo." },
+    { name: "Onda Curta", color: "#5ad0e8", text: "Onda em volta: empurra e fere todos perto." },
+    { name: "Maremoto", color: "#2a9ad0", text: "Parede de água em tela inteira: fere todos os monstros visíveis." },
+  ],
+  pia: [
+    { name: "Estilhaço Guiado", color: "#c0c8d4", text: "Pedra afiada que persegue o alvo mais próximo." },
+    { name: "Mergulho de Gárgula", color: "#9aa4b0", text: "Investida pesada: atravessa e esmaga um alvo." },
+    { name: "Pisão", color: "#8a929c", text: "Abalo em volta: empurra e fere todos perto." },
+    { name: "Desabamento", color: "#d0d6e0", text: "Chuva de pedras em tela inteira: fere todos os monstros visíveis." },
+  ],
+  lumen: [
+    { name: "Faísca Caçadora", color: "#ffee6a", text: "Faísca que busca o alvo mais próximo." },
+    { name: "Curto-Circuito", color: "#ffd02a", text: "Descarga em linha: atravessa e fere um alvo." },
+    { name: "Pulso Elétrico", color: "#a0e0ff", text: "Pulso em volta: empurra e fere todos perto." },
+    { name: "Apagão", color: "#ffffff", text: "A luz some e volta num raio: dano enorme em todos os monstros visíveis." },
+  ],
+};

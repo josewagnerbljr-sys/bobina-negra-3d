@@ -1,8 +1,8 @@
 export const TILE = 48;
 export const ROWS = 16;
 export const GROUND = 14;
-export const VIEW_W = 480;
-export const VIEW_H = 270;
+export const VIEW_W = 768;
+export const VIEW_H = 432;
 
 export const Tile = {
   Air: 0,
@@ -15,12 +15,48 @@ export const Tile = {
 
 export type TileId = (typeof Tile)[keyof typeof Tile];
 
-export const HERO_IDS = ["ivo", "lena", "osso", "syl"] as const;
+export const HERO_IDS = ["ivo", "lena", "osso", "syl", "tito", "mari", "pia", "lumen"] as const;
 export type HeroId = (typeof HERO_IDS)[number];
 
-export const STAT_KEYS = ["vit", "impeto", "folego", "passo", "mira"] as const;
+export const STAT_KEYS = ["str", "int", "dex", "wis", "rec"] as const;
 export type StatKey = (typeof STAT_KEYS)[number];
 export type Stats = Record<StatKey, number>;
+
+export const BAG_SIZE = 32;
+export const POINTS_PER_LEVEL = 5;
+export const MAX_LEVEL = 50;
+export const MAIN_LEVELS = 50;
+export const BONUS_LEVELS = 10;
+export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
+
+export type ItemSlot = "potion" | "weapon" | "offhand" | "helmet" | "necklace" | "ring" | "armor" | "cape" | "gloves" | "pants" | "boots";
+export type Rarity = 0 | 1 | 2 | 3;
+export type Item = {
+  uid: number;
+  base: string;
+  rarity: Rarity;
+  tier: number;
+  mods: Partial<Stats>;
+};
+/** os 11 espaços de equipamento do personagem */
+export const EQUIP_KEYS = ["helmet", "necklace", "armor", "cape", "gloves", "pants", "boots", "weapon", "offhand", "ring1", "ring2"] as const;
+export type EquipKey = (typeof EQUIP_KEYS)[number];
+export type Equip = Record<EquipKey, Item | null>;
+export const SLOT_LABEL: Record<EquipKey, string> = {
+  helmet: "Capacete",
+  necklace: "Colar",
+  armor: "Armadura",
+  cape: "Capa",
+  gloves: "Luvas",
+  pants: "Calça",
+  boots: "Botas",
+  weapon: "Arma",
+  offhand: "Mão secundária",
+  ring1: "Anel",
+  ring2: "Anel",
+};
+
+export type BuffKind = "haste" | "fury" | "ward";
 
 export type Kind =
   | "imp"
@@ -36,7 +72,18 @@ export type Kind =
   | "dryad"
   | "wraith"
   | "clerk"
+  | "crab"
+  | "gull"
+  | "scorp"
+  | "mummy"
+  | "snowman"
+  | "yeti"
+  | "cherub"
+  | "gargoyle"
+  | "shade"
+  | "jester"
   | "boss"
+  | "chest"
   | "candle";
 
 export type Behavior = "walk" | "jump" | "fly" | "shoot" | "charge" | "still" | "boss" | "item";
@@ -50,21 +97,25 @@ export type Screen =
   | "play"
   | "pause"
   | "levelup"
+  | "char"
+  | "mode"
   | "dead"
   | "clear"
   | "ending";
 
 export type Line = { who: string; text: string };
 
-export type Action = "left" | "right" | "down" | "jump" | "attack" | "form";
+export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
 
-export type LevelEnt = { kind: Kind; c: number; foot: number };
+export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean };
 
 export type Level = {
   index: number;
   name: string;
   world: number;
   boss: boolean;
+  mini: boolean;
+  bonus: boolean;
   cols: number;
   rows: number;
   tiles: Uint8Array;
@@ -73,21 +124,33 @@ export type Level = {
   exit: { c: number; foot: number };
 };
 
+export type BuffSnap = { kind: BuffKind; left: number };
+
 export type Snap = {
   screen: Screen;
   hasSave: boolean;
   hero: HeroId;
   selectedHero: HeroId;
   next: number;
+  bonusOpen: number;
+  mode: number;
+  meleeCd: number;
+  meleeMax: number;
+  cine: boolean;
   level: number;
   xp: number;
   xpNeed: number;
+  /** atributos finais (base do herói + pontos + equipamentos) */
   stats: Stats;
+  /** só os pontos gastos pelo jogador */
+  alloc: Stats;
+  points: number;
   hp: number;
   maxHp: number;
   reel: number;
   reelName: string;
   worldName: string;
+  bonus: boolean;
   bossAlive: boolean;
   bossName: string;
   bossHp: number;
@@ -98,7 +161,6 @@ export type Snap = {
   formDur: number;
   lines: Line[];
   lineIndex: number;
-  choices: StatKey[];
   deadLine: string;
   toast: string;
   mute: boolean;
@@ -107,12 +169,22 @@ export type Snap = {
   best: number;
   hint: boolean;
   progress: number;
+  skills: SkillSnap[];
+  bag: Item[];
+  equip: Equip;
+  bagUsed: number;
+  potions: number;
+  buffs: BuffSnap[];
+  derived: Record<string, string>;
+  levelupFresh: boolean;
 };
 
-export const EMPTY_STATS: Stats = { vit: 0, impeto: 0, folego: 0, passo: 0, mira: 0 };
+export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean };
+
+export const EMPTY_STATS: Stats = { str: 0, int: 0, dex: 0, wis: 0, rec: 0 };
 
 export function xpToNext(level: number): number {
-  return 40 + Math.max(0, level - 1) * 20;
+  return 40 + Math.max(0, level - 1) * 26;
 }
 
 export function isSolidTile(t: number): boolean {

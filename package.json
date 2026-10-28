@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Bobina Negra 3D - plataforma 3D (2.5D) em WebGL proprio, jogavel no navegador.",
+  "description": "Bobina Negra 3D - plataforma 3D (2.5D) em WebGL próprio, jogável no navegador.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs && node scripts/serve.mjs",
