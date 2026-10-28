@@ -253,6 +253,112 @@ export function addSphere(g: Geo, cx: number, cy: number, cz: number, r: number,
   }
 }
 
+type V3 = [number, number, number];
+/** malha facetada: cada face é um polígono convexo, normal para fora (a origem fica dentro do sólido) */
+export function polyGeo(faces: V3[][]): Geo {
+  const g = newGeo();
+  for (const f of faces) {
+    const [a, b, c] = [f[0]!, f[1]!, f[2]!];
+    const u: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const v: V3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const cen: V3 = [0, 0, 0];
+    for (const q of f) { cen[0] += q[0] / f.length; cen[1] += q[1] / f.length; cen[2] += q[2] / f.length; }
+    let flip = n[0] * cen[0] + n[1] * cen[1] + n[2] * cen[2] < 0;
+    const L = Math.hypot(n[0], n[1], n[2]) || 1;
+    n = [n[0] / L, n[1] / L, n[2] / L];
+    if (flip) n = [-n[0], -n[1], -n[2]];
+    const base = g.pos.length / 3;
+    for (const q of f) { g.pos.push(q[0], q[1], q[2]); g.nor.push(n[0], n[1], n[2]); g.col.push(1, 1, 1); }
+    for (let i = 1; i < f.length - 1; i++) {
+      if (flip) g.idx.push(base, base + i + 1, base + i);
+      else g.idx.push(base, base + i, base + i + 1);
+    }
+  }
+  return g;
+}
+/** lâmina: base em losango, ombros e ponta (y de -0.5 a 0.5) */
+function bladeFaces(): V3[][] {
+  const ring = (y: number, k: number): V3[] => [[0.5 * k, y, 0], [0, y, 0.5 * k], [-0.5 * k, y, 0], [0, y, -0.5 * k]];
+  const lo = ring(-0.5, 0.78), mid = ring(0.28, 1), tip: V3 = [0, 0.5, 0];
+  const f: V3[][] = [];
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    f.push([lo[i]!, lo[j]!, mid[j]!, mid[i]!]);
+    f.push([mid[i]!, mid[j]!, tip]);
+  }
+  f.push([lo[0]!, lo[3]!, lo[2]!, lo[1]!]);
+  return f;
+}
+/** prisma triangular: ápice em cima, base embaixo, profundidade em z */
+function shardFaces(): V3[][] {
+  const A: V3 = [-0.5, -0.5, 0.5], B: V3 = [0.5, -0.5, 0.5], C: V3 = [0, 0.5, 0.5];
+  const a: V3 = [-0.5, -0.5, -0.5], b: V3 = [0.5, -0.5, -0.5], c: V3 = [0, 0.5, -0.5];
+  return [[A, B, C], [a, c, b], [A, a, b, B], [B, b, c, C], [C, c, a, A]];
+}
+/** caixa com quinas chanfradas */
+function plateFaces(c: number): V3[][] {
+  const o = 0.5, i = 0.5 - c;
+  const f: V3[][] = [];
+  const mk = (ax: number, s: number, r1: number, r2: number): V3 => {
+    const p: V3 = [0, 0, 0];
+    p[ax] = s * o;
+    p[(ax + 1) % 3] = r1 * i;
+    p[(ax + 2) % 3] = r2 * i;
+    return p;
+  };
+  for (let ax = 0; ax < 3; ax++) for (const s of [-1, 1]) f.push([mk(ax, s, -1, -1), mk(ax, s, 1, -1), mk(ax, s, 1, 1), mk(ax, s, -1, 1)]);
+  const at = (vals: number[]): V3 => [vals[0]!, vals[1]!, vals[2]!];
+  // arestas
+  for (let a = 0; a < 3; a++) {
+    const b = (a + 1) % 3, d = (a + 2) % 3;
+    for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+      const q = (e: number): V3 => { const v = [0, 0, 0]; v[a] = sa * o; v[b] = sb * i; v[d] = e * i; return at(v); };
+      const r = (e: number): V3 => { const v = [0, 0, 0]; v[b] = sb * o; v[a] = sa * i; v[d] = e * i; return at(v); };
+      f.push([q(-1), q(1), r(1), r(-1)]);
+    }
+  }
+  // cantos
+  for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) {
+    f.push([[x * o, y * i, z * i], [x * i, y * o, z * i], [x * i, y * i, z * o]]);
+  }
+  return f;
+}
+function gemFaces(): V3[][] {
+  const f: V3[][] = [];
+  const ring: V3[] = [[0.5, 0, 0], [0, 0, 0.5], [-0.5, 0, 0], [0, 0, -0.5]];
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    f.push([ring[i]!, ring[j]!, [0, 0.5, 0]]);
+    f.push([ring[j]!, ring[i]!, [0, -0.5, 0]]);
+  }
+  return f;
+}
+/** meia esfera (domo): base plana em y=-0.5, topo em y=0.5 */
+function hemiGeo(): Geo {
+  const g = newGeo();
+  const seg = 14, rings = 7;
+  for (let j = 0; j <= rings; j++) {
+    const phi = (j / rings) * (Math.PI / 2);
+    for (let i = 0; i <= seg; i++) {
+      const th = (i / seg) * Math.PI * 2;
+      const nx = Math.sin(phi) * Math.cos(th), ny = Math.cos(phi), nz = Math.sin(phi) * Math.sin(th);
+      g.pos.push(nx * 0.5, -0.5 + ny, nz * 0.5);
+      g.nor.push(nx, ny * 0.5, nz);
+      g.col.push(1, 1, 1);
+    }
+  }
+  for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) {
+    const a = j * (seg + 1) + i, b = a + seg + 1;
+    g.idx.push(a, a + 1, b, a + 1, b + 1, b);
+  }
+  const base = g.pos.length / 3;
+  g.pos.push(0, -0.5, 0); g.nor.push(0, -1, 0); g.col.push(1, 1, 1);
+  for (let i = 0; i <= seg; i++) { const a = (i / seg) * Math.PI * 2; g.pos.push(Math.cos(a) * 0.5, -0.5, Math.sin(a) * 0.5); g.nor.push(0, -1, 0); g.col.push(1, 1, 1); }
+  for (let i = 0; i < seg; i++) g.idx.push(base, base + 1 + i, base + 2 + i);
+  return g;
+}
+
 /** Anel (toro) no plano XZ, raio maior R e espessura r. */
 export function addTorus(g: Geo, R: number, r: number, seg: number, rseg: number, col: Vec3) {
   const base = g.pos.length / 3;
@@ -487,7 +593,7 @@ export class Engine {
   private nmat = new Float32Array(9);
   private ident = m4.create();
   private identN = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
-  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh; ring: GpuMesh };
+  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh; ring: GpuMesh; hemi: GpuMesh; blade: GpuMesh; shard: GpuMesh; plate: GpuMesh; gem: GpuMesh };
   drawCalls = 0;
   lost = false;
 
@@ -534,6 +640,11 @@ export class Engine {
       cyl: this.coneMesh(1),
       quad: this.quadMesh(),
       ring: this.ringMesh(),
+      hemi: this.upload(hemiGeo()),
+      blade: this.upload(polyGeo(bladeFaces())),
+      shard: this.upload(polyGeo(shardFaces())),
+      plate: this.upload(polyGeo(plateFaces(0.14))),
+      gem: this.upload(polyGeo(gemFaces())),
     };
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
@@ -816,7 +927,7 @@ export class Engine {
     this.draw(mesh, model, opts);
   }
 
-  prim(kind: "cube" | "sphere" | "cone" | "cyl" | "quad" | "ring", p: Vec3, r: Vec3, s: Vec3, opts: DrawOpts = {}, ink?: Vec3, thick = 0.06) {
+  prim(kind: keyof Engine["prims"], p: Vec3, r: Vec3, s: Vec3, opts: DrawOpts = {}, ink?: Vec3, thick = 0.06) {
     m4.compose(this.model, p, r, s);
     if (ink) this.drawInked(this.prims[kind], this.model, opts, ink, thick);
     else this.draw(this.prims[kind], this.model, opts);

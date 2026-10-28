@@ -8,7 +8,7 @@ import { charAsset } from "./skin";
 /* Grafo de cena minúsculo: cada Node é um grupo (pos/rot/scl) que pode ter uma
    primitiva desenhada com `size`. Os filhos herdam só o grupo (não o size). */
 
-export type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring";
+export type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring" | "hemi" | "blade" | "shard" | "plate" | "gem";
 
 export class Node {
   prim: Prim | null = null;
@@ -70,7 +70,7 @@ function eyes(parent: Node, y: number, z: number, spread: number, s: number, iri
 }
 
 /** o que o herói está vestindo/segurando (vem do equipamento) */
-export type GearPiece = { base: string; rarity: number; color: string };
+export type GearPiece = { base: string; rarity: number; color: string; fam?: string; acc?: string };
 export type GearLook = Record<EquipKey, GearPiece | null>;
 
 const ARMOR_COLOR: Record<string, string> = { plate: "#c9d1db", vest: "#1b1b22", robe: "#c3101e", cape: "#7b2bd1" };

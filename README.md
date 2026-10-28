@@ -108,3 +108,9 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Cenários dinâmicos: cada fase tem um clima (amanhecer, dia, entardecer, noite, tempestade) que muda céu, luz e névoa e vai virando o próximo ao longo do caminho; relâmpago suave; nuvens em parallax; bandos de morcegos/aves/gaivotas; balões, engrenagens, páginas voando, aurora, holofotes, bolhas, faíscas, moedas brilhando, etc. por mundo (`src/game/ambient.ts`).
 - Resolução dinâmica (baixa a nitidez sozinha se o aparelho engasgar).
 - Tudo de v5/v6: heróis e 13 monstros com esqueleto (pacotes UAL), 11 slots, 5 modos, golpe, câmera, drops 3D, ícones de itens, efeitos elementais, seleção de personagens com rolagem horizontal.
+
+## v7.1
+- Cada família de item (capacete, colar, armadura, luvas, calça, botas, anéis, armas, escudos/livros/lanternas/orbes) tem modelo próprio no herói (`src/engine/gearparts.ts`), em vez de cair no modelo genérico.
+- Capa/manto agora é pano: 5 colunas × 8 linhas independentes, com onda, arrasto e queda; comprimento ajustado.
+- Asas: dedos em dois segmentos, membrana com borda recortada, mão que atrasa na batida.
+- Parâmetros de teste: `?pva=<ângulo>&pvd=<distância>&pvf=1` (vitrine do herói na tela C).

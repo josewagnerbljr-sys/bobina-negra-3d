@@ -1,5 +1,6 @@
 import { hex, m4, type Engine, type Mat4, type Vec3 } from "./gl";
 import { G, glow, mix, Node, P, type DrawState, type GearLook, type GearPiece, type Model, type Pose } from "./models";
+import { buildPiece as buildPieceFam, makeCloth, makeWing, weaponNode, GOLD, RAR, type Anim, type Mount, type WingRig } from "./gearparts";
 import { charAsset, RIG_SCALE, skinMeshFor, SkinRig, type CharAsset } from "./skin";
 import { HEROES } from "../game/content";
 import type { EquipKey, HeroId } from "../game/types";
@@ -8,7 +9,7 @@ import type { EquipKey, HeroId } from "../game/types";
    e peças presas aos ossos (cabelo, chapéu, capa, armadura, arma…). Tudo em metros,
    no referencial da T-pose: x = esquerda do personagem, y = para cima, z = para frente. */
 
-export type Mount = { joint: number; node: Node; form?: boolean };
+export type { Mount };
 export type SkinPart = { rig: SkinRig; a: CharAsset; mounts: Mount[]; rinv: Mat4[] };
 
 const sw = m4.create();
@@ -40,8 +41,6 @@ export function drawSkinModel(
   }
 }
 
-const GOLD = "#e8b72e";
-const RAR = ["#d8d0c0", "#5fb4ff", "#c07aff", "#ffb23a"];
 
 export function rinvOf(a: CharAsset, j: number): Mat4 {
   const o = j * 16;
@@ -78,220 +77,6 @@ type Ctx = {
   a: CharAsset;
   J: (name: string) => number;
 };
-
-/** constrói as peças de um item equipado (retorna montagens) */
-function buildPiece(ctx: Ctx, slot: EquipKey, p: GearPiece, anim: Anim): Mount[] {
-  const out: Mount[] = [];
-  const col = pieceColor(p);
-  const trim = p.rarity >= 3 ? "#fff2b0" : p.rarity >= 2 ? GOLD : lerpHex(col, "#ffffff", 0.35);
-  const rc = RAR[Math.min(3, p.rarity)]!;
-  const add = (bone: string, n: Node, form = false) => {
-    out.push({ joint: ctx.J(bone), node: n, form });
-    return n;
-  };
-  const sides = [1, -1] as const;
-  const side = (sx: number) => (sx > 0 ? "L" : "R");
-  if (slot === "helmet") {
-    const h = "DEF-head";
-    if (p.base === "cap") {
-      add(h, P("sphere", [0.265, 0.17, 0.275], col, [0, 0.165, -0.005]));
-      add(h, P("cube", [0.2, 0.02, 0.14], trim, [0, 0.145, 0.15]));
-    } else if (p.base === "tophat") {
-      add(h, P("cyl", [0.17, 0.22, 0.17], col, [0, 0.33, 0]));
-      add(h, P("cyl", [0.33, 0.025, 0.33], col, [0, 0.215, 0]));
-      add(h, P("cyl", [0.175, 0.04, 0.175], trim, [0, 0.26, 0]));
-    } else if (p.base === "hood") {
-      add(h, P("sphere", [0.3, 0.3, 0.3], col, [0, 0.13, -0.02]));
-      add(h, P("cone", [0.2, 0.28, 0.2], col, [0, 0.14, -0.2], [-1.2, 0, 0]));
-    } else if (p.base === "helm") {
-      add(h, P("sphere", [0.29, 0.27, 0.3], col, [0, 0.15, -0.005]));
-      add(h, P("cube", [0.03, 0.1, 0.3], trim, [0, 0.3, 0]));
-      add(h, P("cube", [0.2, 0.025, 0.04], "#14080c", [0, 0.12, 0.14]));
-    } else {
-      add(h, P("cyl", [0.25, 0.07, 0.25], col, [0, 0.27, 0]));
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
-        add(h, glow(P("cone", [0.06, 0.12, 0.06], trim, [Math.cos(a) * 0.1, 0.35, Math.sin(a) * 0.1]), 0.35));
-      }
-      add(h, glow(P("sphere", [0.04, 0.04, 0.04], rc, [0, 0.38, 0.1]), 0.8));
-    }
-  } else if (slot === "necklace") {
-    add("DEF-neck", P("ring", [0.2, 0.1, 0.2], trim, [0, -0.01, 0.01]));
-    add("DEF-spine.003", glow(P("sphere", [0.05, 0.065, 0.03], col, [0, 0.12, 0.13]), 0.9));
-    if (p.rarity > 0) add("DEF-spine.003", glow(P("sphere", [0.02, 0.02, 0.02], rc, [0, 0.12, 0.155]), 1));
-  } else if (slot === "armor") {
-    const s3 = "DEF-spine.003";
-    if (p.base === "plate" || p.base === "cuirass") {
-      add(s3, P("cube", [0.34, 0.27, 0.07], col, [0, 0.06, 0.1]));
-      add(s3, P("cube", [0.1, 0.22, 0.02], trim, [0, 0.06, 0.14]));
-      add("DEF-hips", P("cyl", [0.3, 0.07, 0.22], col, [0, 0.07, 0.02]));
-      for (const sx of sides) add(`DEF-upper_arm.${side(sx)}`, P("sphere", [0.2, 0.14, 0.2], col, [-sx * 0.06, 0.06, 0]));
-      for (const sx of sides) add(`DEF-upper_arm.${side(sx)}`, P("cone", [0.06, 0.1, 0.06], trim, [-sx * 0.06, 0.15, 0]));
-    } else if (p.base === "vest") {
-      add(s3, P("cube", [0.07, 0.34, 0.025], trim, [0.07, 0.04, 0.125], [0, 0, 0.35]));
-      add(s3, P("cube", [0.07, 0.34, 0.025], trim, [-0.07, 0.04, 0.125], [0, 0, -0.35]));
-      add("DEF-hips", P("cyl", [0.3, 0.05, 0.21], "#3a2a20", [0, 0.06, 0.02]));
-      add("DEF-hips", P("cube", [0.06, 0.05, 0.03], GOLD, [0, 0.06, 0.125]));
-      for (const sx of sides) add(`DEF-upper_arm.${side(sx)}`, P("sphere", [0.15, 0.1, 0.15], col, [-sx * 0.06, 0.05, 0]));
-    } else if (p.base === "robe") {
-      add("DEF-hips", P("cone", [0.5, 0.74, 0.42], col, [0, -0.28, 0], [Math.PI, 0, 0]));
-      add("DEF-hips", P("cyl", [0.5, 0.04, 0.42], trim, [0, -0.63, 0]));
-      add(s3, P("cyl", [0.18, 0.07, 0.18], trim, [0, 0.16, 0]));
-      add("DEF-hips", P("cube", [0.07, 0.6, 0.03], trim, [0, -0.28, 0.2]));
-      for (const sx of sides) add(`DEF-upper_arm.${side(sx)}`, P("cone", [0.17, 0.3, 0.17], col, [-sx * 0.1, -0.03, 0], [0, 0, -sx * 1.57]));
-    } else {
-      // túnica de palhaço
-      add("DEF-hips", P("cone", [0.44, 0.22, 0.34], col, [0, -0.04, 0], [Math.PI, 0, 0]));
-      for (let i = 0; i < 3; i++) add(s3, glow(P("sphere", [0.05, 0.05, 0.04], trim, [0, 0.14 - i * 0.1, 0.13]), 0.4));
-      add("DEF-neck", P("ring", [0.3, 0.2, 0.3], trim, [0, 0.0, 0.0]));
-      for (const sx of sides) add(`DEF-upper_arm.${side(sx)}`, P("sphere", [0.14, 0.12, 0.14], trim, [-sx * 0.05, 0.05, 0]));
-    }
-  } else if (slot === "cape") {
-    const top = G(0, 0.1, -0.135);
-    const segs: Node[] = [];
-    let parent: Node = top;
-    const n = 4;
-    const L = p.base === "cape_gold" || p.base === "cape_star" ? 0.3 : 0.26;
-    for (let i = 0; i < n; i++) {
-      const g = G(0, i === 0 ? 0 : -L * 0.92, 0);
-      const w = 0.34 + i * 0.045;
-      g.add(P("cube", [w, L, 0.03], i === n - 1 ? mix(col, "#000000", 0.18) : col, [0, -L / 2, 0]));
-      if (i === 0) g.add(P("cube", [w + 0.04, 0.04, 0.05], trim, [0, 0, 0]));
-      if (i === n - 1) g.add(P("cube", [w, 0.03, 0.035], trim, [0, -L + 0.01, 0]));
-      parent.add(g);
-      parent = g;
-      segs.push(g);
-    }
-    add("DEF-spine.003", top);
-    anim.cape = segs;
-    for (const sx of sides) add(`DEF-spine.003`, P("sphere", [0.07, 0.07, 0.05], trim, [sx * 0.09, 0.13, 0.1]));
-  } else if (slot === "gloves") {
-    for (const sx of sides) {
-      const b = `DEF-forearm.${side(sx)}`;
-      add(b, P("cyl", [0.11, 0.16, 0.11], col, [-sx * 0.19, 0, 0], [0, 0, Math.PI / 2]));
-      if (p.base === "gauntlet") add(b, P("cube", [0.17, 0.06, 0.12], trim, [-sx * 0.12, 0.0, 0]));
-    }
-  } else if (slot === "pants") {
-    add("DEF-hips", P("cyl", [0.31, 0.05, 0.21], mix(col, "#000000", 0.25), [0, 0.1, 0.02]));
-    if (p.base === "greaves") {
-      for (const sx of sides) {
-        add(`DEF-shin.${side(sx)}`, P("cube", [0.11, 0.3, 0.05], col, [0, -0.2, 0.065]));
-        add(`DEF-shin.${side(sx)}`, P("sphere", [0.09, 0.09, 0.07], trim, [0, 0.02, 0.06]));
-      }
-    } else {
-      for (const sx of sides) add(`DEF-thigh.${side(sx)}`, P("cyl", [0.17, 0.04, 0.17], trim, [0, -0.2, 0]));
-    }
-  } else if (slot === "boots") {
-    for (const sx of sides) {
-      add(`DEF-shin.${side(sx)}`, P("cyl", [0.125, 0.14, 0.125], col, [0, -0.33, 0]));
-      add(`DEF-shin.${side(sx)}`, P("cyl", [0.135, 0.03, 0.135], trim, [0, -0.255, 0]));
-      if (p.base === "boots_speed") {
-        const wing = glow(P("cone", [0.05, 0.16, 0.02], rc, [-sx * 0.085, -0.28, -0.04], [0, 0, sx * 1.1]), 0.6);
-        add(`DEF-shin.${side(sx)}`, wing);
-      }
-      if (p.base === "boots_iron") add(`DEF-toe.${side(sx)}`, P("cube", [0.11, 0.05, 0.1], trim, [0, 0.0, 0.02]));
-    }
-  } else if (slot === "ring1" || slot === "ring2") {
-    const sx = slot === "ring1" ? 1 : -1;
-    const b = `DEF-hand.${side(sx)}`;
-    add(b, P("ring", [0.055, 0.06, 0.055], col, [-sx * 0.1, 0.02, 0.0], [0, 0, Math.PI / 2]));
-    add(b, glow(P("sphere", [0.03, 0.03, 0.03], rc, [-sx * 0.1, 0.045, 0.0]), 1));
-  } else if (slot === "offhand") {
-    const b = "DEF-forearm.L";
-    if (p.base === "lid") {
-      add(b, P("cyl", [0.42, 0.04, 0.42], col, [-0.04, 0.0, 0.1], [Math.PI / 2, 0, Math.PI / 2]));
-      add(b, P("sphere", [0.08, 0.08, 0.05], trim, [-0.04, 0.0, 0.13]));
-      add(b, P("ring", [0.42, 0.3, 0.42], trim, [-0.04, 0.0, 0.1], [Math.PI / 2, 0, Math.PI / 2]));
-    } else if (p.base === "tome") {
-      add("DEF-hand.L", P("cube", [0.17, 0.22, 0.045], col, [-0.08, 0.0, 0.11], [0.3, 0, 0.0]));
-      add("DEF-hand.L", glow(P("sphere", [0.04, 0.04, 0.03], rc, [-0.08, 0.0, 0.14]), 0.9));
-    } else if (p.base === "lantern") {
-      add("DEF-hand.L", P("cube", [0.11, 0.15, 0.11], "#2a2024", [-0.02, -0.13, 0.06]));
-      add("DEF-hand.L", glow(P("sphere", [0.12, 0.12, 0.12], "#ffc24a", [-0.02, -0.13, 0.06]), 1.1));
-    } else {
-      add("DEF-spine.003", P("cyl", [0.1, 0.4, 0.1], "#6a4630", [0.12, 0.0, -0.17], [0.3, 0, -0.25]));
-      for (let i = 0; i < 3; i++) add("DEF-spine.003", P("cone", [0.03, 0.08, 0.03], "#d2e39a", [0.07 + i * 0.03, 0.22, -0.2], [0.3, 0, -0.25]));
-    }
-  }
-  return out;
-}
-
-type Anim = { cape?: Node[]; wings?: Node[]; tail?: Node[]; flame?: Node[]; extra?: ((t: number, p: Pose) => void)[] };
-
-/** peça da arma (grip na origem, lâmina em +Y) */
-function weaponNode(p: GearPiece): Node {
-  const col = pieceColor(p);
-  const rc = RAR[Math.min(3, p.rarity)]!;
-  const blade = p.rarity >= 3 ? GOLD : "#dfe5ee";
-  const g = G();
-  const add = (n: Node) => {
-    g.add(n);
-    return n;
-  };
-  switch (p.base) {
-    case "knife":
-    case "claws": {
-      add(P("cube", [0.05, 0.3, 0.015], blade, [0, 0.19, 0]));
-      add(P("cone", [0.05, 0.1, 0.02], blade, [0, 0.39, 0]));
-      add(P("cube", [0.14, 0.03, 0.05], rc, [0, 0.03, 0]));
-      if (p.base === "claws") {
-        add(P("cube", [0.05, 0.3, 0.015], blade, [0.07, 0.19, 0]));
-        add(P("cube", [0.05, 0.3, 0.015], blade, [-0.07, 0.19, 0]));
-      }
-      break;
-    }
-    case "wand": {
-      add(P("cyl", [0.03, 0.34, 0.03], "#3a2a40", [0, 0.14, 0]));
-      add(glow(P("sphere", [0.08, 0.08, 0.08], rc, [0, 0.34, 0]), 1));
-      break;
-    }
-    case "sword": {
-      add(P("cube", [0.085, 0.62, 0.022], blade, [0, 0.38, 0]));
-      add(P("cone", [0.085, 0.12, 0.026], blade, [0, 0.75, 0]));
-      add(P("cube", [0.3, 0.055, 0.07], rc, [0, 0.05, 0]));
-      add(P("sphere", [0.06, 0.06, 0.06], col, [0, -0.1, 0]));
-      add(P("cyl", [0.035, 0.18, 0.035], "#4a3024", [0, -0.04, 0]));
-      break;
-    }
-    case "axe": {
-      add(P("cyl", [0.04, 0.8, 0.04], "#6b4a2f", [0, 0.28, 0]));
-      add(P("cube", [0.36, 0.26, 0.05], blade, [0.17, 0.58, 0]));
-      add(P("cone", [0.12, 0.28, 0.05], blade, [0.38, 0.58, 0], [0, 0, -Math.PI / 2]));
-      add(P("sphere", [0.07, 0.07, 0.07], rc, [0, 0.7, 0]));
-      break;
-    }
-    case "hammer": {
-      add(P("cyl", [0.045, 0.78, 0.045], "#6b4a2f", [0, 0.28, 0]));
-      add(P("cube", [0.3, 0.2, 0.2], col, [0, 0.7, 0]));
-      add(P("cube", [0.32, 0.04, 0.22], rc, [0, 0.7, 0]));
-      break;
-    }
-    case "staff": {
-      add(P("cyl", [0.04, 1.2, 0.04], "#6b4a2f", [0, 0.4, 0]));
-      add(glow(P("sphere", [0.15, 0.15, 0.15], rc, [0, 1.06, 0]), 0.85));
-      add(P("ring", [0.26, 0.1, 0.26], col, [0, 0.98, 0], [0.4, 0, 0]));
-      break;
-    }
-    case "scepter": {
-      add(P("cyl", [0.045, 0.7, 0.045], "#d9a830", [0, 0.26, 0]));
-      add(glow(P("cone", [0.18, 0.22, 0.18], rc, [0, 0.74, 0]), 0.85));
-      add(P("cyl", [0.12, 0.05, 0.12], "#d9a830", [0, 0.6, 0]));
-      break;
-    }
-    case "bow": {
-      add(P("cube", [0.04, 0.5, 0.04], "#8d4a2f", [0.0, 0.0, 0.0]));
-      add(P("cube", [0.04, 0.3, 0.04], "#8d4a2f", [0.1, 0.34, 0.0], [0, 0, -0.55]));
-      add(P("cube", [0.04, 0.3, 0.04], "#8d4a2f", [0.1, -0.34, 0.0], [0, 0, 0.55]));
-      add(P("cube", [0.008, 0.92, 0.008], "#f4efe4", [0.2, 0.0, 0.0]));
-      break;
-    }
-    default: {
-      add(P("cyl", [0.04, 0.5, 0.04], "#6b4a2f", [0, 0.2, 0]));
-      add(P("sphere", [0.1, 0.1, 0.1], col, [0, 0.5, 0]));
-    }
-  }
-  return g;
-}
 
 /** cores de região a partir do herói + equipamento */
 function applyRegions(rig: SkinRig, def: (typeof HEROES)[number], look: GearLook | undefined, form: boolean, formSkin: string) {
@@ -371,29 +156,16 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add(H, P("cube", [0.02, 0.03, 0.015], "#f4efe4", [-0.025, 0.045, 0.112]));
     add(H, P("cube", [0.02, 0.03, 0.015], "#f4efe4", [0.025, 0.045, 0.112]));
     // capa de vampira
-    const top = G(0, 0.12, -0.14);
-    const segs: Node[] = [];
-    let par: Node = top;
-    for (let i = 0; i < 4; i++) {
-      const g = G(0, i === 0 ? 0 : -0.26, 0);
-      g.add(P("cube", [0.4 + i * 0.05, 0.28, 0.03], i % 2 ? "#3a1a48" : "#2a1a38", [0, -0.14, 0]));
-      g.add(P("cube", [0.36 + i * 0.05, 0.28, 0.02], "#c4373a", [0, -0.14, 0.025]));
-      par.add(g);
-      par = g;
-      segs.push(g);
-    }
-    add(S3, top);
-    anim.cape = segs;
-    // asas de morcego (forma)
-    const wings: Node[] = [];
+    const cp = makeCloth({ col: "#2a1a38", inner: "#c4373a", trim: "#e8b72e", L: 0.12, rows: 8, cols: 5, w: 0.44, y: 0.12, z: -0.14, ragged: 0.3 });
+    add(S3, cp.top);
+    anim.cloth = cp;
+    // asas de morcego articuladas (forma)
+    anim.wingRigs = [];
     for (const sx of [-1, 1]) {
-      const w = G(sx * 0.06, 0.04, -0.14);
-      w.add(P("cube", [0.9, 0.7, 0.025], "#6a2a7a", [sx * 0.45, 0.05, 0], [0, 0, sx * 0.3]));
-      for (let k = 0; k < 3; k++) w.add(P("cube", [0.8, 0.03, 0.04], "#2a1a38", [sx * 0.4, 0.2 - k * 0.14, 0.015], [0, 0, sx * (0.15 + k * 0.17)]));
-      add(S3, w, true);
-      wings.push(w);
+      const wg = makeWing(sx, { bone: "#2a1a38", memb: "#9a3ab0", memb2: "#73299a", claw: "#e8dfc8", span: 1 });
+      add(S3, wg.root, true);
+      anim.wingRigs.push(wg);
     }
-    anim.wings = wings;
   } else if (id === "osso") {
     add(H, P("cyl", [0.2, 0.24, 0.2], "#1c1612", [0, 0.34, 0]));
     add(H, P("cyl", [0.34, 0.03, 0.34], "#1c1612", [0, 0.225, 0]));
@@ -473,20 +245,17 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add(HIP, P("cone", [0.44, 0.2, 0.34], "#e0b15a", [0, 0.02, 0], [Math.PI, 0, 0]));
     for (const sx of [-1, 1]) {
       add(`DEF-forearm.${sx > 0 ? "L" : "R"}`, P("cone", [0.07, 0.22, 0.02], "#4ac0e0", [-sx * 0.1, 0.0, -0.05], [0, 0, sx * -Math.PI / 2 - 0.4]));
-      const f = G(sx * 0.1, 0.0, -0.14);
-      f.add(P("cone", [0.3, 0.6, 0.03], "#4ac0e0", [sx * 0.3, 0.0, 0], [0, 0, -sx * 1.25]));
-      add(S3, f, true);
-      (anim.wings = anim.wings ?? []).push(f);
+      const wg = makeWing(sx, { bone: "#1c8a9a", memb: "#4ac0e0", memb2: "#2aa0c0", span: 0.7, fingers: 4 });
+      add(S3, wg.root, true);
+      (anim.wingRigs = anim.wingRigs ?? []).push(wg);
     }
   } else if (id === "pia") {
     for (const sx of [-1, 1]) {
       add(H, P("cone", [0.07, 0.2, 0.07], "#3a3d46", [sx * 0.1, 0.28, 0], [0, 0, -sx * 0.4]));
-      const w = G(sx * 0.1, 0.0, -0.14);
-      w.add(P("cube", [0.55, 0.62, 0.04], "#4a4e56", [sx * 0.28, 0.1, 0], [0, 0, -sx * 0.55]));
-      w.add(P("cube", [0.06, 0.7, 0.06], "#2a2c32", [sx * 0.06, 0.05, 0.01]));
-      add(S3, w);
-      (anim.wings = anim.wings ?? []).push(w);
-      add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("sphere", [0.17, 0.13, 0.17], "#3a3d46", [-sx * 0.06, 0.05, 0]));
+      const wg = makeWing(sx, { bone: "#2a2c32", memb: "#4a4e56", memb2: "#3a3d46", span: 0.8, fingers: 4, thick: 0.045, claw: "#8a8e98" });
+      add(S3, wg.root);
+      (anim.wingRigs = anim.wingRigs ?? []).push(wg);
+      add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("hemi", [0.18, 0.12, 0.18], "#3a3d46", [-sx * 0.06, 0.03, 0]));
     }
     const gt = G(0, 0.0, -0.1);
     gt.add(P("cone", [0.11, 0.42, 0.11], "#4a4e56", [0, -0.1, -0.16], [-1.1, 0, 0]));
@@ -609,23 +378,24 @@ export function buildSkinHero(id: HeroId): Model | null {
     if (key === gearKey) return;
     gearKey = key;
     gearMounts = [];
-    anim.cape = baseCape;
+    anim.cloth = baseCloth;
+    anim.flame = baseFlame ? [...baseFlame] : undefined;
     weaponGrip = null;
     if (g) {
       const order: EquipKey[] = ["helmet", "necklace", "armor", "cape", "gloves", "pants", "boots", "ring1", "ring2", "offhand"];
       for (const slot of order) {
         const p = g[slot];
         if (!p) continue;
-        const capeBefore = anim.cape;
-        gearMounts.push(...buildPiece(ctx, slot, p, anim));
-        if (slot !== "cape") anim.cape = capeBefore;
+        const clothBefore = anim.cloth;
+        gearMounts.push(...buildPieceFam(J, slot, p, anim));
+        if (slot !== "cape") anim.cloth = clothBefore;
       }
       if (g.weapon) {
         const grip = G();
         const wn = weaponNode(g.weapon);
         grip.add(wn);
         // lâmina para frente e para cima quando o braço está relaxado
-        const isBow = g.weapon.base === "bow";
+        const isBow = (g.weapon.fam ?? g.weapon.base) === "bow";
         const tilt = isBow ? [0, 0, 0] : [Math.PI / 2, 0.5, 0];
         wn.rot = [tilt[0]!, tilt[1]!, tilt[2]!];
         gearMounts.push({ joint: J("DEF-hand.R"), node: grip });
@@ -636,7 +406,8 @@ export function buildSkinHero(id: HeroId): Model | null {
     mounts.push(...base, ...gearMounts);
     // esconde peças do herói que conflitam (arco do Syl etc.) — nada por enquanto
   };
-  const baseCape = anim.cape;
+  const baseCloth = anim.cloth;
+  const baseFlame = anim.flame ? [...anim.flame] : undefined;
 
   let last = -1;
   let hurtPrev = false;
@@ -645,6 +416,9 @@ export function buildSkinHero(id: HeroId): Model | null {
   let attackBusy = 0;
   let meleeAlt = 0;
   let swingPrev = 0;
+  let spPrev = 0;
+  const capeSt = new WeakMap<Node, { a: number; v: number }>();
+  const wingSt = new Map<Node, { a: number; v: number }>();
   let atkPrev = 0;
   let lastForm = false;
   let popAt = -10;
@@ -731,12 +505,63 @@ export function buildSkinHero(id: HeroId): Model | null {
       for (const m of base) if (m.form) m.node.visible = form;
       // movimento secundário
       const t = p.t;
-      if (anim.cape) {
+      if (anim.cloth) {
         const k = Math.min(1, sp);
-        for (let i = 0; i < anim.cape.length; i++) {
-          const s = anim.cape[i]!;
-          const lag = i * 0.9;
-          s.rot[0] = (i === 0 ? 0.12 : 0.05) + k * (i === 0 ? 0.35 : 0.22) + Math.sin(t * 5 - lag) * 0.05 * (0.4 + k) + (air ? (p.vy > 0 ? -0.15 : 0.25) : 0);
+        const acc = dt > 0 ? Math.max(-6, Math.min(6, (sp - spPrev) / dt)) : 0;
+        const cols = anim.cloth.cols;
+        const nc = cols.length;
+        const mid = (nc - 1) / 2;
+        for (let c = 0; c < nc; c++) {
+          const chain = cols[c]!;
+          const cc = c - mid;
+          let cum = 0;
+          for (let i = 0; i < chain.length; i++) {
+            const sg = chain[i]!;
+            let st = capeSt.get(sg);
+            if (!st) capeSt.set(sg, (st = { a: 0.06, v: 0 }));
+            // alvo: pende reto, abre para trás com a velocidade, balança em onda pela largura
+            const nb = i > 0 ? (capeSt.get(chain[i - 1]!)?.a ?? 0.06) : 0.06;
+            const left = c > 0 ? capeSt.get(cols[c - 1]![i]!)?.a ?? st.a : st.a;
+            const right = c < nc - 1 ? capeSt.get(cols[c + 1]![i]!)?.a ?? st.a : st.a;
+            const tgt =
+              (i === 0 ? -0.1 + k * 0.12 : -0.01 + k * (0.035 + i * 0.006)) -
+              Math.max(0, cum - 0.22) * 0.7 +
+              (air ? (p.vy > 0 ? -0.04 : 0.1) * (0.5 + i * 0.08) : 0) +
+              acc * 0.008 * (1 + i * 0.3) +
+              Math.sin(t * 3.4 - i * 0.7 + cc * 0.8) * 0.03 * (0.25 + k + i * 0.08) +
+              (i > 0 ? (nb - 0.06) * 0.3 : 0) +
+              ((left + right) * 0.5 - st.a) * 0.35;
+            if (dt > 0) {
+              st.v += ((tgt - st.a) * (64 - i * 3) - st.v * 7.5) * dt;
+              st.a = Math.max(-0.2, Math.min(0.6, st.a + st.v * dt));
+            }
+            cum += st.a;
+            sg.rot[0] = st.a;
+            // torção e abertura lateral crescem para a barra
+            sg.rot[1] = cc * (0.004 + k * 0.006) * i + Math.sin(t * 4.1 - i * 0.8 + cc) * 0.035 * (0.3 + k) * (i / chain.length);
+            sg.rot[2] = cc * 0.005 * i * (0.4 + k) + Math.sin(t * 2.6 + cc * 1.3 + i * 0.5) * 0.015 * k;
+          }
+        }
+      }
+      spPrev = sp;
+      if (anim.wingRigs) {
+        const fl = Math.sin(t * (form ? 9 : 3));
+        const amp = form ? 0.55 : 0.08;
+        for (const wg of anim.wingRigs) {
+          // batida: ombro sobe/desce, cotovelo dobra no tempo certo, mão (pulso) atrasa e fecha na descida
+          wg.root.rot[2] = wg.sx * (0.12 + fl * amp);
+          wg.root.rot[1] = wg.sx * (-0.3 + fl * 0.16 * (form ? 1 : 0.3));
+          wg.elbow.rot[2] = -wg.sx * (0.2 - fl * 0.4 * (form ? 1 : 0.2));
+          const lag = Math.sin(t * (form ? 9 : 3) - 0.9);
+          let ws = wingSt.get(wg.wrist);
+          if (!ws) wingSt.set(wg.wrist, (ws = { a: 0, v: 0 }));
+          const wt = -wg.sx * lag * (form ? 0.45 : 0.08) - sp * 0.05;
+          if (dt > 0) {
+            ws.v += ((wt - ws.a) * 90 - ws.v * 9) * dt;
+            ws.a += ws.v * dt;
+          }
+          wg.wrist.rot[2] = ws.a;
+          wg.wrist.rot[1] = wg.sx * lag * (form ? 0.12 : 0.02);
         }
       }
       if (anim.tail) for (const n of anim.tail) n.rot[2] = Math.sin(t * 7) * 0.2;

@@ -1468,7 +1468,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   function gearLook(): GearLook {
     const eq = save.equip;
     const out = {} as GearLook;
-    for (const k of EQUIP_KEYS) out[k] = eq[k] ? { base: eq[k]!.base, rarity: eq[k]!.rarity, color: baseOf(eq[k]!).color } : null;
+    for (const k of EQUIP_KEYS) out[k] = eq[k] ? { base: eq[k]!.base, rarity: eq[k]!.rarity, color: baseOf(eq[k]!).color, fam: baseOf(eq[k]!).fam, acc: baseOf(eq[k]!).acc } : null;
     return out;
   }
 
@@ -1568,7 +1568,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (screen === "cast" || screen === "title" || screen === "char") {
       document.querySelectorAll<HTMLCanvasElement>("[data-hero-preview]").forEach((node) => {
         const id = node.dataset.heroPreview as HeroId;
-        if (HERO_IDS.includes(id)) renderer.previewHero(node, id, clock, false, screen === "char" ? gearLook() : undefined);
+        if (HERO_IDS.includes(id)) renderer.previewHero(node, id, clock, new URLSearchParams(location.search).has("pvf"), screen === "char" ? gearLook() : undefined);
       });
     }
     void dt;

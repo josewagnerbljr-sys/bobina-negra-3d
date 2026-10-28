@@ -268,6 +268,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camPY = 0;
   let attractLevel: Level | null = null;
   let lastT = 0;
+  const qaZoom = (() => { try { const z = Number(new URLSearchParams(location.search).get("zoom")); return z > 0.2 && z <= 1 ? z : 1; } catch { return 1; } })();
+  const qaPv = (() => { try { const q = new URLSearchParams(location.search); return q.has("pva") ? { a: Number(q.get("pva")) || 0, d: Number(q.get("pvd")) || 1 } : null; } catch { return null; } })();
   const tmpBlob = m4.create();
   let frameAvg = 0.016, lastScale = 0, resScale = 1;
   const moodLight: Lighting = { sun: [0, 0, 0], sunDir: [0, 1, 0], sky: [0, 0, 0], ground: [0, 0, 0], fog: [0, 0, 0], fogNear: 0, fogFar: 0 };
@@ -351,7 +353,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       cx = Math.min(L.cols - halfWv + 1.5, Math.max(halfWv - 1.5, ax));
       cy = Math.max(visH / 2 - 1.0, Math.min(ROWS + 1, ay));
       const sh = f.shake * 0.012;
-      const R = dist0 * camRS;
+      const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
       const lift = 1.0 + 0.9 * (1 - camCineK * 0.8);
       at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, 0];
@@ -967,7 +969,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       prevCanvas!.height = ph;
       const pe = prev;
       pe.begin([0.1, 0.06, 0.09]);
-      pe.setCamera([Math.sin(t * 0.7) * 1.4, 1.0, 2.7], [0, 0.78, 0], (34 * Math.PI) / 180, 0.3, 40);
+      const pva = qaPv ? qaPv.a : Math.sin(t * 0.7) * 0.5;
+      const pvd = qaPv ? qaPv.d : 1;
+      pe.setCamera([Math.sin(pva) * 3.0 * pvd, 1.0 * (0.4 + 0.6 * pvd), Math.cos(pva) * 3.0 * pvd], [0, 0.78, 0], (34 * Math.PI) / 180, 0.3, 40);
       pe.drawSky(hex("#2a1824"), hex("#241420"), hex("#140c10"), t, 0, [0, 0, 0], [-2, -2], [0, 0]);
       pe.useLit({
         sun: [0.85, 0.8, 0.7],
