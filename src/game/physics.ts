@@ -78,12 +78,45 @@ export function resolveY(body: Body, level: Level, drop: number, prevBottom: num
   return { grounded, onOneWay, spring, spike };
 }
 
-export function moveBody(body: Body, level: Level, dt: number, drop: number) {
+function overlapsSolid(body: Body, level: Level) {
+  const r0 = Math.floor((body.y + 4) / TILE);
+  const r1 = Math.floor((body.y + body.h - 6) / TILE);
+  const c0 = Math.floor(body.x / TILE);
+  const c1 = Math.floor((body.x + body.w - 0.01) / TILE);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (isSolidTile(tileAt(level, c, r))) return true;
+  return false;
+}
+
+/** deslocamento vertical do último degrau automático (px), para o visual suavizar */
+export const stepInfo = { lift: 0 };
+
+export function moveBody(body: Body, level: Level, dt: number, drop: number, stepUp = false) {
   const xSteps = Math.max(1, Math.ceil(Math.abs(body.vx * dt) / 16));
   const xPart = (body.vx * dt) / xSteps;
+  stepInfo.lift = 0;
   for (let i = 0; i < xSteps; i++) {
+    const ox = body.x;
     body.x += xPart;
     resolveX(body, level);
+    if (stepUp && body.vy >= 0 && Math.abs(body.x - (ox + xPart)) > 0.01) {
+      // degrau automático: sobe blocos de 1 tile quando está andando no chão
+      const bottom = body.y + body.h;
+      const rem = bottom % TILE;
+      if (rem < 3 || rem > TILE - 3) {
+        const keepVx = xPart > 0 ? Math.abs(body.vx) : -Math.abs(body.vx);
+        const sx = body.x;
+        const sy = body.y;
+        body.x = ox + xPart;
+        body.y = Math.round(bottom / TILE) * TILE - TILE - body.h;
+        if (overlapsSolid(body, level)) {
+          body.x = sx;
+          body.y = sy;
+        } else {
+          stepInfo.lift += sy - body.y;
+          body.vx = keepVx;
+        }
+      }
+    }
   }
   const yDist = body.vy * dt;
   const ySteps = Math.max(1, Math.ceil(Math.abs(yDist) / 16));

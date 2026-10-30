@@ -82,6 +82,11 @@ export type Kind =
   | "gargoyle"
   | "shade"
   | "jester"
+  | "demon"
+  | "devil"
+  | "ogre"
+  | "seraph"
+  | "knight"
   | "boss"
   | "chest"
   | "candle";
@@ -122,7 +127,11 @@ export type Level = {
   ents: LevelEnt[];
   spawn: { c: number; foot: number };
   exit: { c: number; foot: number };
+  risers?: Riser[];
 };
+
+/** colina dinâmica: sobe/desce com a caminhada (mode 0) ou em pulso (mode 1). col = altura de colisão, vis = visual suave */
+export type Riser = { c: number; w: number; h: number; mode: number; ph: number; col: number; vis: number };
 
 export type BuffSnap = { kind: BuffKind; left: number };
 
@@ -194,5 +203,12 @@ export function isSolidTile(t: number): boolean {
 export function tileAt(level: Level, c: number, r: number): number {
   if (c < 0 || c >= level.cols) return Tile.Solid;
   if (r < 0 || r >= level.rows) return Tile.Air;
+  const rs = level.risers;
+  if (rs) {
+    for (let i = 0; i < rs.length; i++) {
+      const z = rs[i]!;
+      if (c >= z.c && c < z.c + z.w && z.col > 0 && r >= GROUND - z.col && r < GROUND) return Tile.Solid;
+    }
+  }
   return level.tiles[r * level.cols + c] ?? Tile.Air;
 }

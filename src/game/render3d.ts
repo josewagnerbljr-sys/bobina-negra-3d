@@ -4,7 +4,7 @@ import { loadCharAsset } from "../engine/skin";
 import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
-import { GROUND, ROWS, TILE, Tile, type HeroId, type Kind, type Level } from "./types";
+import { GROUND, ROWS, TILE, Tile, type HeroId, type Kind, type Level, tileAt } from "./types";
 
 export type Spark = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
 
@@ -213,7 +213,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     let r = Math.floor((footPx - 2) / TILE);
     if (r < 0) r = 0;
     for (; r < ROWS; r++) {
-      const t = level.tiles[r * level.cols + c];
+      const t = tileAt(level, c, r);
       if (t === Tile.Solid || t === Tile.OneWay || t === Tile.Spring || t === Tile.Spike) return ROWS - r;
     }
     return null;
@@ -271,6 +271,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const qaZoom = (() => { try { const z = Number(new URLSearchParams(location.search).get("zoom")); return z > 0.2 && z <= 1 ? z : 1; } catch { return 1; } })();
   const qaPv = (() => { try { const q = new URLSearchParams(location.search); return q.has("pva") ? { a: Number(q.get("pva")) || 0, d: Number(q.get("pvd")) || 1 } : null; } catch { return null; } })();
   const tmpBlob = m4.create();
+  let ambBase = 1.5;
+  let ambInit = false;
   let frameAvg = 0.016, lastScale = 0, resScale = 1;
   const moodLight: Lighting = { sun: [0, 0, 0], sunDir: [0, 1, 0], sky: [0, 0, 0], ground: [0, 0, 0], fog: [0, 0, 0], fogNear: 0, fogFar: 0 };
 
@@ -287,7 +289,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       if (frameAvg > 0.026 && resScale > 0.6) resScale = Math.max(0.6, resScale - 0.12);
       else if (frameAvg < 0.019 && resScale < 1) resScale = Math.min(1, resScale + 0.06);
     }
-    e.resize(cssW, cssH, 1.5 * resScale);
+    // cena de fala do chefe: resolução menor (a tela fica parada e o texto precisa fluir)
+    const eco = f.cam && f.cam.cine ? 0.72 : 1;
+    e.resize(cssW, cssH, 1.5 * Math.min(resScale, eco));
     const aspect = canvas.width / Math.max(1, canvas.height);
 
     // fase: a do jogo ou uma de vitrine nos menus
@@ -308,7 +312,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const cam = f.cam ?? { t: 99, moving: 0, boss: null, cine: null };
       const hx = fo.x * S;
       const hy = ROWS - fo.y * S;
-      const lookX = fo.facing * 1.4;
+      const lookX = fo.facing * 1.8;
       const tx = hx + lookX;
       if (!camInit) {
         camPX = tx;
@@ -337,7 +341,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.6 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      const rT = (1.5 - 0.95 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
@@ -384,8 +388,23 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     e.draw(g.back, null, { cel: false });
     e.draw(g.glow, null, { unlit: true });
     e.draw(g.terrain, null, {});
+    if (L.risers) {
+      const gc = hex(g.world.ground);
+      const tc = g.trim;
+      for (const z of L.risers) {
+        if (z.vis < 0.02) continue;
+        const wob = z.col !== Math.round(z.vis) ? Math.sin(f.t * 40 + z.c) * 0.012 : 0;
+        const hgt = z.vis + 0.6;
+        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND - 0.6 + hgt / 2, -0.05], [0, 0, 0], [z.w, hgt, 2.1]);
+        e.draw(e.prims.cube, tmpBlob, { color: gc });
+        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND + z.vis - 0.08, 0.0], [0, 0, 0], [z.w + 0.04, 0.16, 2.2]);
+        e.draw(e.prims.cube, tmpBlob, { color: [tc[0] * 0.8 + gc[0] * 0.2, tc[1] * 0.8 + gc[1] * 0.2, tc[2] * 0.8 + gc[2] * 0.2] as Vec3 });
+      }
+    }
 
-    const ambCtx: AmbientCtx = { e, wid: g.world ? g.world.id : 0, t: f.t, cx, cy, halfW, mood, dark: [0.04, 0.04, 0.07], accent: g.accent, fog: mood.flash > 0 ? [0.9, 0.93, 1] : tintSky(hex(g.world ? g.world.fog : "#444455"), mood), hero: null, glow: glowSprite, tmp: tmpBlob };
+    if (!ambInit) { ambBase = cy; ambInit = true; }
+    ambBase += (cy - ambBase) * (1 - Math.exp(-0.35 * dt));
+    const ambCtx: AmbientCtx = { base: ambBase, e, wid: g.world ? g.world.id : 0, t: f.t, cx, cy: ROWS - GROUND + 2.6, halfW, mood, dark: [0.04, 0.04, 0.07], accent: g.accent, fog: mood.flash > 0 ? [0.9, 0.93, 1] : tintSky(hex(g.world ? g.world.fog : "#444455"), mood), hero: null, glow: glowSprite, tmp: tmpBlob };
     drawAmbientOpaque(ambCtx);
 
     // lanternas dos checkpoints

@@ -80,6 +80,8 @@ export type AmbientCtx = {
   fog: Vec3;
   /** posição do herói em unidades (para peças que reagem) */
   hero: { x: number; y: number } | null;
+  /** altura de referência estável do cenário (não acompanha pulos) */
+  base: number;
   glow: (x: number, y: number, z: number, size: number, c: Vec3, a: number) => void;
   tmp: Float32Array;
 };
@@ -107,7 +109,8 @@ function flap(c: AmbientCtx, x: number, y: number, z: number, s: number, ph: num
 
 /** parte opaca: silhuetas, balões, engrenagens, papéis */
 export function drawAmbientOpaque(c: AmbientCtx) {
-  const { e, wid, t, cy } = c;
+  const { e, wid, t } = c;
+  const cy = c.base;
   const dark = c.dark;
   const night = c.mood.stars > 0.3 ? 1 : 0.7;
   const body = { color: dark, unlit: true } as const;
@@ -126,13 +129,30 @@ export function drawAmbientOpaque(c: AmbientCtx) {
     }
   }
   if (wid === 0 || wid === 8) {
-    // balões e lanternas subindo
-    for (let i = 0; i < 5; i++) {
-      const x = c.cx - c.halfW + ((i * 9.7 + t * 0.25 * (0.6 + (i % 3) * 0.25)) % (c.halfW * 2));
-      const y = cy - 3 + ((t * (0.35 + (i % 3) * 0.12) + i * 3.3) % 12);
-      const col: Vec3 = wid === 0 ? ([[0.9, 0.2, 0.3], [0.95, 0.75, 0.2], [0.3, 0.6, 0.95]][i % 3] as Vec3) : [1, 0.85, 0.5];
-      e.prim("sphere", [x, y, -6 - (i % 3)], [0, 0, 0], [0.5, 0.62, 0.5], { color: col, emis: col.map((v) => v * (wid === 8 ? 0.8 : 0.35)) as Vec3, unlit: wid === 8 });
-      if (wid === 0) e.prim("cube", [x, y - 0.8, -6 - (i % 3)], [0, 0, 0], [0.02, 0.9, 0.02], body);
+    // balões e lanternas: ficam no mundo (não acompanham o pulo nem o passo do herói),
+    // cada um com seu ciclo; alguns ciclos não aparecem, então a quantidade varia sozinha
+    const span = c.halfW * 2 + 16;
+    const slots = 16;
+    const palette: Vec3[] = [[0.9, 0.2, 0.3], [0.95, 0.75, 0.2], [0.3, 0.6, 0.95], [0.4, 0.85, 0.5], [0.85, 0.4, 0.85], [1, 0.55, 0.2]];
+    for (let i = 0; i < slots; i++) {
+      const period = 13 + hash(i * 5.3) * 19;
+      const cyc = Math.floor(t / period + hash(i * 2.9));
+      const u = (t / period + hash(i * 2.9)) - cyc;
+      const seed = i * 17.3 + cyc * 3.71;
+      if (hash(seed) < 0.38) continue;
+      const rise = 8 + hash(seed + 1) * 7;
+      const ax = hash(seed + 2) * span + Math.sin(u * 6.28 * (0.5 + hash(seed + 3)) + seed) * 0.7;
+      const x = c.cx - c.halfW - 8 + ((((ax - c.cx * 0.15) % span) + span) % span);
+      const y = c.base - 4 + u * rise * 1.4;
+      const z = -4 - hash(seed + 4) * 7;
+      const sz = 0.35 + hash(seed + 5) * 0.4;
+      const col: Vec3 = wid === 0 ? palette[Math.floor(hash(seed + 6) * palette.length)]! : [1, 0.82 + hash(seed) * 0.1, 0.45];
+      const sway = Math.sin(t * 1.3 + seed) * 0.08;
+      e.prim("sphere", [x, y, z], [0, 0, sway], [sz, sz * 1.25, sz], { color: col, emis: col.map((v) => v * (wid === 8 ? 0.8 : 0.3)) as Vec3, unlit: wid === 8 });
+      if (wid === 0) {
+        e.prim("cone", [x, y - sz * 1.2, z], [Math.PI, 0, sway], [sz * 0.25, sz * 0.3, sz * 0.25], { color: col });
+        e.prim("cube", [x + sway * 0.4, y - sz * 2.2, z], [0, 0, sway * 0.5], [0.015, sz * 1.6, 0.015], body);
+      }
     }
   }
   if (wid === 2) {
@@ -158,12 +178,53 @@ export function drawAmbientOpaque(c: AmbientCtx) {
       e.prim("cube", [x, y, -5 - (i % 4) * 1.2], [t * 1.4 + i, t * 0.9 + i * 2, t * 0.5], [0.42, 0.56, 0.02], { color: [0.95, 0.92, 0.82], emis: [0.2, 0.19, 0.16] });
     }
   }
+  // partículas de vida por mundo: confete, folhas, penas, flocos, cinzas (giram e balançam ao vento)
+  {
+    const wspan = c.halfW * 2 + 14;
+    const gust = 0.6 + 0.4 * Math.sin(t * 0.23) + 0.25 * Math.sin(t * 0.71 + 1.3);
+    const fall = (n: number, fx: number, fy: number, sz: number, zBase: number, cols: Vec3[], spin: number, flat = 0.04, up = false) => {
+      for (let i = 0; i < n; i++) {
+        const sd = hash(i * 7.7 + wid * 31.3);
+        const sp = 0.35 + sd * 0.5;
+        const ph = hash(i * 3.1 + wid) * 100;
+        const u = (((t * sp * 0.12 + ph) % 1) + 1) % 1;
+        const x0 = c.cx - c.halfW - 7 + ((hash(i * 1.7 + wid * 5) * wspan + t * fx * gust * (0.6 + sd) + Math.sin(t * (0.6 + sd) + ph) * 0.9) % wspan + wspan) % wspan;
+        const y = up ? cy - 4.8 + u * 11 : cy + 6 - u * 11 + fy * 0;
+        const z = zBase - hash(i * 9.1 + wid) * 7;
+        const col = cols[Math.floor(hash(i * 2.3 + wid * 3) * cols.length)]!;
+        const a = t * spin * (0.6 + sd) + ph;
+        e.prim("cube", [x0, y, z], [a, a * 0.7, Math.sin(t * 1.1 + ph) * 0.8], [sz, sz * 0.7, sz * flat * 10], { color: col, emis: col.map((v) => v * 0.35) as Vec3 });
+      }
+    };
+    if (wid === 0) fall(22, 0.5, 0, 0.17, -2.5, [[0.95, 0.25, 0.3], [0.95, 0.8, 0.25], [0.3, 0.6, 1], [0.4, 0.9, 0.5], [0.9, 0.45, 0.9]], 3.2, 0.03);
+    if (wid === 3) fall(14, 0.9, 0, 0.2, -2.5, [[0.55, 0.75, 0.25], [0.85, 0.55, 0.2], [0.7, 0.3, 0.15]], 2.2, 0.03);
+    if (wid === 8) fall(10, 0.35, 0, 0.26, -3, [[1, 1, 0.95], [1, 0.95, 0.8]], 1.3, 0.02);
+    if (wid === 6) fall(30, 0.5, 0, 0.09, -2, [[1, 1, 1], [0.85, 0.95, 1]], 1.6, 0.1);
+    if (wid === 2) fall(14, 0.4, 0, 0.1, -2, [[0.28, 0.25, 0.25], [0.42, 0.34, 0.3]], 2.0, 0.05);
+    if (wid === 9) fall(16, 0.4, 0, 0.13, -2.5, [[1, 0.85, 0.3], [0.95, 0.7, 0.2], [1, 0.95, 0.6]], 3.5, 0.03);
+    if (wid === 4) fall(8, 0.25, 0, 0.22, -3, [[0.95, 0.92, 0.82], [0.9, 0.85, 0.7]], 1.1, 0.02);
+    if (wid === 7) {
+      // cardume de peixes ao fundo
+      for (let s = 0; s < 2; s++) {
+        const bx = c.cx - c.halfW - 6 + ((t * (0.9 + s * 0.4) + s * 17) % (c.halfW * 2 + 12));
+        const by = cy + 0.6 + s * 2.2 + Math.sin(t * 0.3 + s) * 0.8;
+        for (let f = 0; f < 6; f++) {
+          const fx = bx - (f % 3) * 0.55 + Math.sin(t * 1.4 + f * 1.7) * 0.1;
+          const fy = by + (Math.floor(f / 3) - 0.5) * 0.45 + Math.sin(t * 2 + f) * 0.12;
+          const tail = Math.sin(t * 12 + f * 2) * 0.5;
+          e.prim("sphere", [fx, fy, -9 - s], [0, 0, 0], [0.38, 0.14, 0.12], { color: [0.12, 0.25, 0.35], unlit: true });
+          e.prim("cone", [fx - 0.2, fy, -9 - s], [0, 0, Math.PI / 2 + tail * 0.4], [0.1, 0.16, 0.05], { color: [0.12, 0.25, 0.35], unlit: true });
+        }
+      }
+    }
+  }
   void night;
 }
 
 /** parte translúcida: nuvens/névoa em parallax, aurora, holofotes, bolhas, chuva da tempestade */
 export function drawAmbientBlend(c: AmbientCtx) {
-  const { e, wid, t, cx, cy, tmp } = c;
+  const { e, wid, t, cx, tmp } = c;
+  const cy = c.base;
   const fog = c.fog;
   // névoa/nuvens à deriva em camadas (o vento muda de força devagar)
   const wind = 0.25 + 0.15 * Math.sin(t * 0.07);
@@ -280,5 +341,44 @@ export function drawAmbientBlend(c: AmbientCtx) {
     }
   }
   if (c.mood.flash > 0.01) c.glow(cx, cy + 3, -30, 40, [0.85, 0.9, 1], c.mood.flash * 0.5);
+  // vida extra: vaga-lumes, poeira de luz, grãos de areia levados pelo vento, runas flutuantes
+  {
+    const nfl = wid === 3 ? 14 : wid === 0 || wid === 4 || wid === 1 ? 8 : 5;
+    const night2 = Math.max(c.mood.stars, 0.35);
+    for (let i = 0; i < nfl; i++) {
+      const sd = hash(i * 4.9 + wid * 13);
+      const x = cx - c.halfW + ((sd * (c.halfW * 2) + Math.sin(t * (0.3 + sd * 0.4) + i * 2) * 1.6 + t * 0.12) % (c.halfW * 2) + c.halfW * 2) % (c.halfW * 2);
+      const y = cy - 3.6 + hash(i * 1.3 + wid) * 5.5 + Math.sin(t * (0.5 + sd * 0.5) + i) * 0.7;
+      const blink = Math.max(0, Math.sin(t * (1.2 + sd * 1.5) + i * 3.3));
+      const col: Vec3 = wid === 4 ? [0.7, 0.8, 1] : wid === 1 ? [0.55, 0.85, 1] : wid === 0 ? [1, 0.85, 0.5] : [0.85, 1, 0.45];
+      c.glow(x, y, -1.5 - (i % 5) * 0.8, 0.14 + blink * 0.14, col, (0.25 + blink * 0.6) * night2);
+    }
+    if (wid === 5) {
+      const gust = 0.5 + 0.5 * Math.sin(t * 0.3);
+      for (let i = 0; i < 22; i++) {
+        const sd = hash(i * 6.1);
+        const x = cx - c.halfW + ((sd * c.halfW * 2 + t * (3 + sd * 4) * (0.7 + gust)) % (c.halfW * 2));
+        const y = cy - 4.4 + hash(i * 2.7) * 3 + Math.sin(t * 3 + i) * 0.1;
+        m4.compose(tmp, [x, y, -0.8 - (i % 4) * 0.6], [0, 0, 0.05], [0.5 + sd * 0.8, 0.02, 0.02]);
+        e.draw(e.prims.cube, tmp, { color: [0.95, 0.8, 0.55], unlit: true, alpha: 0.18 + gust * 0.12 });
+      }
+    }
+    if (wid === 4) {
+      for (let i = 0; i < 4; i++) {
+        const x = cx - c.halfW * 0.7 + i * c.halfW * 0.5 + Math.sin(t * 0.4 + i) * 0.6;
+        const y = cy + 0.5 + Math.sin(t * 0.6 + i * 1.9) * 0.9 + (i % 2);
+        const p = 0.6 + 0.4 * Math.sin(t * 1.5 + i);
+        c.glow(x, y, -6, 0.5 * p, [0.6, 0.75, 1], 0.4 * p);
+        e.prim("ring", [x, y, -6], [Math.PI / 2 * 0.2, t * 0.8 + i, 0], [0.7, 1, 0.7], { color: [0.6, 0.75, 1], unlit: true, alpha: 0.5 * p });
+      }
+    }
+    if (wid === 6) {
+      for (let i = 0; i < 10; i++) {
+        const x = cx - c.halfW + hash(i * 3.7) * c.halfW * 2;
+        const tw = Math.max(0, Math.sin(t * 2.2 + i * 5));
+        c.glow(x, cy - 4 + hash(i * 9.1) * 8, -5, 0.15 + tw * 0.2, [0.8, 0.95, 1], tw * 0.7);
+      }
+    }
+  }
   void flap;
 }

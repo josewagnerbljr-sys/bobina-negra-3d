@@ -114,3 +114,21 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Capa/manto agora é pano: 5 colunas × 8 linhas independentes, com onda, arrasto e queda; comprimento ajustado.
 - Asas: dedos em dois segmentos, membrana com borda recortada, mão que atrasa na batida.
 - Parâmetros de teste: `?pva=<ângulo>&pvd=<distância>&pvf=1` (vitrine do herói na tela C).
+
+## v7.2
+- Correção: fala do mini-chefe/chefe não reinicia mais em loop (a cinemática era disparada de novo toda vez que o chefe se mexia).
+- Degrau automático: o herói sobe blocos de 1 tile andando (colinas suaves), com suavização visual.
+- Colinas dinâmicas: trechos "swell" (sobem à frente do herói e afundam atrás) e "tides" (pulsam no tempo); não sobem em cima de ninguém.
+- Asas de anjo/dragão/demônio com batida assimétrica, cascata de penas, respiração e reação à corrida; mais monstros e maiores que os heróis (demônio, diabo, ogro, serafim, cavaleiro).
+- Cenário vivo: confete, folhas, flocos de neve, cinzas, penas, cardumes, vaga-lumes, areia ao vento, runas flutuantes; balões desacoplados do pulo.
+- Câmera mais próxima do herói.
+
+## v7.2
+
+- Demônios, diabos, ogros, serafins e cavaleiros novos, todos maiores que os heróis; asas de dragão (demônios) e de anjo (serafim/Lumen).
+- Asas mais naturais: planeio ao cair (bate menos, abre mais), assimetria entre as duas asas, tremor de vento.
+- Câmera mais próxima do herói.
+- Balões do fundo independentes do pulo, em quantidade aleatória.
+- Mapas vivos: trechos "swell" (colinas que sobem à frente do herói e afundam atrás) e "tides" (blocos que pulsam); degrau automático de 1 tile ao andar.
+- Poeira nos passos, pousos e quando o chão sobe.
+- Cena de fala de chefe/mini-chefe renderiza em resolução menor para não engasgar.

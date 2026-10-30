@@ -205,7 +205,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v7.1 · build {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v7.2 · build {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>

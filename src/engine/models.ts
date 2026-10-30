@@ -1546,7 +1546,8 @@ void cache;
 
 export function buildModel(kind: Kind | "hero", hero: HeroId, world: number): Model {
   if (kind === "hero") return (charAsset() && buildSkinHero(hero)) || buildHero(hero);
-  return (charAsset() && buildSkinMonster(kind)) || buildEnemy(kind, world);
+  const FALLBACK: Partial<Record<Kind, Kind>> = { demon: "imp", devil: "imp", ogre: "troll", seraph: "cherub", knight: "skel" };
+  return (charAsset() && buildSkinMonster(kind)) || buildEnemy(FALLBACK[kind] ?? kind, world);
 }
 
 /* ---------------------------------------------------------------- desenho */

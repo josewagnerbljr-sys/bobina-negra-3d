@@ -27,7 +27,7 @@ import { baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemNa
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
-import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, overlaps, touchesSpike, type Body } from "./physics";
+import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, stepInfo, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
 import {
   BAG_SIZE,
@@ -166,6 +166,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let formCd = 0;
   let airJumps = 0;
   let wasGround = false;
+  let stepVis = 0;
+  let dustT = 0;
+  const dust = (x: number, y: number, n: number, up: number) => {
+    for (let i = 0; i < n; i++) {
+      sparks.push({ x: x + (Math.random() - 0.5) * 16, y, vx: (Math.random() - 0.5) * 90, vy: -up * (0.3 + Math.random()), life: 0.3 + Math.random() * 0.25, max: 0.55, color: "#cdbfa6", r: 2 + Math.random() * 2.2 } as (typeof sparks)[number]);
+    }
+  };
   let loot: Loot[] = [];
   let buffs: { kind: BuffKind; left: number }[] = [];
   let charFrom: Screen = "map";
@@ -211,7 +218,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let wantMelee = false;
   let prevMelee = false;
   let cine: Actor | null = null;
-  const seenCine = new Set<number>();
+  let seenCine = new WeakSet<object>();
   let pendingHero: HeroId | null = null;
   let modeFrom: Screen = "title";
   let prevPotion = false;
@@ -252,6 +259,39 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   const wantSkill = [false, false, false, false];
   let dashT = 0;
   let flashT = 0;
+
+  const dxToPlayer = (z: { c: number; w: number }, pc: number) => z.c + z.w / 2 - pc;
+  function updateRisers(dt: number) {
+    const rs = level?.risers;
+    if (!rs || !level) return;
+    const pc = (player.x + player.w / 2) / TILE;
+    for (const z of rs) {
+      let want = 0;
+      if (z.mode === 0) {
+        const dx = z.c + z.w / 2 - pc;
+        want = dx > -4 && dx < 11 ? z.h : 0;
+      } else {
+        const ph = Math.sin(reelTime * 1.25 + z.ph);
+        want = ph > 0.1 ? z.h : 0;
+      }
+      let tgt = want;
+      if (tgt > z.col) {
+        // não sobe em cima de ninguém
+        const top = (GROUND - tgt) * TILE;
+        const x0 = z.c * TILE - 2;
+        const x1 = (z.c + z.w) * TILE + 2;
+        const bodies: Body[] = [player, ...actors.filter((a) => !a.dead)];
+        for (const b of bodies) {
+          if (b.x + b.w > x0 && b.x < x1 && b.y + b.h > top - 6 && b.y < GROUND * TILE) { tgt = z.col; break; }
+        }
+      }
+      const pv = z.vis;
+      z.vis += Math.max(-3.2 * dt, Math.min(3.2 * dt, tgt - z.vis));
+      if (Math.abs(z.vis - pv) > 0.02 && Math.random() < 0.35 && Math.abs(dxToPlayer(z, pc)) < 14) dust((z.c + z.w / 2) * TILE, GROUND * TILE - 2, 1, 60);
+      const nc = Math.max(0, Math.min(z.h, Math.floor(z.vis + 0.55)));
+      if (nc < z.col || (nc > z.col && tgt >= nc)) z.col = nc;
+    }
+  }
 
   function skillUnlocked(i: number) {
     return allSkills || save.level >= SKILL_LV[i]!;
@@ -571,7 +611,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     wantMelee = false;
     meleeCd = 0;
     cine = null;
-    seenCine.clear();
+    seenCine = new WeakSet<object>();
     wantSkill.fill(false);
     shake = 0;
     hitStop = 0;
@@ -995,7 +1035,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       cutDone = true;
     }
 
-    const hit = moveBody(player, level, dt, dropT);
+    updateRisers(dt);
+    stepVis *= Math.exp(-14 * dt);
+    if (stepVis < 0.3) stepVis = 0;
+    const hit = moveBody(player, level, dt, dropT, wasGround && player.vy >= 0 && Math.abs(player.vx) > 20);
+    if (stepInfo.lift > 0) stepVis += stepInfo.lift;
     // teto de altura: o herói nunca sai da tela em super-pulos/voos
     const ceilY = (GROUND - 7) * TILE;
     if (player.y < ceilY) {
@@ -1008,6 +1052,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       fx.push({ kind: "wave", x: px, y: py, t: 0, max: 0.5, color: "#c0c8d4", r: 150, dir: 0 });
       for (const a of foesNear(px, py, 150, 90)) hurtFoe(a, 3 * dmgMagic(), "#c0c8d4");
       shake = 9;
+    }
+    // poeira: passos rápidos e pouso
+    dustT -= dt;
+    if (hit.grounded && !wasGround && lastVy > 300) dust(player.x + player.w / 2, player.y + player.h, 5 + Math.min(6, Math.floor(lastVy / 200)), 70);
+    else if (hit.grounded && Math.abs(player.vx) > 200 && dustT <= 0) {
+      dustT = 0.16;
+      dust(player.x + player.w / 2 - player.facing * 10, player.y + player.h - 2, 1, 38);
     }
     lastVy = player.vy;
     wasGround = hit.grounded;
@@ -1046,9 +1097,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
     if (!cine && screen === "play") {
       for (const a of actors) {
-        if ((!a.boss && !a.mini) || a.dead || seenCine.has(Math.round(a.x))) continue;
+        if ((!a.boss && !a.mini) || a.dead || seenCine.has(a)) continue;
         if (Math.abs(a.x - player.x) < 640) {
-          seenCine.add(Math.round(a.x));
+          seenCine.add(a);
           cine = a;
           lines = a.boss ? bossIntro(level.world) : miniIntro(level.world);
           lineIndex = 0;
@@ -1135,11 +1186,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         a.vx = 0;
       }
 
-      if (!a.ally && !inert(a) && a.behavior !== "boss" && (a.behavior === "shoot" || a.behavior === "still" || a.kind === "golem" || a.kind === "cherub")) {
+      if (!a.ally && !inert(a) && a.behavior !== "boss" && (a.behavior === "shoot" || a.behavior === "still" || a.kind === "golem" || a.kind === "cherub" || a.kind === "seraph")) {
         if (a.cd <= 0 && Math.abs(dx) < 460 && Math.abs(player.y - a.y) < 180) {
           a.cd = a.behavior === "still" ? 1.5 : 1.9;
           a.facing = dx >= 0 ? 1 : -1;
-          fire("foe", a, a.facing, 220, (level?.world ?? 0) >= 5 ? 2 : 1, a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" ? "#ffe9a0" : "#e08a3a", 0);
+          fire("foe", a, a.facing, 220, (level?.world ?? 0) >= 5 ? 2 : 1, a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" || a.kind === "seraph" ? "#ffe9a0" : a.kind === "devil" || a.kind === "demon" ? "#ff5a2a" : "#e08a3a", 0);
         }
       }
 
@@ -1504,7 +1555,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       list.push({
         ref: player,
         x: player.x,
-        y: player.y,
+        y: player.y + stepVis,
         w: player.w,
         h: player.h,
         vx: player.vx,
@@ -1998,6 +2049,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
     },
     getLoot: () => loot.length,
+    showMobs: (kinds: string) => {
+      actors = [];
+      const list = kinds.split(",").filter(Boolean) as Kind[];
+      list.forEach((k, i) => {
+        const a = spawnActor(k, Math.floor(player.x / TILE) + 3 + i * 2.5, GROUND);
+        a.vx = 0;
+        a.speed = 0;
+        a.behavior = "still";
+        a.hp = a.maxHp = 9999;
+        a.facing = -1;
+        actors.push(a);
+      });
+    },
     dropShow: (ids: string, rarity: number) => {
       const list = ids.split(",").filter(Boolean).map((id) => makeItem(id, rarity as 0 | 1 | 2 | 3, 3, Math.random));
       list.forEach((item, i) => loot.push({ x: player.x + 90 + i * 70, y: player.y - 10, w: 20, h: 20, vx: 0, vy: 0, item, age: 0, t: i }));
@@ -2014,7 +2078,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       return loot.length;
     },
-    info: () => ({ lvl: save.level, points: save.points, hp: player.hp, bagUsed: bagUsed(save.bag), screen }),
+    info: () => ({ sp: sparks.length, fxn: fx.length, act: actors.length, lootn: loot.length, lvl: save.level, points: save.points, hp: player.hp, bagUsed: bagUsed(save.bag), screen }),
     getBag: () => save.bag.length,
     giveItems: (n: number) => {
       for (let i = 0; i < n; i++) {
@@ -2024,6 +2088,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     setKeys: (codes: string[]) => {
       qa = new Set(codes);
+    },
+    tpRiser: () => {
+      const z = level?.risers?.[0];
+      if (z) { player.x = (z.c - 6) * TILE; player.y = GROUND * TILE - player.h; player.vx = 0; player.vy = 0; }
+      return z ? z.c : -1;
+    },
+    tpBoss: () => {
+      const b = actors.find((a) => (a.boss || a.mini) && !a.dead);
+      if (b) { player.x = b.x - 520; player.y = b.y + b.h - player.h; player.vx = 0; player.vy = 0; }
+      return !!b;
     },
     setSteer: (_v: number) => {},
   };

@@ -1,5 +1,5 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
-import { GROUND, MAIN_LEVELS, ROWS, Tile, type Kind, type Level, type LevelEnt } from "./types";
+import { GROUND, MAIN_LEVELS, ROWS, Tile, type Kind, type Level, type LevelEnt, type Riser } from "./types";
 
 export function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -18,6 +18,7 @@ class Sketch {
   cols = 0;
   tiles: number[] = [];
   ents: LevelEnt[] = [];
+  risers: Riser[] = [];
   spawnC = 3;
   exitC = 4;
 
@@ -152,6 +153,23 @@ const SEGS: Record<string, (sk: Sketch, ctx: Ctx) => void> = {
     place(sk, ctx, ctx.pool[0] ?? "imp", x + 12);
     place(sk, ctx, ctx.pool[2] ?? ctx.pool[0] ?? "imp", x + 19);
   },
+  swell(sk, ctx) {
+    // colinas que se erguem à frente do herói conforme ele caminha e afundam atrás
+    const x = sk.widen(46);
+    sk.fillFloor(x, x + 46);
+    const hs = [1, 2, 2, 1, 2, 1];
+    hs.forEach((h, i) => sk.risers.push({ c: x + 5 + i * 6, w: 3, h, mode: 0, ph: 0, col: 0, vis: 0 }));
+    place(sk, ctx, pick(ctx), x + 15);
+    place(sk, ctx, pick(ctx), x + 40);
+  },
+  tides(sk, ctx) {
+    // ondas de chão: blocos pulsam em ritmos diferentes (só sobem quando ninguém está em cima)
+    const x = sk.widen(40);
+    sk.fillFloor(x, x + 40);
+    for (let i = 0; i < 4; i++) sk.risers.push({ c: x + 5 + i * 8, w: 3, h: 1 + (i % 2), mode: 1, ph: i * 1.7, col: 0, vis: 0 });
+    place(sk, ctx, pick(ctx), x + 36);
+    if (ctx.rng() < 0.5) sk.ent("candle", x + 20);
+  },
   hills(sk, ctx) {
     const x = sk.widen(44);
     sk.fillFloor(x, x + 44);
@@ -249,15 +267,15 @@ const SIGNATURE: string[][] = [
   ["spring", "platforms", "pillars"],
   ["tunnel", "spikes", "stairs"],
   ["spikehop", "bridge", "dais"],
-  ["hills", "climb", "islands"],
-  ["zigzag", "ledges", "pillars"],
-  ["hills", "islands", "gap"],
+  ["swell", "climb", "islands"],
+  ["zigzag", "swell", "pillars"],
+  ["hills", "tides", "gap"],
   ["bridge", "zigzag", "spikes"],
   ["islands", "bridge", "gap"],
   ["ledges", "spring", "climb"],
   ["dais", "spikehop", "zigzag"],
 ];
-const GENERIC = ["gap", "platforms", "combat", "combat", "spikes", "stairs", "climb", "spring", "tunnel", "hills", "islands", "bridge", "pillars", "zigzag", "spikehop", "ledges", "dais"];
+const GENERIC = ["swell", "tides", "gap", "platforms", "combat", "combat", "spikes", "stairs", "climb", "spring", "tunnel", "hills", "islands", "bridge", "pillars", "zigzag", "spikehop", "ledges", "dais"];
 
 function arena(sk: Sketch, mini: boolean) {
   const x = sk.widen(mini ? 34 : 44);
@@ -440,6 +458,7 @@ function mk(sk: Sketch, i: number, world: number, boss: boolean, mini: boolean, 
     rows: ROWS,
     tiles: Uint8Array.from(sk.tiles),
     ents: sk.ents,
+    risers: sk.risers.length ? sk.risers : undefined,
     spawn: { c: sk.spawnC, foot: GROUND },
     exit: { c: sk.exitC, foot: GROUND },
   };

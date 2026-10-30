@@ -1,6 +1,6 @@
 import { hex, m4, type Engine, type Mat4, type Vec3 } from "./gl";
 import { G, glow, mix, Node, P, type DrawState, type GearLook, type GearPiece, type Model, type Pose } from "./models";
-import { buildPiece as buildPieceFam, makeCloth, makeWing, weaponNode, GOLD, RAR, type Anim, type Mount, type WingRig } from "./gearparts";
+import { buildPiece as buildPieceFam, makeFeatherWing, makeCloth, makeWing, poseWing, weaponNode, GOLD, RAR, type Anim, type Mount, type WingRig } from "./gearparts";
 import { charAsset, RIG_SCALE, skinMeshFor, SkinRig, type CharAsset } from "./skin";
 import { HEROES } from "../game/content";
 import type { EquipKey, HeroId } from "../game/types";
@@ -162,7 +162,7 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     // asas de morcego articuladas (forma)
     anim.wingRigs = [];
     for (const sx of [-1, 1]) {
-      const wg = makeWing(sx, { bone: "#2a1a38", memb: "#9a3ab0", memb2: "#73299a", claw: "#e8dfc8", span: 1 });
+      const wg = makeWing(sx, { bone: "#1c1014", memb: "#a01a3a", memb2: "#6e1230", claw: "#f0e0c0", span: 1.15, spikes: "#e8dfc8", boneT: 1.15 });
       add(S3, wg.root, true);
       anim.wingRigs.push(wg);
     }
@@ -220,6 +220,12 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     dt.add(glow(P("cone", [0.16, 0.5, 0.16], "#ff7a2a", [0, -0.1, -0.14], [-1.2, 0, 0]), 0.7));
     add(HIP, dt, true);
     anim.tail = [dt];
+    anim.wingRigs = anim.wingRigs ?? [];
+    for (const sx of [-1, 1]) {
+      const wg = makeWing(sx, { bone: "#5a1a10", memb: "#ff7a2a", memb2: "#c4371a", claw: "#ffe8b0", span: 1.2, fingers: 5, spikes: "#3a1a10", boneT: 1.2 });
+      add(S3, wg.root, true);
+      anim.wingRigs.push(wg);
+    }
   } else if (id === "mari") {
     const bowl = P("sphere", [0.4, 0.4, 0.4], "#9fe0ee", [0, 0.14, 0]);
     bowl.alpha = 0.26;
@@ -282,6 +288,12 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
       add(S3, glow(P("cube", [0.025, 0.3, 0.025], "#ffee6a", [Math.cos(a) * 0.3, -0.06 + (i % 2) * 0.1, Math.sin(a) * 0.2], [0, 0, a * 2 + 0.3]), 1), true);
     }
     for (const sx of [-1, 1]) add(H, glow(P("sphere", [0.035, 0.045, 0.03], "#ffffff", [sx * 0.05, 0.115, 0.13]), 1), true);
+    anim.wingRigs = anim.wingRigs ?? [];
+    for (const sx of [-1, 1]) {
+      const wg = makeFeatherWing(sx, { main: "#fff8d0", shade: "#e8f4ff", edge: "#ffee6a", span: 1.25, bone: "#d8e0f0" });
+      add(S3, wg.root, true);
+      anim.wingRigs.push(wg);
+    }
   }
   return out;
 }
@@ -545,23 +557,9 @@ export function buildSkinHero(id: HeroId): Model | null {
       }
       spPrev = sp;
       if (anim.wingRigs) {
-        const fl = Math.sin(t * (form ? 9 : 3));
-        const amp = form ? 0.55 : 0.08;
         for (const wg of anim.wingRigs) {
-          // batida: ombro sobe/desce, cotovelo dobra no tempo certo, mão (pulso) atrasa e fecha na descida
-          wg.root.rot[2] = wg.sx * (0.12 + fl * amp);
-          wg.root.rot[1] = wg.sx * (-0.3 + fl * 0.16 * (form ? 1 : 0.3));
-          wg.elbow.rot[2] = -wg.sx * (0.2 - fl * 0.4 * (form ? 1 : 0.2));
-          const lag = Math.sin(t * (form ? 9 : 3) - 0.9);
-          let ws = wingSt.get(wg.wrist);
-          if (!ws) wingSt.set(wg.wrist, (ws = { a: 0, v: 0 }));
-          const wt = -wg.sx * lag * (form ? 0.45 : 0.08) - sp * 0.05;
-          if (dt > 0) {
-            ws.v += ((wt - ws.a) * 90 - ws.v * 9) * dt;
-            ws.a += ws.v * dt;
-          }
-          wg.wrist.rot[2] = ws.a;
-          wg.wrist.rot[1] = wg.sx * lag * (form ? 0.12 : 0.02);
+          const live = wg.always ? air || sp > 0.55 : form;
+          poseWing(wg, t, live ? (air ? 8 : 9) : wg.always ? 1.7 : 3, live ? (wg.always ? 0.42 : 0.55) : wg.always ? 0.05 : 0.08, 0, (wg.always && !live ? 0.1 : 0) - (live ? 0 : sp * 0.05), sp, live && air && p.vy > 80 ? Math.min(1, p.vy / 520) : 0);
         }
       }
       if (anim.tail) for (const n of anim.tail) n.rot[2] = Math.sin(t * 7) * 0.2;

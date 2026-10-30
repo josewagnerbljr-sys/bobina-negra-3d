@@ -54,7 +54,8 @@ export function makeCloth(o: { col: string; inner: string; trim: string; L: numb
   return { top, cols };
 }
 
-export type WingRig = { root: Node; elbow: Node; wrist: Node; sx: number; tips: Node[] };
+export type Feather = { n: Node; base: number; k: number };
+export type WingRig = { root: Node; elbow: Node; wrist: Node; sx: number; tips: Node[]; feathers?: Feather[]; always?: boolean };
 
 /** triângulo fino (membrana) com ápice em `a` e base entre `b` e `c` (no plano xy) */
 function panel(parent: Node, a: [number, number], b: [number, number], c: [number, number], color: string, th: number) {
@@ -68,7 +69,7 @@ function panel(parent: Node, a: [number, number], b: [number, number], c: [numbe
   return n;
 }
 
-export function makeWing(sx: number, o: { bone: string; memb: string; memb2: string; span?: number; claw?: string; thick?: number; fingers?: number; glow?: string; feather?: boolean }): WingRig {
+export function makeWing(sx: number, o: { bone: string; memb: string; memb2: string; span?: number; claw?: string; thick?: number; fingers?: number; glow?: string; feather?: boolean; spikes?: string; boneT?: number }): WingRig {
   const span = o.span ?? 1;
   const th = o.thick ?? 0.02;
   const root = G(sx * 0.06, 0.04, -0.14);
@@ -78,12 +79,20 @@ export function makeWing(sx: number, o: { bone: string; memb: string; memb2: str
     parent.add(c);
     return [from[0] + sx * Math.cos(theta) * len, from[1] + Math.sin(theta) * len] as [number, number];
   };
-  const E = bone(root, 0.4 * span, 0.052, 0.28);
+  const bt = o.boneT ?? 1;
+  const E = bone(root, 0.4 * span, 0.052 * bt, 0.28);
   root.add(P("sphere", [0.075, 0.075, 0.075], o.bone, [0, 0, 0]));
   const elbow = G(E[0], E[1], 0);
   elbow.add(P("sphere", [0.065, 0.065, 0.065], o.bone, [0, 0, 0]));
   root.add(elbow);
-  const W = bone(elbow, 0.46 * span, 0.04, 1.05);
+  const W = bone(elbow, 0.46 * span, 0.04 * bt, 1.05);
+  if (o.spikes) {
+    for (let i = 0; i < 3; i++) {
+      const u = 0.25 + i * 0.28;
+      root.add(P("cone", [0.045 * bt, 0.12 * bt, 0.045 * bt], o.spikes, [E[0] * u, E[1] * u + 0.04, -0.01], [0, 0, sx * -0.4]));
+      elbow.add(P("cone", [0.04 * bt, 0.1 * bt, 0.04 * bt], o.spikes, [W[0] * u, W[1] * u + 0.04, -0.01], [0, 0, sx * -0.4]));
+    }
+  }
   const wrist = G(W[0], W[1], 0);
   wrist.add(P("sphere", [0.06, 0.06, 0.06], o.bone, [0, 0, 0]));
   elbow.add(wrist);
@@ -121,6 +130,92 @@ export function makeWing(sx: number, o: { bone: string; memb: string; memb2: str
   panel(wrist, [0, 0], last, low, o.memb2, th);
   panel(wrist, [0, 0], low, [-sx * 0.02, -0.18 * span], mix(o.memb2, "#000000", 0.2), th);
   return { root, elbow, wrist, sx, tips: tipNodes };
+}
+
+/** asa de anjo: braço com penas primárias em leque, secundárias e coberturas em camadas */
+export function makeFeatherWing(sx: number, o: { main: string; shade: string; edge?: string; span?: number; glow?: string; bone?: string }): WingRig {
+  const span = o.span ?? 1;
+  const root = G(sx * 0.06, 0.06, -0.14);
+  const feathers: Feather[] = [];
+  const boneC = o.bone ?? o.shade;
+  const arm = (parent: Node, len: number, th: number, theta: number, from: [number, number]) => {
+    const phi = sx * (theta - Math.PI / 2);
+    parent.add(P("cyl", [th, len, th], boneC, [from[0] + (sx * Math.cos(theta) * len) / 2, from[1] + (Math.sin(theta) * len) / 2, 0], [0, 0, phi]));
+    return [from[0] + sx * Math.cos(theta) * len, from[1] + Math.sin(theta) * len] as [number, number];
+  };
+  const feather = (parent: Node, at: [number, number], len: number, wid: number, theta: number, color: string, z: number, k: number) => {
+    const phi = sx * (theta - Math.PI / 2);
+    const n = P("blade", [wid, len, 0.012], color, [at[0] + (sx * Math.cos(theta) * len) / 2, at[1] + (Math.sin(theta) * len) / 2, z], [0, 0, phi]);
+    parent.add(n);
+    feathers.push({ n, base: phi, k });
+    return n;
+  };
+  const E = arm(root, 0.34 * span, 0.05, 0.55, [0, 0]);
+  root.add(P("sphere", [0.07, 0.07, 0.07], boneC, [0, 0, 0]));
+  const elbow = G(E[0], E[1], 0);
+  elbow.add(P("sphere", [0.06, 0.06, 0.06], boneC, [0, 0, 0]));
+  root.add(elbow);
+  const W = arm(elbow, 0.4 * span, 0.04, 0.95, [0, 0]);
+  const wrist = G(W[0], W[1], 0);
+  wrist.add(P("sphere", [0.05, 0.05, 0.05], boneC, [0, 0, 0]));
+  elbow.add(wrist);
+  // primárias: leque a partir do pulso (do alto até a borda de trás)
+  const N = 8;
+  const tips: Node[] = [];
+  for (let k = 0; k < N; k++) {
+    const u = k / (N - 1);
+    const theta = 1.25 - u * 2.0;
+    const len = (0.62 + Math.sin(u * 2.4 + 0.4) * 0.28) * span;
+    const col = k % 2 ? o.shade : o.main;
+    tips.push(feather(wrist, [0, 0], len, 0.1 - u * 0.012, theta, col, 0.004 * (k % 2), 1 + u));
+    feather(wrist, [0, 0], len * 0.62, 0.11, theta + 0.04, mix(o.main, "#ffffff", 0.25), 0.012 + 0.003 * (k % 2), 1.2 + u);
+  }
+  // secundárias: penduradas ao longo do antebraço
+  for (let k = 0; k < 6; k++) {
+    const u = (k + 0.5) / 6;
+    const at: [number, number] = [W[0] * u, W[1] * u];
+    feather(elbow, at, (0.52 - u * 0.1) * span, 0.1, -1.05 - u * 0.25, k % 2 ? o.shade : o.main, -0.004 * (k % 2), 1.4 + u);
+    feather(elbow, at, (0.3 - u * 0.04) * span, 0.1, -0.95 - u * 0.2, mix(o.main, "#ffffff", 0.3), 0.012, 1.5 + u);
+  }
+  // coberturas pequenas junto ao braço
+  for (let k = 0; k < 6; k++) {
+    const u = (k + 0.3) / 6;
+    const at: [number, number] = [E[0] * u, E[1] * u];
+    feather(root, at, 0.2 * span, 0.09, -0.9 - u * 0.2, mix(o.main, "#ffffff", 0.4), 0.02, 1.6);
+  }
+  if (o.edge) for (let k = 0; k < N; k += 2) feather(wrist, [0, 0], (0.7 + k * 0.01) * span, 0.02, 1.25 - (k / (N - 1)) * 2.0, o.edge, 0.02, 1);
+  return { root, elbow, wrist, sx, tips, feathers };
+}
+
+/** pose de batida (anjo e dragão): ombro, cotovelo, pulso com atraso e ondulação das penas */
+/** batida assimétrica (descida forte e rápida, subida mais lenta com cotovelo dobrado), com atraso em cascata até a ponta */
+const stroke = (x: number) => Math.sin(x) + 0.24 * Math.sin(2 * x + 0.9) - 0.06;
+
+export function poseWing(wg: WingRig, t: number, speed: number, amp0: number, ph0 = 0, rest0 = 0, flow = 0, glide = 0) {
+  const sx = wg.sx;
+  // planeio: ao cair, bate menos, abre mais e treme de leve com o vento
+  const amp = amp0 * (1 - 0.72 * glide);
+  const ph = ph0 + (sx > 0 ? 0.16 : 0) + Math.sin(t * 0.9 + sx) * 0.05;
+  const rest = rest0 - glide * 0.16;
+  const th = t * speed * (1 - 0.35 * glide) + ph;
+  const fl = stroke(th) * 0.92 + glide * Math.sin(t * 9 + sx * 2) * 0.05;
+  const act = Math.min(1, amp / 0.3);
+  const breathe = Math.sin(t * 1.3 + ph) * 0.025 + Math.sin(t * 0.7 + ph * 2) * 0.015;
+  wg.root.rot[2] = sx * (0.12 - rest + fl * amp + breathe);
+  wg.root.rot[1] = sx * (-0.3 - flow * 0.3 + fl * 0.16 * (0.3 + 0.7 * act));
+  const up = 0.5 - 0.5 * Math.cos(th + 0.5);
+  wg.elbow.rot[2] = -sx * (0.2 + 0.06 * breathe * 10 - fl * 0.4 * (0.2 + 0.8 * act) + up * 0.18 * act);
+  const lag = stroke(th - 1.0);
+  wg.wrist.rot[2] = -sx * (lag * amp * 0.9 + breathe * 1.5);
+  wg.wrist.rot[1] = sx * lag * 0.14 * act;
+  if (wg.feathers) {
+    for (let i = 0; i < wg.feathers.length; i++) {
+      const f = wg.feathers[i]!;
+      const w = stroke(th - 1.3 - i * 0.2);
+      const fl2 = Math.sin(t * 21 + i * 1.9 + ph) * 0.011 * (0.4 + act);
+      f.n.rot[2] = f.base + sx * (w * (0.03 + 0.11 * act) + breathe * 0.8 + fl2) * f.k;
+    }
+  }
 }
 
 const lerp = mix;
@@ -700,4 +795,69 @@ export function weaponNode(p: GearPiece): Node {
     }
   }
   return g;
+}
+
+/** asa de anjo: osso do braço + camadas de penas (primárias no pulso, secundárias no cotovelo, coberturas) */
+export function makeAngelWing(sx: number, o: { col: string; tip?: string; bone?: string; span?: number; glowK?: number } = { col: "#f6f2ea" }): WingRig {
+  const span = o.span ?? 1;
+  const bone = o.bone ?? mix(o.col, "#8a7a60", 0.4);
+  const tipc = o.tip ?? mix(o.col, "#ffe9a0", 0.55);
+  const root = G(sx * 0.06, 0.04, -0.14);
+  const arm = (parent: Node, len: number, t: number, theta: number, from: [number, number] = [0, 0]) => {
+    parent.add(P("cyl", [t, len, t], bone, [from[0] + (sx * Math.cos(theta) * len) / 2, from[1] + (Math.sin(theta) * len) / 2, 0], [0, 0, sx * (theta - Math.PI / 2)]));
+    return [from[0] + sx * Math.cos(theta) * len, from[1] + Math.sin(theta) * len] as [number, number];
+  };
+  const feather = (parent: Node, at: [number, number], ang: number, len: number, wd: number, c: string, z: number) => {
+    // pena: lâmina larga com ponta suave, base em `at`, direção `ang` (0 = +x, π/2 = cima)
+    const dx = sx * Math.cos(ang), dy = Math.sin(ang);
+    const body = P("shard", [wd, len, 0.012], c, [at[0] + (dx * len) / 2, at[1] + (dy * len) / 2, z], [0, 0, sx * (ang - Math.PI / 2)]);
+    parent.add(body);
+    const tip = P("sphere", [wd * 0.5, wd * 0.55, 0.01], mix(c, tipc, 0.5), [at[0] + dx * len * 0.97, at[1] + dy * len * 0.97, z + 0.002]);
+    tip.ink = false;
+    parent.add(tip);
+  };
+  const E = arm(root, 0.36 * span, 0.05, 0.62);
+  root.add(P("sphere", [0.075, 0.075, 0.075], bone, [0, 0, 0]));
+  const elbow = G(E[0], E[1], 0);
+  elbow.add(P("sphere", [0.06, 0.06, 0.06], bone, [0, 0, 0]));
+  root.add(elbow);
+  const W = arm(elbow, 0.4 * span, 0.04, 1.15);
+  const wrist = G(W[0], W[1], 0);
+  wrist.add(P("sphere", [0.055, 0.055, 0.055], bone, [0, 0, 0]));
+  elbow.add(wrist);
+  // coberturas pequenas ao longo do braço (duas fileiras)
+  for (let k = 0; k < 7; k++) {
+    const u = k / 6;
+    feather(root, [E[0] * u * 0.9, E[1] * u * 0.9], 0.2 - u * 0.3 - 0.9, 0.2 * span, 0.075, mix(o.col, "#ffffff", 0.15), 0.012);
+  }
+  for (let k = 0; k < 6; k++) {
+    const u = k / 5;
+    feather(elbow, [W[0] * u * 0.95, W[1] * u * 0.95], -0.25 - u * 0.45, 0.24 * span, 0.08, o.col, 0.014);
+  }
+  // secundárias (do cotovelo, para baixo e fora)
+  const sec = 8;
+  for (let k = 0; k < sec; k++) {
+    const u = k / (sec - 1);
+    feather(elbow, [W[0] * u * 0.55, W[1] * u * 0.55], 0.1 - u * 1.25, (0.62 - Math.abs(u - 0.35) * 0.3) * span, 0.1, mix(o.col, tipc, u * 0.25), -0.006 - u * 0.004);
+  }
+  // primárias (do pulso, leque amplo para cima e fora)
+  const pri = 9;
+  const tips: Node[] = [];
+  for (let k = 0; k < pri; k++) {
+    const u = k / (pri - 1);
+    const len = (0.9 - Math.abs(u - 0.35) * 0.55) * span;
+    feather(wrist, [0, 0], 1.45 - u * 1.65, len, 0.095, mix(o.col, tipc, 0.2 + u * 0.3), 0.004 + (k % 2) * 0.006);
+  }
+  return { root, elbow, wrist, sx, tips };
+}
+
+/** asa de demônio/dragão: grande, de couro, com chifres no braço e garra no pulso */
+export function makeDragonWing(sx: number, o: { bone: string; memb: string; memb2: string; claw?: string; span?: number; fingers?: number }): WingRig {
+  const wg = makeWing(sx, { bone: o.bone, memb: o.memb, memb2: o.memb2, claw: o.claw ?? "#e8dfc8", span: o.span ?? 1.35, thick: 0.034, fingers: o.fingers ?? 4 });
+  const span = o.span ?? 1.35;
+  // espinhos ao longo do braço e cotovelo
+  for (let k = 0; k < 3; k++) wg.root.add(P("cone", [0.04, 0.12, 0.04], o.claw ?? "#e8dfc8", [sx * (0.05 + k * 0.1) * span, 0.06 + k * 0.07 * span, 0], [0, 0, sx * -1.1]));
+  wg.elbow.add(P("cone", [0.06, 0.2, 0.06], o.claw ?? "#e8dfc8", [0, 0.05, 0], [0, 0, sx * -0.7]));
+  wg.wrist.add(P("cone", [0.05, 0.18, 0.05], o.claw ?? "#e8dfc8", [sx * 0.04, 0.06, 0], [0, 0, sx * 0.2]));
+  return wg;
 }

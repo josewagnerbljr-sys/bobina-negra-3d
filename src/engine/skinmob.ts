@@ -1,5 +1,6 @@
 import { hex, type Mat4, type Vec3 } from "./gl";
 import { G, glow, mix, P, type Model, type Node, type Pose } from "./models";
+import { makeFeatherWing, makeWing, poseWing, type WingRig } from "./gearparts";
 import { charAsset, SkinRig, type CharAsset } from "./skin";
 import { rinvOf, type Mount, type SkinPart } from "./skinhero";
 import type { Kind } from "../game/types";
@@ -36,34 +37,33 @@ const S3 = "DEF-spine.003";
 const HIP = "DEF-hips";
 const side = (sx: number) => (sx > 0 ? "L" : "R");
 
+/** asas de dragão/demônio articuladas (ossos com espinhos e membrana recortada) */
 function batWings(k: Kit, col: string, rib: string, span = 0.9, speed = 4, amp = 0.18) {
-  const ws: Node[] = [];
+  demonWings(k, { bone: mix(col, "#000000", 0.5), memb: col, memb2: mix(col, "#000000", 0.3), claw: rib, spikes: rib }, span * 1.25, speed * 0.8, Math.max(0.1, amp * 1.8));
+}
+
+function demonWings(k: Kit, o: { bone: string; memb: string; memb2: string; claw?: string; spikes?: string }, span = 1.1, speed = 3, amp = 0.2, fingers = 4) {
+  const rigs: WingRig[] = [];
   for (const sx of [-1, 1]) {
-    const w = G(sx * 0.06, 0.04, -0.14);
-    w.add(P("cube", [span, span * 0.78, 0.025], col, [sx * span * 0.5, 0.05, 0], [0, 0, sx * 0.3]));
-    for (let i = 0; i < 3; i++) w.add(P("cube", [span * 0.9, 0.03, 0.04], rib, [sx * span * 0.45, 0.2 - i * 0.14, 0.015], [0, 0, sx * (0.15 + i * 0.17)]));
-    k.add(S3, w);
-    ws.push(w);
+    const wg = makeWing(sx, { bone: o.bone, memb: o.memb, memb2: o.memb2, claw: o.claw, span, fingers, spikes: o.spikes, boneT: 1.1, thick: 0.03 });
+    k.add(S3, wg.root);
+    rigs.push(wg);
   }
   k.tick((t, p) => {
-    const f = Math.sin(t * speed + p.phase) * amp;
-    ws[0]!.rot[1] = -0.3 - f;
-    ws[1]!.rot[1] = 0.3 + f;
+    for (const wg of rigs) poseWing(wg, t, speed * (1 + p.speed * 0.25), amp, p.phase + (wg.sx > 0 ? 0.14 : 0), 0.05, p.speed);
   });
 }
 
-function featherWings(k: Kit, col: string, speed = 9) {
-  const ws: Node[] = [];
+/** asas de anjo: penas em camadas */
+function featherWings(k: Kit, col: string, speed = 9, span = 1, amp = 0.32, shade = "#e8f0ff") {
+  const rigs: WingRig[] = [];
   for (const sx of [-1, 1]) {
-    const w = G(sx * 0.05, 0.08, -0.13);
-    for (let i = 0; i < 4; i++) w.add(P("sphere", [0.36 - i * 0.04, 0.12, 0.05], col, [sx * (0.2 + i * 0.12), 0.1 - i * 0.07, 0], [0, 0, sx * (0.5 - i * 0.12)]));
-    k.add(S3, w);
-    ws.push(w);
+    const wg = makeFeatherWing(sx, { main: col, shade, edge: undefined, span });
+    k.add(S3, wg.root);
+    rigs.push(wg);
   }
   k.tick((t, p) => {
-    const f = Math.sin(t * speed + p.phase * 0.5) * 0.35;
-    ws[0]!.rot[1] = -0.45 - f;
-    ws[1]!.rot[1] = 0.45 + f;
+    for (const wg of rigs) poseWing(wg, t, speed * (1 + p.speed * 0.2), amp, p.phase * 0.5 + (wg.sx > 0 ? 0.12 : 0), 0.05, p.speed);
   });
 }
 
@@ -77,13 +77,13 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#b8323a",
     pants: "#8c2430",
     shoe: "#3a1014",
-    scale: [0.95, 1],
+    scale: [1.25, 1.3],
     style: "walk",
     rate: 1.5,
     build(k) {
       horns(k, "#f4e4c8", 0.22, 0.1, 0.35);
       k.eyes("#ffd34a", 1.25);
-      batWings(k, "#6a1c2a", "#e8a0a8", 0.7, 14, 0.3);
+      demonWings(k, { bone: "#2a0a12", memb: "#8a1a2e", memb2: "#5a1020", claw: "#f4e4c8", spikes: "#f4e4c8" }, 0.85, 7, 0.34);
       const tail = G(0, 0.02, -0.1);
       tail.add(P("cone", [0.09, 0.5, 0.09], "#8c2430", [0, -0.1, -0.18], [-1.1, 0, 0]));
       tail.add(P("cone", [0.14, 0.14, 0.05], "#cf4048", [0, -0.2, -0.42], [-1.1, 0, 0]));
@@ -96,7 +96,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#e6dfcc",
     pants: "#e0d9c4",
     shoe: "#cfc7b2",
-    scale: [0.9, 1],
+    scale: [1.05, 1.1],
     style: "walk",
     rate: 1.1,
     build(k) {
@@ -141,7 +141,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#4a5a3a",
     pants: "#3a3a2a",
     shoe: "#2a2418",
-    scale: [1, 1],
+    scale: [1.15, 1.15],
     style: "zombie",
     rate: 0.8,
     build(k) {
@@ -157,7 +157,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#7a7d86",
     pants: "#6a6d76",
     shoe: "#50535c",
-    scale: [1.4, 1],
+    scale: [1.7, 1.5],
     style: "stomp",
     rate: 0.7,
     build(k) {
@@ -177,7 +177,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#6b4a2f",
     pants: "#4a3a2a",
     shoe: "#2a2018",
-    scale: [1.3, 1],
+    scale: [1.55, 1.6],
     style: "stomp",
     rate: 0.75,
     build(k) {
@@ -199,7 +199,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#d4cba8",
     pants: "#cfc6a2",
     shoe: "#bfb592",
-    scale: [1, 1],
+    scale: [1.1, 1.12],
     style: "zombie",
     rate: 0.75,
     build(k) {
@@ -237,7 +237,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#e0eaf4",
     pants: "#d8e4f0",
     shoe: "#bcd0e4",
-    scale: [1.45, 1],
+    scale: [1.8, 1.65],
     style: "stomp",
     rate: 0.75,
     build(k) {
@@ -276,7 +276,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#60636e",
     pants: "#555864",
     shoe: "#3a3c46",
-    scale: [1.2, 1],
+    scale: [1.5, 1.5],
     style: "hover",
     rate: 0.9,
     build(k) {
@@ -297,7 +297,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     arm: "#2a6ac0",
     pants: "#2a6ac0",
     shoe: "#d9a830",
-    scale: [1, 1],
+    scale: [1.2, 1.2],
     style: "walk",
     rate: 1.2,
     build(k) {
@@ -328,7 +328,7 @@ const LOOKS: Partial<Record<Kind, Look>> = {
     torso: "#3a6a38",
     pants: "#2a5a30",
     shoe: "#4a3a20",
-    scale: [0.95, 1],
+    scale: [1.1, 1.2],
     style: "walk",
     caster: true,
     build(k) {
@@ -346,6 +346,154 @@ const LOOKS: Partial<Record<Kind, Look>> = {
       staff.add(glow(P("sphere", [0.12, 0.12, 0.12], "#9aff7a", [0, 0.75, 0]), 0.9));
       staff.rot = [Math.PI / 2 - 0.2, 0.2, 0];
       k.add("DEF-hand.R", staff);
+    },
+  },
+  demon: {
+    skin: "#8a1a2a",
+    torso: "#6a1222",
+    arm: "#7a1626",
+    pants: "#3a0a14",
+    shoe: "#1a0508",
+    scale: [1.5, 1.55],
+    style: "stomp",
+    rate: 0.95,
+    build(k) {
+      // chifres grandes curvos + pequenos
+      for (const sx of [-1, 1]) {
+        k.add(H, P("cone", [0.09, 0.34, 0.09], "#2a1014", [sx * 0.1, 0.27, -0.02], [0.3, 0, -sx * 0.45]));
+        k.add(H, P("cone", [0.06, 0.22, 0.06], "#2a1014", [sx * 0.2, 0.36, -0.08], [0.5, 0, sx * 0.2]));
+        k.add(H, P("cone", [0.045, 0.12, 0.045], "#e8dfc8", [sx * 0.05, -0.02, 0.12], [Math.PI, 0, 0]));
+      }
+      k.eyes("#ffb02a", 1.5);
+      k.add(H, glow(P("sphere", [0.12, 0.05, 0.03], "#ff6a1a", [0, 0.05, 0.13]), 0.9));
+      demonWings(k, { bone: "#1a0508", memb: "#a01a2e", memb2: "#6a1224", claw: "#f0e0c0", spikes: "#f0e0c0" }, 1.2, 2.4, 0.16, 5);
+      for (const sx of [-1, 1]) {
+        k.add(`DEF-upper_arm.${side(sx)}`, P("cone", [0.07, 0.16, 0.07], "#2a1014", [-sx * 0.06, 0.1, 0], [0, 0, -sx * 0.5]));
+        k.add(`DEF-hand.${side(sx)}`, P("cone", [0.035, 0.12, 0.035], "#e8dfc8", [-sx * 0.12, 0, 0.03], [0, 0, sx * -Math.PI / 2]));
+        k.add(`DEF-hand.${side(sx)}`, P("cone", [0.035, 0.12, 0.035], "#e8dfc8", [-sx * 0.12, 0, -0.03], [0, 0, sx * -Math.PI / 2]));
+      }
+      for (let i = 0; i < 3; i++) k.add(S3, glow(P("plate", [0.14 - i * 0.02, 0.02, 0.02], "#ff5a1a", [0, 0.1 - i * 0.07, 0.125]), 0.8));
+      const tail = G(0, 0.0, -0.1);
+      tail.add(P("cone", [0.1, 0.62, 0.1], "#6a1222", [0, -0.12, -0.26], [-1.05, 0, 0]));
+      tail.add(P("cone", [0.2, 0.2, 0.05], "#2a1014", [0, -0.3, -0.58], [-1.05, 0, 0]));
+      k.add(HIP, tail);
+      k.tick((t) => (tail.rot[2] = Math.sin(t * 3.2) * 0.3));
+    },
+  },
+  devil: {
+    skin: "#d23a2a",
+    torso: "#b82a22",
+    pants: "#7a1818",
+    shoe: "#2a0c0c",
+    scale: [1.25, 1.3],
+    style: "walk",
+    caster: true,
+    rate: 1.1,
+    build(k) {
+      horns(k, "#2a1014", 0.24, 0.09, 0.3);
+      k.eyes("#ffe02a", 1.3);
+      k.add(H, P("cone", [0.06, 0.12, 0.05], "#3a1014", [0, -0.05, 0.11], [Math.PI, 0, 0]));
+      demonWings(k, { bone: "#2a0a12", memb: "#7a1620", memb2: "#4a0e18", claw: "#e8dfc8" }, 0.7, 5, 0.25);
+      const fork = G();
+      fork.add(P("cyl", [0.035, 1.15, 0.035], "#3a2a22", [0, 0.2, 0]));
+      fork.add(P("cube", [0.2, 0.03, 0.03], "#c9c2b0", [0, 0.72, 0]));
+      for (const x of [-0.09, 0, 0.09]) fork.add(P("cone", [0.04, 0.2, 0.04], "#d9d2c0", [x, 0.84, 0]));
+      fork.rot = [Math.PI / 2 - 0.15, 0.1, 0];
+      k.add("DEF-hand.R", fork);
+      const tail = G(0, 0.0, -0.1);
+      tail.add(P("cone", [0.08, 0.5, 0.08], "#7a1818", [0, -0.1, -0.2], [-1.0, 0, 0]));
+      tail.add(P("cone", [0.16, 0.16, 0.04], "#d23a2a", [0, -0.24, -0.44], [-1.0, 0, 0]));
+      k.add(HIP, tail);
+      k.tick((t) => (tail.rot[2] = Math.sin(t * 7) * 0.4));
+      k.add(S3, P("cone", [0.1, 0.12, 0.05], "#2a1014", [0, -0.02, 0.12], [Math.PI, 0, 0]));
+    },
+  },
+  ogre: {
+    skin: "#7a8a4a",
+    torso: "#5a4a30",
+    arm: "#7a8a4a",
+    pants: "#4a3a28",
+    shoe: "#2a2014",
+    scale: [1.75, 1.6],
+    style: "stomp",
+    rate: 0.7,
+    build(k) {
+      k.eyes("#ff4a2a", 0.9);
+      for (const sx of [-1, 1]) {
+        k.add(H, P("cone", [0.05, 0.14, 0.05], "#f0ead8", [sx * 0.065, 0.0, 0.11], [Math.PI, 0.2, sx * 0.2]));
+        k.add(H, P("cone", [0.05, 0.1, 0.05], "#7a8a4a", [sx * 0.15, 0.1, 0], [0, 0, -sx * 1.4]));
+      }
+      k.add(H, P("sphere", [0.26, 0.1, 0.2], "#4a3a28", [0, 0.2, -0.02]));
+      k.add(S3, P("sphere", [0.4, 0.3, 0.3], "#7a8a4a", [0, 0.0, 0.05]));
+      k.add(HIP, P("cyl", [0.4, 0.14, 0.3], "#3a2a1a", [0, 0.02, 0]));
+      k.add(HIP, P("plate", [0.14, 0.3, 0.03], "#6a5238", [0, -0.12, 0.17]));
+      for (const sx of [-1, 1]) k.add(`DEF-upper_arm.${side(sx)}`, P("hemi", [0.24, 0.16, 0.24], "#4a3a28", [-sx * 0.06, 0.05, 0]));
+      const club = G();
+      club.add(P("cyl", [0.08, 0.9, 0.08], "#6b4a2f", [0, 0.3, 0]));
+      club.add(P("sphere", [0.26, 0.4, 0.26], "#5a3a22", [0, 0.82, 0]));
+      for (let i = 0; i < 6; i++) club.add(P("cone", [0.05, 0.1, 0.05], "#c9c2b0", [Math.cos(i * 1.1) * 0.12, 0.82 + Math.sin(i * 2.3) * 0.14, Math.sin(i * 1.1) * 0.12], [Math.sin(i * 1.1) * 1.4, 0, -Math.cos(i * 1.1) * 1.4]));
+      club.rot = [Math.PI / 2 + 0.2, 0.3, 0];
+      k.add("DEF-hand.R", club);
+    },
+  },
+  seraph: {
+    skin: "#f0d4b8",
+    torso: "#f4f0e0",
+    arm: "#e8e0c8",
+    pants: "#f4f0e0",
+    shoe: "#e8d090",
+    scale: [1.3, 1.4],
+    style: "hover",
+    caster: true,
+    rate: 1,
+    build(k) {
+      featherWings(k, "#ffffff", 5.5, 1.35, 0.3, "#e4ecff");
+      const halo = glow(P("ring", [0.34, 0.1, 0.34], "#ffd34a", [0, 0.42, 0]), 1);
+      k.add(H, halo);
+      k.add(H, P("sphere", [0.27, 0.22, 0.28], "#e8c050", [0, 0.15, -0.02]));
+      k.eyes("#ff4a3a", 1);
+      k.add(S3, P("plate", [0.34, 0.26, 0.08], "#d8dce8", [0, 0.05, 0.1]));
+      k.add(S3, glow(P("gem", [0.06, 0.08, 0.04], "#ffd34a", [0, 0.07, 0.15]), 1));
+      for (const sx of [-1, 1]) k.add(`DEF-upper_arm.${side(sx)}`, P("hemi", [0.2, 0.12, 0.2], "#d8dce8", [-sx * 0.06, 0.04, 0]));
+      const spear = G();
+      spear.add(P("cyl", [0.03, 1.2, 0.03], "#e8d090", [0, 0.2, 0]));
+      spear.add(glow(P("blade", [0.1, 0.34, 0.03], "#fff2b0", [0, 0.9, 0]), 0.7));
+      spear.rot = [Math.PI / 2 - 0.1, 0, 0];
+      k.add("DEF-hand.R", spear);
+    },
+  },
+  knight: {
+    skin: "#e8e0cc",
+    torso: "#6a6e7a",
+    arm: "#7a7e8a",
+    pants: "#5a5e6a",
+    shoe: "#3a3c46",
+    scale: [1.25, 1.3],
+    style: "walk",
+    rate: 0.85,
+    build(k) {
+      k.add(H, P("hemi", [0.3, 0.2, 0.3], "#8a8e9a", [0, 0.12, -0.005]));
+      k.add(H, P("plate", [0.26, 0.05, 0.05], "#14080c", [0, 0.1, 0.14]));
+      k.add(H, P("shard", [0.05, 0.16, 0.3], "#c4373a", [0, 0.32, -0.02]));
+      k.eyes("#ff5a3a", 0.7, 0.1);
+      k.add(S3, P("plate", [0.36, 0.28, 0.1], "#7a7e8a", [0, 0.05, 0.095]));
+      k.add(S3, P("plate", [0.12, 0.2, 0.03], "#c4373a", [0, 0.06, 0.15]));
+      for (const sx of [-1, 1]) {
+        k.add(`DEF-upper_arm.${side(sx)}`, P("hemi", [0.22, 0.14, 0.21], "#8a8e9a", [-sx * 0.06, 0.035, 0]));
+        k.add(`DEF-shin.${side(sx)}`, P("plate", [0.13, 0.3, 0.06], "#7a7e8a", [0, -0.2, 0.065]));
+      }
+      k.add(HIP, P("shard", [0.22, 0.4, 0.04], "#c4373a", [0, -0.2, -0.15], [-0.15, 0, 0]));
+      const sw = G();
+      sw.add(P("blade", [0.12, 1.0, 0.03], "#b8bcc8", [0, 0.58, 0]));
+      sw.add(P("plate", [0.36, 0.06, 0.09], "#5a5e6a", [0, 0.06, 0]));
+      sw.add(P("cyl", [0.04, 0.2, 0.04], "#4a3024", [0, -0.06, 0]));
+      sw.rot = [Math.PI / 2, 0.4, 0];
+      k.add("DEF-hand.R", sw);
+      const sh = G();
+      sh.add(P("cyl", [0.42, 0.04, 0.42], "#6a6e7a", [0, 0, 0], [Math.PI / 2, 0, 0]));
+      sh.add(P("hemi", [0.12, 0.07, 0.12], "#c4373a", [0, 0, 0.03], [Math.PI / 2, 0, 0]));
+      sh.pos = [-0.04, 0, 0.12];
+      k.add("DEF-forearm.L", sh);
     },
   },
 };
