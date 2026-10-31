@@ -205,7 +205,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v7.3 · mansões {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v8.0 · profundidade {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -495,7 +495,10 @@ export function Bobina() {
           <div className="touch-dock dock pointer-events-none">
             <div className="dock-left-col pointer-events-auto">
               <div className="dock-row">
-                <Pad label="Descer plataforma" onDown={(d) => hold("down", d)} cls="pad-sm">
+                <Pad label="Andar para o fundo" onDown={(d) => hold("up", d)} cls="pad-sm">
+                  <ArrowUp className="size-5" />
+                </Pad>
+                <Pad label="Andar para frente / descer plataforma" onDown={(d) => hold("down", d)} cls="pad-sm">
                   <ArrowDown className="size-5" />
                 </Pad>
                 <Pad label="Beber poção" onDown={(d) => hold("potion", d)} cls="pad-sm">

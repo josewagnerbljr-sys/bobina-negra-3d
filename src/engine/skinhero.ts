@@ -134,11 +134,10 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
   } else addFace(add, H, { skin: def.skin, hair, iris: IRIS[id], fem: FEM, eye: FEM ? 1.12 : 0.95, lash: FEM });
   if (id === "ivo") {
     for (const sx of [-1, 1]) {
-      add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("cyl", [0.1, 0.06, 0.1], "#e0b15a", [-sx * 0.13, 0.0, 0], [0, 0, Math.PI / 2]));
-      add(S3, P("cube", [0.035, 0.3, 0.02], def.cloth2, [sx * 0.08, 0.04, 0.125]));
+      add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("hemi", [0.11, 0.07, 0.11], "#e0b15a", [-sx * 0.05, 0.05, 0], [0, 0, sx * 0.5]));
     }
     add(HIP, P("cyl", [0.31, 0.05, 0.22], "#6b4a2f", [0, 0.07, 0.01]));
-    add(HIP, P("cube", [0.06, 0.05, 0.03], "#e0b15a", [0, 0.07, 0.125]));
+    add(HIP, P("sphere", [0.045, 0.04, 0.025], "#e0b15a", [0, 0.07, 0.125]));
     // forma de lobo
     for (const sx of [-1, 1]) add(H, P("cone", [0.09, 0.2, 0.08], "#3a3d46", [sx * 0.1, 0.3, -0.01], [0, 0, -sx * 0.25]), true);
     add(H, P("cube", [0.11, 0.08, 0.14], "#8d929c", [0, 0.06, 0.14]), true);
@@ -171,7 +170,6 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add(H, P("cyl", [0.2, 0.24, 0.2], "#1c1612", [0, 0.34, 0]));
     add(H, P("cyl", [0.34, 0.03, 0.34], "#1c1612", [0, 0.225, 0]));
     add(H, P("cyl", [0.205, 0.04, 0.205], acc, [0, 0.27, 0], [0, 0, 0], true));
-    add(S3, P("cube", [0.34, 0.3, 0.04], def.cloth, [0, -0.02, -0.12], [0.18, 0, 0]));
     add(S3, glow(P("sphere", [0.045, 0.045, 0.035], acc, [0, 0.1, 0.13]), 0.7));
     for (const sx of [-1, 1]) {
       add(H, P("sphere", [0.07, 0.085, 0.03], "#14080c", [sx * 0.05, 0.115, 0.115]), true);
@@ -184,8 +182,9 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
       add(H, fl, true);
     }
   } else if (id === "syl") {
-    add(H, P("cone", [0.34, 0.34, 0.34], def.cloth, [0, 0.19, -0.02]));
-    add(H, P("cone", [0.1, 0.34, 0.06], "#c4373a", [0.1, 0.27, -0.12], [0, 0, -0.9]));
+    add(H, P("hemi", [0.33, 0.26, 0.33], def.cloth, [0, 0.14, -0.02]));
+    add(H, P("sphere", [0.3, 0.07, 0.31], def.cloth, [0, 0.145, 0.0]));
+    add(H, P("cone", [0.05, 0.28, 0.035], "#c4373a", [0.12, 0.3, -0.1], [0, 0, -0.7]));
     for (const sx of [-1, 1]) add(H, P("cone", [0.05, 0.14, 0.04], def.skin, [sx * 0.125, 0.12, 0], [0, 0, -sx * 1.25]));
     add(S3, P("cyl", [0.1, 0.4, 0.1], "#4a3024", [0.1, 0.0, -0.17], [0.25, 0, -0.3]));
     for (let i = 0; i < 3; i++) add(S3, P("cone", [0.035, 0.08, 0.03], "#d2e39a", [0.07 + i * 0.03, 0.22 + i * 0.012, -0.21], [0.25, 0, -0.3]));
@@ -200,8 +199,8 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     }
   } else if (id === "tito") {
     add(H, P("cyl", [0.27, 0.05, 0.27], "#c4373a", [0, 0.22, 0]));
-    for (const sx of [-1, 1]) add(S3, P("cube", [0.045, 0.34, 0.02], "#e0b15a", [sx * 0.08, 0.04, 0.125]));
     add(HIP, P("cyl", [0.31, 0.09, 0.22], "#1c1210", [0, 0.08, 0.01]));
+    add(HIP, P("sphere", [0.05, 0.045, 0.03], "#e0b15a", [0, 0.08, 0.125]));
     const torch = G(-0.03, -0.04, 0.02);
     torch.add(P("cyl", [0.035, 0.38, 0.035], "#6b4a2f", [0, 0.18, 0]));
     const tf = glow(P("flame", [0.16, 0.3, 0.16], "#ff8a2a", [0, 0.5, 0]), 1);
@@ -266,7 +265,7 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     gt.add(P("cone", [0.11, 0.42, 0.11], "#4a4e56", [0, -0.1, -0.16], [-1.1, 0, 0]));
     add(HIP, gt);
     anim.tail = [gt];
-    add(S3, P("cube", [0.26, 0.2, 0.05], "#4a4e56", [0, 0.04, 0.12]));
+    add(S3, P("hemi", [0.24, 0.12, 0.1], "#4a4e56", [0, 0.0, 0.1], [Math.PI / 2, 0, 0]));
     for (let i = 0; i < 5; i++) add(S3, glow(P("cube", [0.022, 0.1 + (i % 2) * 0.05, 0.02], "#ff9a3a", [-0.1 + i * 0.05, 0.03 + (i % 3) * 0.03, 0.15], [0, 0, 0.5 - i * 0.25]), 1), true);
     for (const sx of [-1, 1]) add(H, glow(P("sphere", [0.035, 0.045, 0.03], "#ff9a3a", [sx * 0.05, 0.115, 0.13]), 1), true);
   } else if (id === "lumen") {
@@ -274,7 +273,6 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add(H, P("cyl", [0.36, 0.035, 0.34], "#e8c820", [0, 0.17, 0.02]));
     add(H, glow(P("sphere", [0.07, 0.07, 0.05], "#fffbd0", [0, 0.25, 0.15]), 1));
     add(HIP, P("cyl", [0.32, 0.07, 0.22], "#6b4a2f", [0, 0.08, 0.01]));
-    for (const sx of [-1, 1]) add(HIP, P("cube", [0.06, 0.1, 0.045], "#c4c8d0", [sx * 0.13, 0.0, 0.12]));
     add("DEF-shoulder.L", P("ring", [0.26, 0.2, 0.26], "#e0602a", [0.04, 0.12, -0.02], [0.4, 0, 0.3]));
     const rod = G(0, 0, 0);
     rod.add(P("cyl", [0.035, 0.42, 0.035], "#8a8e98", [0, 0.2, 0]));

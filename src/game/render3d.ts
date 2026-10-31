@@ -6,10 +6,11 @@ import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
 import { GROUND, ROWS, TILE, Tile, type HeroId, type Kind, type Level, tileAt } from "./types";
 
-export type Spark = { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
+export type Spark = { z?: number; x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
 
 export type Paint = {
   ref: object;
+  z?: number;
   x: number;
   y: number;
   w: number;
@@ -34,18 +35,18 @@ export type Paint = {
   gear?: GearLook;
 };
 
-export type LootPaint = { x: number; y: number; color: string; rarity: number; t: number; slot: string; fam: string; acc: string };
+export type LootPaint = { z?: number; x: number; y: number; color: string; rarity: number; t: number; slot: string; fam: string; acc: string };
 
-export type Fx = { kind: "wave" | "slash" | "pillar" | "nova" | "blast" | "bolt"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number; el?: string };
+export type Fx = { z?: number; kind: "wave" | "slash" | "pillar" | "nova" | "blast" | "bolt"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number; el?: string };
 
-export type ShotPaint = { x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
+export type ShotPaint = { z?: number; x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
 
 export type Frame = {
   level: Level | null;
   camX: number;
   camY: number;
   /** herói em pixels de jogo: a câmera 3D o segue (inclusive nos pulos) */
-  focus: { x: number; y: number; vy: number; facing: number; grounded: boolean } | null;
+  focus: { z?: number; x: number; y: number; vy: number; facing: number; grounded: boolean } | null;
   shake: number;
   t: number;
   playing: boolean;
@@ -258,6 +259,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const formPrev = new WeakMap<object, boolean>();
   const bursts: { x: number; y: number; foot: number; t0: number; c: Vec3; on: boolean }[] = [];
   let camInit = false;
+  let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
   let camBossK = 0;
@@ -300,7 +302,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const L = g.level;
 
     // câmera: mais próxima, presa ao herói, orbita para trás dele (ângulo 3/4) e abre da visão 2D lateral
-    const visH = Math.max(5.5, 8.8 / aspect);
+    const visH = Math.max(5.0, 8.0 / aspect);
     const dist0 = visH / 2 / Math.tan(FOV / 2);
     let cx: number;
     let cy: number;
@@ -329,6 +331,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const kx = 1 - Math.exp(-4.2 * dt);
       const ky = 1 - Math.exp(-(fo.grounded ? 2.8 : 6.0) * dt);
       camPX += (tx - camPX) * kx;
+      camPZ += ((fo.z ?? 0) * S * 0.8 - camPZ) * (1 - Math.exp(-5 * dt));
       camPY += (ty - camPY) * ky;
       // abertura: começa aberta e lateral (como o 2D) e vai aproximando e girando para trás do herói
       const intro = cam.t >= 99 ? 1 : Math.min(1, cam.t / 3.4);
@@ -341,7 +344,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.78 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      const rT = (1.5 - 0.92 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
@@ -360,8 +363,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
       const lift = 1.0 + 0.9 * (1 - camCineK * 0.8);
-      at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, 0];
-      eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), Math.cos(yaw) * R];
+      at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, camPZ];
+      eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), camPZ + Math.cos(yaw) * R];
       camCX = cx;
       camCY = cy;
     } else {
@@ -392,12 +395,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const gc = hex(g.world.ground);
       const tc = g.trim;
       for (const z of L.risers) {
-        if (z.vis < 0.02) continue;
-        const wob = 0;
-        const hgt = z.vis + 0.6;
-        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND - 0.6 + hgt / 2 - 0.07, -0.05], [0, 0, 0], [z.w - 0.02, hgt - 0.14, 1.96]);
+        const hv = z.col; // desenha exatamente a altura da colisão
+        if (hv < 1) continue;
+        const base = ROWS - (z.f ?? GROUND);
+        m4.compose(tmpBlob, [z.c + z.w / 2, base + hv / 2 - 0.02, 0], [0, 0, 0], [z.w - 0.02, hv - 0.04, 1.96]);
         e.draw(e.prims.cube, tmpBlob, { color: gc });
-        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND + z.vis - 0.08, 0.0], [0, 0, 0], [z.w + 0.04, 0.16, 2.2]);
+        m4.compose(tmpBlob, [z.c + z.w / 2, base + hv - 0.06, 0.0], [0, 0, 0], [z.w + 0.04, 0.12, 2.2]);
         e.draw(e.prims.cube, tmpBlob, { color: [tc[0] * 0.8 + gc[0] * 0.2, tc[1] * 0.8 + gc[1] * 0.2, tc[2] * 0.8 + gc[2] * 0.2] as Vec3 });
       }
     }
@@ -420,8 +423,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if (f.playing && f.exit) drawExit(f, g);
 
     // atores
-    const pass1: { m: Model; mat: Float32Array; st: DrawState }[] = [];
-    const shadows: { x: number; y: number; r: number; h: number }[] = [];
+    const pass1: { m: Model; mat: Float32Array; st: DrawState; z: number }[] = [];
+    const shadows: { x: number; y: number; r: number; h: number; z: number }[] = [];
     const drawActor = (p: Paint, m: Model, mat: Float32Array) => {
       const st: DrawState = { ...tmpDraw };
       st.flash = p.kind !== "hero" && p.hurt ? 0.75 : 0;
@@ -434,12 +437,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         if (Math.floor(f.t * 16) % 2 === 0) return;
       }
       const copy = new Float32Array(mat);
+      const pz = (p.z ?? 0) * S;
+      e.zShift = pz;
       drawModel(e, m, copy, st, 0);
-      pass1.push({ m, mat: copy, st });
+      e.zShift = 0;
+      pass1.push({ m, mat: copy, st, z: pz });
       const gy = p.fly ? null : groundBelow(L, p.x + p.w / 2, p.y + p.h);
       if (gy !== null) {
         const hgt = Math.max(0, gy - (ROWS - (p.y + p.h) * S));
-        shadows.push({ x: (p.x + p.w / 2) * S, y: gy, r: Math.max(0.3, p.w * S * 0.75), h: hgt });
+        shadows.push({ x: (p.x + p.w / 2) * S, y: gy, r: Math.max(0.3, p.w * S * 0.75), h: hgt, z: pz });
       }
     };
     for (const p of f.actors) {
@@ -494,8 +500,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const Y = ROWS - (s.y + s.h / 2) * S;
       const len = Math.max(0.3, s.w * S * 1.6);
       const hh = Math.max(0.16, s.h * S * 1.5);
+      e.zShift = (s.z ?? 0) * S;
       e.prim("sphere", [X, Y, 0], [0, 0, s.vx < 0 ? 0.0 : 0], [len, hh, hh], { color: c, emis: c, unlit: false, cel: false }, INK_COLOR, 0.12);
       e.prim("cone", [X - Math.sign(s.vx) * len * 0.8, Y, 0], [0, 0, (s.vx > 0 ? 1 : -1) * Math.PI / 2], [hh * 0.8, len * 1.1, hh * 0.8], { color: c, emis: c, cel: false });
+      e.zShift = 0;
     }
 
     // transparências ---------------------------------------------------
@@ -503,20 +511,26 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     for (const sh of shadows) {
       const a = Math.max(0.1, 0.5 - sh.h * 0.09);
       const k = sh.r * (1.15 + Math.min(sh.h, 3) * 0.16);
-      m4.compose(tmpBlob, [sh.x, sh.y + 0.035, 0.1], [-Math.PI / 2, 0, 0], [k * 2.1, k * 1.5, 0.02]);
+      m4.compose(tmpBlob, [sh.x, sh.y + 0.035, 0.1 + sh.z], [-Math.PI / 2, 0, 0], [k * 2.1, k * 1.5, 0.02]);
       e.draw(e.prims.sphere, tmpBlob, { color: [0.0, 0.0, 0.01], unlit: true, soft: true, alpha: a });
     }
     drawAmbientBlend(ambCtx);
     for (const lg of g.parts.lights) {
       if (!near(lg.x)) continue;
       const fl = 0.8 + 0.2 * Math.sin(f.t * (7 + lg.k * 5) + lg.k * 40) + 0.08 * Math.sin(f.t * 23 + lg.k * 9);
-      glowSprite(lg.x, lg.y, -0.3, lg.r * 0.55 * fl, lg.c, 0.34 * fl);
+      glowSprite(lg.x, lg.y, -1.4, lg.r * 0.55 * fl, lg.c, 0.34 * fl);
     }
     for (const lt of f.loot) {
       if (!near(lt.x * S)) continue;
+      e.zShift = (lt.z ?? 0) * S;
       drawLoot(lt, f.t);
+      e.zShift = 0;
     }
-    for (const it of pass1) drawModel(e, it.m, it.mat, it.st, 1);
+    for (const it of pass1) {
+      e.zShift = it.z;
+      drawModel(e, it.m, it.mat, it.st, 1);
+    }
+    e.zShift = 0;
     e.blend(false);
 
     // brilhos aditivos
@@ -529,12 +543,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     for (const a of f.actors) {
       if (!near((a.x + a.w / 2) * S)) continue;
+      e.zShift = (a.z ?? 0) * S;
       if (a.kind === "chest") glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + a.h / 2) * S, 0.5, 1.5 + Math.sin(f.t * 3) * 0.2, [1, 0.8, 0.3], 0.4);
       if (a.kind === "candle") glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + 4) * S, 0.5, 1.6, [1, 0.75, 0.3], 0.6);
       if (a.kind === "hero" && a.form) glowSprite((a.x + a.w / 2) * S, ROWS - (a.y + a.h / 2) * S, 0.2, 3.0, hex(heroAccent(a.hero)), 0.28);
+      e.zShift = 0;
     }
     for (const lt of f.loot) {
       if (!near(lt.x * S)) continue;
+      e.zShift = (lt.z ?? 0) * S;
       const c = col(lt.color);
       glowSprite(lt.x * S, ROWS - lt.y * S + 0.3, 0.2, 0.9 + lt.rarity * 0.3, c, 0.4);
       if (lt.rarity > 0) {
@@ -546,8 +563,13 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
           glowSprite(lt.x * S + Math.sin(f.t * 2 + q * 2) * 0.35, ROWS - lt.y * S + 0.3 + u * h, 0.3, 0.16, [1, 1, 0.9], 0.8 * (1 - u));
         }
       }
+      e.zShift = 0;
     }
-    for (const s of f.shots) drawShotGlow(s, f.t);
+    for (const s of f.shots) {
+      e.zShift = (s.z ?? 0) * S;
+      drawShotGlow(s, f.t);
+    }
+    e.zShift = 0;
     if (f.playing && f.exit) {
       const ex = f.exit;
       const X = (ex.x + ex.w / 2) * S;
@@ -560,7 +582,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const c = col(sp.color);
       const X = sp.x * S;
       const Y = ROWS - sp.y * S;
+      e.zShift = (sp.z ?? 0) * S;
       glowSprite(X, Y, 0.3, sp.r * S * 6 * (0.4 + a), c, 0.8 * a);
+      e.zShift = 0;
     }
     // clima de cada mundo: confete, cinzas, brasas, vagalumes, folhas de papel
     const wid = g.world.id;
@@ -666,6 +690,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     // poderes: ondas, cortes, pilares de luz e o super especial
     for (const fxx of f.fx) {
       if (fxx.t < 0) continue;
+      e.zShift = (fxx.z ?? 0) * S;
       const u = Math.min(1, fxx.t / fxx.max);
       const fade = 1 - u;
       const c = col(fxx.color);
@@ -749,6 +774,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         glowSprite(X, Y, 1.5, 20 * Math.min(1, u * 5) * (0.4 + fade), c, 0.3 * fade * fade);
       }
     }
+    e.zShift = 0;
     if (f.flash > 0.02) glowSprite(cx, cy, 6, 30, [1, 1, 1], 0.14 * f.flash);
     e.additive(false);
     (window as unknown as { __drawCalls?: number }).__drawCalls = e.drawCalls;

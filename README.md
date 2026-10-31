@@ -138,3 +138,10 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Percurso em serpentina (sobe no leste, atravessa para oeste, sobe de novo); validado por BFS: as 60 fases têm saída e baús alcançáveis.
 - Heróis com físicos distintos (inclui mulheres), rostos/cabelos estilo anime; primitivas cruas (cubo/cone/cilindro) trocadas por formas suaves.
 - Câmera mais afastada; abertura sem vai-e-vem; tremor dos blocos móveis removido.
+
+## v8.0 — Profundidade (semi-mundo aberto)
+- Herói, monstros, tiros e poderes agora se movem também em **profundidade**: W/↑ = fundo, S/↓ = frente (no celular, dois botões novos ↑ ↓). Pular = Espaço (ou botão). Descer de plataforma = ↓ + pular.
+- Cômodos das mansões com 6 tiles de profundidade, câmera mais próxima e inclinada; acertos de golpe/tiro/contato consideram a profundidade.
+- Mapas variados: salas preferidas por círculo do inferno, larguras variáveis, fossos, palanques e plataformas suspensas, metade das fases espelhada (entrada no leste). Nome do cômodo aparece ao entrar.
+- Correções: plataformas que sobem/descem desenhadas no andar errado (heróis/monstros "atravessavam"), mini-chefe disparando fora do andar, formas primitivas nos heróis (tiras, coldres, chapéus de cone).
+- Limite conhecido: obstáculos (mesas, caixas) ocupam toda a profundidade; não dá para contorná-los.

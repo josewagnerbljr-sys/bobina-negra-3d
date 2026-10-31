@@ -1005,7 +1005,13 @@ export class Engine {
     gl.bindTexture(gl.TEXTURE_2D, this.boneTex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, nBones, gl.RGBA, gl.FLOAT, bones);
     gl.activeTexture(gl.TEXTURE0);
-    gl.uniformMatrix4fv(u.uModel!, false, model);
+    let mdlS = model;
+    if (this.zShift) {
+      this.mz.set(model);
+      this.mz[14] = this.mz[14]! + this.zShift;
+      mdlS = this.mz;
+    }
+    gl.uniformMatrix4fv(u.uModel!, false, mdlS);
     gl.uniformMatrix3fv(u.uNor!, false, m4.normal(this.nmat, model));
     gl.uniform3fv(u.uRegion!, region);
     gl.bindVertexArray(mesh.vao);
@@ -1022,10 +1028,19 @@ export class Engine {
     gl.useProgram(this.lit);
   }
 
+  /** deslocamento z aplicado a tudo que for desenhado (profundidade das entidades) */
+  zShift = 0;
+  private mz = new Float32Array(16);
+
   /** desenha uma malha com a matriz de modelo informada */
   draw(mesh: GpuMesh, model: Mat4 | null, opts: DrawOpts = {}) {
     const gl = this.gl;
-    const mdl = model ?? this.ident;
+    let mdl = model ?? this.ident;
+    if (this.zShift) {
+      this.mz.set(mdl);
+      this.mz[14] = this.mz[14]! + this.zShift;
+      mdl = this.mz;
+    }
     gl.uniformMatrix4fv(this.u.uModel!, false, mdl);
     gl.uniformMatrix3fv(this.u.uNor!, false, model ? m4.normal(this.nmat, model) : this.identN);
     this.setMat(opts);

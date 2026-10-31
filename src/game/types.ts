@@ -110,7 +110,7 @@ export type Screen =
 
 export type Line = { who: string; text: string };
 
-export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
+export type Action = "left" | "right" | "up" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
 
 export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean; room?: number };
 

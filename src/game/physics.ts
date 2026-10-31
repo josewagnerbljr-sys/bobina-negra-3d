@@ -12,6 +12,8 @@ export type Body = {
   h: number;
   vx: number;
   vy: number;
+  /** profundidade (px); só usada nas mansões */
+  z?: number;
 };
 
 export function overlaps(a: Body, b: Body) {

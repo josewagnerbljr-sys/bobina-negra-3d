@@ -54,7 +54,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   // serpentina: sobe no extremo leste do térreo, atravessa o 1º andar para oeste, sobe no extremo oeste
   const s0 = 4;
   const s1 = 0;
-  const widths = Array.from({ length: 5 }, (_, j) => (j === s0 || j === s1 ? rint(36, 40) : rint(28, 34)));
+  const widths = Array.from({ length: 5 }, (_, j) => (j === s0 || j === s1 ? rint(36, 42) : rint(26, 40)));
   if (boss) widths[4] = 40;
   const PART = 2;
   const xs: number[] = [];
@@ -123,7 +123,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
       if (k < 9) fill(c0, c0 + 2, F - FLOOR_PITCH, F - FLOOR_PITCH + 1, Tile.OneWay);
     }
     // corrimão/decoração
-    dec("rail", sx, F, 20, 5, rightUp ? 1 : 0);
+    dec("rail", sx, F, 20, 5, rightUp ? 1 : 2);
     return { sx, rightUp };
   };
   const st0 = stair(0, s0, true);
@@ -143,9 +143,23 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   const pickKind = (dest: Kind[] = poolA) => dest[Math.floor(rng() * dest.length)]!;
 
   const roomIndex: number[][] = [[], [], []];
-  const kindsF0 = shuffle(["hall", "dining", "kitchen", "crypt", "chapel", "gallery"], rng);
-  const kindsF1 = shuffle(["library", "ballroom", "armory", "study", "gallery", "chapel"], rng);
-  const kindsF2 = shuffle(["attic", "armory", "gallery", "study", "attic"], rng);
+  // cada círculo do inferno tem salas preferidas (muda o "tempero" da mansão)
+  const FAV: string[][] = [
+    ["ballroom", "gallery"], // Limbo
+    ["crypt", "chapel"], // Heresia
+    ["armory", "kitchen"], // Ira
+    ["crypt", "hall"], // Violência
+    ["library", "study"], // Fraude
+    ["ballroom", "dining"], // Luxúria
+    ["crypt", "gallery"], // Traição
+    ["dining", "kitchen"], // Gula
+    ["armory", "library"], // Avareza
+    ["hall", "chapel"], // Dis
+  ];
+  const fav = FAV[world % 10] ?? [];
+  const kindsF0 = shuffle(["hall", "dining", "kitchen", "crypt", "chapel", "gallery", ...fav, ...fav], rng);
+  const kindsF1 = shuffle(["library", "ballroom", "armory", "study", "gallery", "chapel", ...fav, ...fav], rng);
+  const kindsF2 = shuffle(["attic", "armory", "gallery", "study", "attic", ...fav], rng);
   let k0 = 0;
   let k1 = 0;
   let k2 = 0;
@@ -187,7 +201,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
     if (farEnd) kind = "boss";
     const names = KIND_NAME[kind] ?? ["Cômodo"];
     const ri = rooms.length;
-    rooms.push({ c0, c1, r0: F - 9, r1: F, floor: F, kind, name: names[(i + j + f) % names.length]!, theme: (j * 3 + f * 5 + i) % 6 });
+    rooms.push({ c0, c1, r0: F - 9, r1: F, floor: F, kind, name: names[(i + j + f) % names.length]!, theme: (j * 3 + f * 5 + i + world * 2) % 6 });
     roomIndex[f]![j] = ri;
 
     const room = rooms[ri]!;
@@ -310,7 +324,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
         break;
       }
       case "attic": {
-        for (let q = 0; q < 4; q++) block(c0 + 5 + q * 7, 2, 1 + (q % 2));
+        for (let q = 0; q < 4; q++) if (c0 + 5 + q * 7 + 2 <= c1 - 6) block(c0 + 5 + q * 7, 2, 1 + (q % 2));
         dec("cobweb", c0 + 2, F - 9, 5, 5);
         dec("crate", c1 - 8, F, 3, 2);
         dec("window", cx, F - 6, 2, 3);
@@ -339,6 +353,30 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
       }
       default:
         break;
+    }
+
+    // variação extra: cada sala ganha um detalhe diferente (fosso, palanque, plataformas suspensas)
+    if (!["boss", "foyer", "stairs", "gallery"].includes(kind) && !isStair && !aboveStair) {
+      const vr = rint(0, 4);
+      if (vr === 1 && !["kitchen", "crypt"].includes(kind)) {
+        const px = c0 + rint(10, Math.max(11, c1 - c0 - 16));
+        for (let q = 0; q < 5; q++) if (get(px + q, F) === Tile.Solid && get(px + q, F - 1) === Tile.Air) set(px + q, F, Tile.Spike);
+        plat(px + 1, 3, F - 3);
+      } else if (vr === 2) {
+        const px = c0 + rint(8, Math.max(9, c1 - c0 - 14));
+        if (get(px, F - 1) === Tile.Air && get(px + 5, F - 1) === Tile.Air) {
+          fill(px, px + 6, F - 1, F, Tile.Solid);
+          fill(px + 1, px + 5, F - 2, F - 1, Tile.Solid);
+          dec("rug", px, F - 2, 6, 1);
+        }
+      } else if (vr === 3) {
+        const px = c0 + rint(6, Math.max(7, c1 - c0 - 14));
+        plat(px, 3, F - 4);
+        plat(px + 5, 3, F - 6);
+        plat(px + 10, 3, F - 4);
+        dec("chain", px + 1, F - 9, 1, 3);
+        dec("chain", px + 11, F - 9, 1, 3);
+      }
     }
 
     // decoração de fundo comum
@@ -407,6 +445,28 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   fixEnts(G, ents);
 
   const names = bonus ? BONUS_NAMES[i - MAIN_LEVELS] ?? "Cofre" : REEL_NAMES[i] ?? `Mansão ${i + 1}`;
+  // espelha metade das fases (a entrada passa para o leste)
+  const mirror = (i + world) % 2 === 1;
+  let tilesOut = G.t;
+  let spawnOut = { c: spawnC, foot: GROUND };
+  let exitOut = { c: exitC, foot: exitFoot };
+  if (mirror) {
+    tilesOut = new Uint8Array(G.t.length);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < cols; c++) tilesOut[r * cols + (cols - 1 - c)] = G.t[r * cols + c]!;
+    for (const e of ents) e.c = cols - 1 - e.c;
+    for (const d of decor) {
+      d.c = cols - (d.c + d.w);
+      if (d.k === "rail") d.v = d.v === 1 ? 2 : 1;
+    }
+    for (const z of risers) z.c = cols - (z.c + z.w);
+    for (const rm of rooms) {
+      const a = cols - rm.c1;
+      rm.c1 = cols - rm.c0;
+      rm.c0 = a;
+    }
+    spawnOut = { c: cols - 1 - spawnC, foot: GROUND };
+    exitOut = { c: cols - 1 - exitC, foot: exitFoot };
+  }
   debugMansion[i] = `${rooms.length} cômodos · ${nFloors} andares · escadas ${s0}/${s1}`;
   return {
     index: i,
@@ -417,10 +477,10 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
     bonus,
     cols,
     rows: ROWS,
-    tiles: G.t,
+    tiles: tilesOut,
     ents,
-    spawn: { c: spawnC, foot: GROUND },
-    exit: { c: exitC, foot: exitFoot },
+    spawn: spawnOut,
+    exit: exitOut,
     risers: risers.length ? risers : undefined,
     rooms,
     decor,
