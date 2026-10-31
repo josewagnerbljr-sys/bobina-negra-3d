@@ -1,4 +1,5 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
+import { buildMansion } from "./mansion";
 import { GROUND, MAIN_LEVELS, ROWS, Tile, type Kind, type Level, type LevelEnt, type Riser } from "./types";
 
 export function mulberry32(seed: number) {
@@ -465,6 +466,15 @@ function mk(sk: Sketch, i: number, world: number, boss: boolean, mini: boolean, 
 }
 
 export function buildLevel(index: number): Level {
+  const i = Math.max(0, Math.min(MAIN_LEVELS + 9, index));
+  const bonus = i >= MAIN_LEVELS;
+  const world = bonus ? i - MAIN_LEVELS : Math.floor(i / 5);
+  const stage = bonus ? 5 : i % 5;
+  return buildMansion(i, bonus, world, stage);
+}
+
+/** mapas de corredor antigos (mantidos só como referência/teste) */
+export function buildCorridor(index: number): Level {
   const i = Math.max(0, Math.min(MAIN_LEVELS + 9, index));
   return build(i, i >= MAIN_LEVELS);
 }

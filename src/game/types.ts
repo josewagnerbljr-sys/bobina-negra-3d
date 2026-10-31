@@ -1,6 +1,6 @@
 export const TILE = 48;
-export const ROWS = 16;
-export const GROUND = 14;
+export const ROWS = 40;
+export const GROUND = 38;
 export const VIEW_W = 768;
 export const VIEW_H = 432;
 
@@ -112,7 +112,13 @@ export type Line = { who: string; text: string };
 
 export type Action = "left" | "right" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
 
-export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean };
+export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean; room?: number };
+
+/** cômodo da mansão: interior [c0,c1) x [r0,r1) em tiles; floorRow = linha do chão */
+export type Room = { c0: number; c1: number; r0: number; r1: number; floor: number; kind: string; name: string; theme: number };
+
+/** peça de decoração (parede/chão), só visual */
+export type Decor = { k: string; c: number; r: number; w: number; h: number; v: number };
 
 export type Level = {
   index: number;
@@ -128,10 +134,13 @@ export type Level = {
   spawn: { c: number; foot: number };
   exit: { c: number; foot: number };
   risers?: Riser[];
+  /** mansão: cômodos e decoração; ausente nos mapas antigos */
+  rooms?: Room[];
+  decor?: Decor[];
 };
 
 /** colina dinâmica: sobe/desce com a caminhada (mode 0) ou em pulso (mode 1). col = altura de colisão, vis = visual suave */
-export type Riser = { c: number; w: number; h: number; mode: number; ph: number; col: number; vis: number };
+export type Riser = { c: number; w: number; h: number; mode: number; ph: number; col: number; vis: number; f?: number };
 
 export type BuffSnap = { kind: BuffKind; left: number };
 
@@ -207,7 +216,7 @@ export function tileAt(level: Level, c: number, r: number): number {
   if (rs) {
     for (let i = 0; i < rs.length; i++) {
       const z = rs[i]!;
-      if (c >= z.c && c < z.c + z.w && z.col > 0 && r >= GROUND - z.col && r < GROUND) return Tile.Solid;
+      if (c >= z.c && c < z.c + z.w && z.col > 0 && r >= (z.f ?? GROUND) - z.col && r < (z.f ?? GROUND)) return Tile.Solid;
     }
   }
   return level.tiles[r * level.cols + c] ?? Tile.Air;

@@ -8,7 +8,10 @@ import { charAsset } from "./skin";
 /* Grafo de cena minúsculo: cada Node é um grupo (pos/rot/scl) que pode ter uma
    primitiva desenhada com `size`. Os filhos herdam só o grupo (não o size). */
 
-export type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring" | "hemi" | "blade" | "shard" | "plate" | "gem";
+export type Prim = "cube" | "sphere" | "cone" | "cyl" | "ring" | "hemi" | "blade" | "shard" | "plate" | "gem" | "ogive" | "horn" | "flame" | "rcyl" | "rbox";
+
+/** troca as formas cruas (cubo/cone/cilindro) por versões suaves: nada de cantos e pontas de programação */
+const SOFT: Partial<Record<Prim, Prim>> = { cube: "rbox", cone: "ogive", cyl: "rcyl" };
 
 export class Node {
   prim: Prim | null = null;
@@ -46,7 +49,7 @@ export function G(x = 0, y = 0, z = 0): Node {
 }
 export function P(prim: Prim, size: Vec3, color: string | Vec3, pos: Vec3 = [0, 0, 0], rot: Vec3 = [0, 0, 0], emis = false): Node {
   const n = new Node();
-  n.prim = prim;
+  n.prim = SOFT[prim] ?? prim;
   n.size = size;
   n.color = typeof color === "string" ? hex(color) : color;
   n.pos = pos;

@@ -197,6 +197,8 @@ export class SkinRig {
   region = new Float32Array(27);
   /** rotações adicionais (quatérnio) aplicadas por cima da animação, por osso (x,y,z,w) ou null */
   extra: (Float32Array | null)[];
+  /** escala por osso (sx,sy,sz nos eixos locais): dá corpos diferentes ao mesmo esqueleto */
+  scl: (Float32Array | null)[];
   cur: Clip;
   curT = 0;
   curRate = 1;
@@ -220,6 +222,7 @@ export class SkinRig {
     this.sa = new Float32Array(a.J * 4);
     this.sb = new Float32Array(a.J * 4);
     this.extra = Array.from({ length: a.J }, () => null);
+    this.scl = Array.from({ length: a.J }, () => null);
     this.cur = a.clips.get(first) ?? [...a.clips.values()][0]!;
   }
 
@@ -358,15 +361,19 @@ export class SkinRig {
       const wy = w * y;
       const wz = w * z;
       // matriz local (colunas)
-      const l0 = 1 - 2 * (yy + zz);
-      const l1 = 2 * (xy + wz);
-      const l2 = 2 * (xz - wy);
-      const l4 = 2 * (xy - wz);
-      const l5 = 1 - 2 * (xx + zz);
-      const l6 = 2 * (yz + wx);
-      const l8 = 2 * (xz + wy);
-      const l9 = 2 * (yz - wx);
-      const l10 = 1 - 2 * (xx + yy);
+      const sc = this.scl[j];
+      const kx = sc ? sc[0]! : 1;
+      const ky = sc ? sc[1]! : 1;
+      const kz = sc ? sc[2]! : 1;
+      const l0 = (1 - 2 * (yy + zz)) * kx;
+      const l1 = 2 * (xy + wz) * kx;
+      const l2 = 2 * (xz - wy) * kx;
+      const l4 = 2 * (xy - wz) * ky;
+      const l5 = (1 - 2 * (xx + zz)) * ky;
+      const l6 = 2 * (yz + wx) * ky;
+      const l8 = 2 * (xz + wy) * kz;
+      const l9 = 2 * (yz - wx) * kz;
+      const l10 = (1 - 2 * (xx + yy)) * kz;
       let tx = rt[j * 3]!;
       let ty = rt[j * 3 + 1]!;
       let tz = rt[j * 3 + 2]!;
@@ -460,6 +467,11 @@ export class SkinRig {
     e[1] = cx * sy * cz - sx * cy * sz;
     e[2] = cx * cy * sz + sx * sy * cz;
     e[3] = cx * cy * cz - sx * sy * sz;
+  }
+
+  setScale(joint: number, sx: number, sy = sx, sz = sx) {
+    if (joint < 0) return;
+    this.scl[joint] = new Float32Array([sx, sy, sz]);
   }
 
   clearExtras() {

@@ -69,6 +69,7 @@ export type LevelParts = {
   back: Geo;
   glow: Geo;
   lanterns: Lantern[];
+  lights: RoomLight[];
 };
 
 const D_BACK = -1.1;
@@ -155,8 +156,10 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
     addBox(terrain, cols + 1 + i * 3, 0, 2.5, cols + 2 + i * 3, ROWS + 10, 2.54, mix3(wallCol, pal.trim, 0.12), { px: false, nx: false, py: false, ny: false, pz: true });
   }
 
+  let roomLights: RoomLight[] = [];
+  if (level.rooms) roomLights = buildMansionParts(level, terrain, glow, pal, rnd);
   // enfeites do chão
-  for (let c = 1; c < cols - 1; c++) {
+  for (let c = 1; c < cols - 1 && !level.rooms; c++) {
     if (!solid(c, GROUND) || solid(c, GROUND - 1)) continue;
     if (rnd() > 0.2) continue;
     const z = -0.3 - rnd() * 0.55; // sempre atrás da pista, para nunca esconder o herói
@@ -164,7 +167,7 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
   }
 
   buildBackdrop(back, glow, level, world, pal);
-  return { terrain, back, glow, lanterns };
+  return { terrain, back, glow, lanterns, lights: roomLights };
 }
 
 function decor(g: Geo, glow: Geo, w: number, x: number, y: number, z: number, rnd: () => number, pal: Palette) {
@@ -764,4 +767,246 @@ function prop(g: Geo, glow: Geo, w: number, x: number, z: number, s: number, rnd
   const k = Math.floor((rnd() * 0.65 + (bias / kinds) * 0.35 + (rnd() < 0.4 ? rnd() * 0.5 : 0)) * kinds) % kinds;
   if (k < 3) propLegacy(g, glow, w, x, z, s, rnd, col, pal, layerZ, k);
   else NEW_PROPS[w]![k - 3]!({ g, glow, x, z, s, rnd, col, pal, gy, tint });
+}
+
+/* ------------------------------------------------------------------ mansão */
+
+export type RoomLight = { x: number; y: number; r: number; c: Vec3; k: number };
+
+const WALLTINT: Vec3[] = [
+  [0.55, 0.2, 0.24], [0.28, 0.34, 0.5], [0.3, 0.46, 0.34], [0.5, 0.38, 0.22], [0.4, 0.26, 0.5], [0.22, 0.42, 0.46],
+];
+
+/** paredes de fundo, divisórias decoradas e mobília dos cômodos */
+export function buildMansionParts(level: Level, terrain: Geo, glow: Geo, pal: Palette, rnd: () => number): RoomLight[] {
+  const lights: RoomLight[] = [];
+  const Y = (r: number) => ROWS - r;
+  const wood: Vec3 = mix3([0.3, 0.18, 0.1], pal.groundDark, 0.3);
+  const gold: Vec3 = mix3([0.9, 0.7, 0.25], pal.trim, 0.35);
+  const stone: Vec3 = [0.5, 0.5, 0.54];
+  const flame = (x: number, y: number, z: number, s: number, c: Vec3 = [1, 0.7, 0.25]) => {
+    addSphere(glow, x, y + s * 0.5, z, s * 0.55, 6, 4, c);
+    addCone(glow, x, y + s * 0.6, z, s * 0.45, 0, s * 1.4, 6, c, [1, 0.95, 0.6]);
+    lights.push({ x, y: y + s, r: 3.2 + s * 4, c, k: rnd() });
+  };
+  for (const rm of level.rooms ?? []) {
+    const w = rm.c1 - rm.c0;
+    const yb = Y(rm.floor);
+    const hgt = rm.floor - rm.r0;
+    const tint = WALLTINT[rm.theme % WALLTINT.length]!;
+    const wall = mix3(pal.groundDark, tint, 0.55);
+    const wallD = mix3(wall, [0, 0, 0], 0.35);
+    // parede de fundo
+    addBox(terrain, rm.c0, yb, -1.1, rm.c1, yb + hgt, -1.02, wall, { px: false, nx: false, py: false, ny: false, pz: true });
+    // painel inferior (lambril) e sanca
+    addBox(terrain, rm.c0, yb, -1.02, rm.c1, yb + 2.4, -0.94, wallD, { px: false, nx: false, py: true, ny: false, pz: true }, mix3(wallD, pal.trim, 0.3));
+    addBox(terrain, rm.c0, yb + 2.35, -1.02, rm.c1, yb + 2.5, -0.9, mix3(pal.trim, wallD, 0.4), { px: false, nx: false, py: true, ny: false, pz: true });
+    addBox(terrain, rm.c0, yb + hgt - 0.3, -1.02, rm.c1, yb + hgt, -0.9, mix3(pal.trim, wall, 0.5), { px: false, nx: false, py: false, ny: true, pz: true });
+    for (let c = rm.c0 + 1; c < rm.c1; c += 3) {
+      addBox(terrain, c, yb + 0.05, -0.94, c + 0.1, yb + 2.35, -0.9, mix3(wallD, pal.trim, 0.15), { px: false, nx: false, py: false, ny: false, pz: true });
+      addBox(terrain, c, yb + 2.5, -1.02, c + 0.25, yb + hgt - 0.3, -0.97, mix3(wall, [1, 1, 1], 0.08), { px: false, nx: false, py: false, ny: false, pz: true });
+    }
+    void w;
+  }
+  for (const d of level.decor ?? []) {
+    const x0 = d.c;
+    const yb = Y(d.r);
+    const seed = d.v;
+    const col = (k: number): Vec3 => [0.4 + ((seed * (k + 3)) % 60) / 100, 0.25 + ((seed * (k + 7)) % 50) / 100, 0.25 + ((seed * (k + 11)) % 55) / 100];
+    switch (d.k) {
+      case "door": {
+        addBox(terrain, x0 - 0.1, yb, 0.8, x0 + 0.35, yb + d.h + 0.4, 1.06, gold, { ny: false });
+        addBox(terrain, x0 + d.w - 0.35, yb, 0.8, x0 + d.w + 0.1, yb + d.h + 0.4, 1.06, gold, { ny: false });
+        addBox(terrain, x0 - 0.1, yb + d.h, 0.8, x0 + d.w + 0.1, yb + d.h + 0.4, 1.06, gold, { ny: false });
+        break;
+      }
+      case "window": {
+        addBox(terrain, x0 - 0.12, yb - 0.12, -1.0, x0 + d.w + 0.12, yb + d.h + 0.12, -0.92, wood, {});
+        addBox(glow, x0, yb, -0.93, x0 + d.w, yb + d.h, -0.91, mix3(pal.fog, [0.7, 0.8, 1], 0.55), { px: false, nx: false, py: false, ny: false, pz: true });
+        addBox(terrain, x0 + d.w / 2 - 0.05, yb, -0.9, x0 + d.w / 2 + 0.05, yb + d.h, -0.86, wood, {});
+        addBox(terrain, x0, yb + d.h / 2 - 0.05, -0.9, x0 + d.w, yb + d.h / 2 + 0.05, -0.86, wood, {});
+        addBox(terrain, x0 - 0.25, yb - 0.2, -0.95, x0 + d.w + 0.25, yb - 0.05, -0.8, mix3(wood, pal.trim, 0.3), {});
+        break;
+      }
+      case "painting": {
+        addBox(terrain, x0 - 0.1, yb - 0.1, -0.98, x0 + d.w + 0.1, yb + d.h + 0.1, -0.9, gold, {});
+        addBox(terrain, x0, yb, -0.9, x0 + d.w, yb + d.h, -0.88, col(1), { px: false, nx: false, py: false, ny: false, pz: true });
+        addSphere(terrain, x0 + d.w * 0.5, yb + d.h * 0.58, -0.86, Math.min(d.w, d.h) * 0.2, 8, 6, col(2));
+        addCone(terrain, x0 + d.w * 0.5, yb + d.h * 0.12, -0.86, d.w * 0.28, d.w * 0.12, d.h * 0.4, 8, col(3));
+        break;
+      }
+      case "column": {
+        const cx = x0 + d.w / 2;
+        addCone(terrain, cx, yb, -0.78, 0.5, 0.5, 0.35, 10, stone);
+        addCone(terrain, cx, yb + 0.35, -0.78, 0.34, 0.3, d.h - 0.9, 14, mix3(stone, pal.trim, 0.12));
+        addCone(terrain, cx, yb + d.h - 0.55, -0.78, 0.52, 0.52, 0.4, 10, mix3(stone, gold, 0.3));
+        break;
+      }
+      case "chandelier": {
+        const x = x0 + 0.5;
+        addBox(terrain, x - 0.03, yb, -0.7, x + 0.03, yb + d.h + 1.2, -0.66, [0.25, 0.22, 0.2], {});
+        const y = yb - 0.1;
+        addBox(terrain, x - 1.0, y - 0.1, -0.78, x + 1.0, y + 0.05, -0.58, gold, {});
+        for (const dx of [-0.9, -0.45, 0, 0.45, 0.9]) {
+          addBox(terrain, x + dx - 0.04, y + 0.05, -0.7, x + dx + 0.04, y + 0.3, -0.62, [0.92, 0.9, 0.8], {});
+          flame(x + dx, y + 0.3, -0.66, 0.12);
+        }
+        break;
+      }
+      case "bookshelf": {
+        addBox(terrain, x0, yb, -1.0, x0 + d.w, yb + d.h, -0.8, wood, { px: true, nx: true });
+        for (let r = 0; r < Math.floor(d.h / 1.6); r++) {
+          const ry = yb + 0.3 + r * 1.6;
+          addBox(terrain, x0, ry + 1.2, -0.9, x0 + d.w, ry + 1.3, -0.78, mix3(wood, [0, 0, 0], 0.2), {});
+          for (let c = x0 + 0.2; c < x0 + d.w - 0.3; c += 0.28) {
+            if (rnd() < 0.15) continue;
+            const hh = 0.7 + rnd() * 0.45;
+            addBox(terrain, c, ry + 0.05, -0.88, c + 0.22, ry + 0.05 + hh, -0.8, col(Math.floor(c * 7)), { py: true, pz: true });
+          }
+        }
+        break;
+      }
+      case "fireplace": {
+        addBox(terrain, x0, yb, -1.0, x0 + d.w, yb + d.h, -0.55, stone, {});
+        addBox(terrain, x0 + 0.6, yb, -0.6, x0 + d.w - 0.6, yb + d.h - 1.0, -0.5, [0.06, 0.04, 0.04], { py: false });
+        for (let k = 0; k < 4; k++) flame(x0 + 1.0 + k * (d.w - 2) / 3, yb + 0.1, -0.55, 0.28, k % 2 ? [1, 0.55, 0.15] : [1, 0.75, 0.25]);
+        addBox(terrain, x0 - 0.2, yb + d.h, -1.0, x0 + d.w + 0.2, yb + d.h + 0.25, -0.45, wood, {});
+        break;
+      }
+      case "candelabra": {
+        const x = x0 + 0.5;
+        addCone(terrain, x, yb, -0.6, 0.25, 0.25, 0.1, 8, gold);
+        addBox(terrain, x - 0.04, yb + 0.1, -0.64, x + 0.04, yb + 1.5, -0.56, gold, {});
+        addBox(terrain, x - 0.4, yb + 1.45, -0.64, x + 0.4, yb + 1.55, -0.56, gold, {});
+        for (const dx of [-0.36, 0, 0.36]) {
+          addBox(terrain, x + dx - 0.04, yb + 1.55, -0.64, x + dx + 0.04, yb + 1.8, -0.56, [0.92, 0.9, 0.8], {});
+          flame(x + dx, yb + 1.8, -0.6, 0.12);
+        }
+        break;
+      }
+      case "banner": {
+        const cx = x0 + d.w / 2;
+        addBox(terrain, cx - d.w / 2 - 0.1, yb + d.h, -0.98, cx + d.w / 2 + 0.1, yb + d.h + 0.12, -0.86, gold, {});
+        addBox(terrain, cx - d.w / 2, yb + 0.6, -0.96, cx + d.w / 2, yb + d.h, -0.9, mix3(pal.accent, [0.1, 0, 0], 0.35), { px: false, nx: false, ny: false, py: false });
+        addCone(terrain, cx, yb, -0.93, d.w * 0.5, 0, 0.7, 4, mix3(pal.accent, [0.1, 0, 0], 0.35), undefined, false);
+        addSphere(terrain, cx, yb + d.h * 0.55, -0.88, d.w * 0.2, 8, 6, gold);
+        break;
+      }
+      case "rug": {
+        addBox(terrain, x0, yb, -0.6, x0 + d.w, yb + 0.04, 0.85, mix3(pal.accent, [0.1, 0.02, 0.04], 0.4), { py: true, pz: true, px: true, nx: true, ny: false });
+        addBox(terrain, x0 + 0.3, yb + 0.04, -0.4, x0 + d.w - 0.3, yb + 0.06, 0.65, gold, { px: false, nx: false, ny: false });
+        break;
+      }
+      case "statue": {
+        const cx = x0 + d.w / 2;
+        addBox(terrain, cx - 0.8, yb, -0.8, cx + 0.8, yb + 0.7, -0.4, stone, {});
+        addCone(terrain, cx, yb + 0.7, -0.6, 0.45, 0.3, 1.5, 10, mix3(stone, [1, 1, 1], 0.1));
+        addSphere(terrain, cx, yb + 2.5, -0.6, 0.3, 10, 8, mix3(stone, [1, 1, 1], 0.15));
+        addCone(terrain, cx - 0.55, yb + 1.6, -0.7, 0.4, 0, 1.0, 5, stone);
+        addCone(terrain, cx + 0.55, yb + 1.6, -0.7, 0.4, 0, 1.0, 5, stone);
+        break;
+      }
+      case "chair": {
+        addBox(terrain, x0, yb + 0.5, -0.8, x0 + 0.8, yb + 0.62, -0.3, wood, {});
+        addBox(terrain, x0, yb, -0.8, x0 + 0.1, yb + 0.5, -0.7, wood, {});
+        addBox(terrain, x0 + 0.7, yb, -0.8, x0 + 0.8, yb + 0.5, -0.7, wood, {});
+        addBox(terrain, x0, yb + 0.6, -0.8, x0 + 0.8, yb + 1.5, -0.7, wood, {});
+        break;
+      }
+      case "tableware": {
+        for (let k = 0; k < d.w; k += 2) {
+          addCone(terrain, x0 + k + 0.5, yb + 0.02, -0.1, 0.28, 0.2, 0.08, 10, [0.9, 0.9, 0.9]);
+          addCone(terrain, x0 + k + 1.3, yb + 0.02, -0.1, 0.12, 0.1, 0.45, 8, gold);
+        }
+        break;
+      }
+      case "table":
+      case "desk": {
+        addBox(terrain, x0, yb + 0.7, -0.7, x0 + d.w, yb + 0.9, -0.1, wood, {});
+        addBox(terrain, x0 + 0.1, yb, -0.65, x0 + 0.3, yb + 0.7, -0.5, wood, {});
+        addBox(terrain, x0 + d.w - 0.3, yb, -0.65, x0 + d.w - 0.1, yb + 0.7, -0.5, wood, {});
+        break;
+      }
+      case "coffin": {
+        addBox(terrain, x0, yb, -0.8, x0 + d.w, yb + 0.7, -0.2, mix3(wood, [0, 0, 0], 0.25), {});
+        addBox(terrain, x0 + 0.1, yb + 0.7, -0.7, x0 + d.w - 0.1, yb + 0.8, -0.3, mix3(wood, gold, 0.2), {});
+        break;
+      }
+      case "altar": {
+        addBox(terrain, x0, yb, -0.8, x0 + d.w, yb + 1.1, -0.3, stone, {});
+        addBox(terrain, x0 - 0.2, yb + 1.1, -0.85, x0 + d.w + 0.2, yb + 1.3, -0.25, gold, {});
+        addBox(terrain, x0 + d.w / 2 - 0.05, yb + 1.3, -0.6, x0 + d.w / 2 + 0.05, yb + 2.6, -0.5, gold, {});
+        addBox(terrain, x0 + d.w / 2 - 0.4, yb + 2.1, -0.6, x0 + d.w / 2 + 0.4, yb + 2.2, -0.5, gold, {});
+        break;
+      }
+      case "throne": {
+        addBox(terrain, x0, yb, -0.9, x0 + d.w, yb + 1, -0.3, stone, {});
+        addBox(terrain, x0 + 0.5, yb + 1, -0.9, x0 + d.w - 0.5, yb + d.h, -0.7, mix3(pal.accent, [0, 0, 0], 0.4), {});
+        addCone(terrain, x0 + d.w / 2, yb + d.h, -0.8, 0.9, 0, 1.3, 6, gold);
+        break;
+      }
+      case "mirror": {
+        addBox(terrain, x0 - 0.1, yb - 0.1, -0.98, x0 + d.w + 0.1, yb + d.h + 0.1, -0.9, gold, {});
+        addBox(glow, x0, yb, -0.9, x0 + d.w, yb + d.h, -0.88, [0.55, 0.65, 0.75], { px: false, nx: false, py: false, ny: false, pz: true });
+        break;
+      }
+      case "rack": {
+        addBox(terrain, x0, yb + 0.6, -0.96, x0 + d.w, yb + 0.75, -0.9, wood, {});
+        for (let k = 0; k < d.w; k++) {
+          addBox(terrain, x0 + k + 0.4, yb + 0.5, -0.9, x0 + k + 0.55, yb + 2.4, -0.86, [0.75, 0.78, 0.84], {});
+          addBox(terrain, x0 + k + 0.2, yb + 0.9, -0.9, x0 + k + 0.75, yb + 1.0, -0.86, gold, {});
+        }
+        break;
+      }
+      case "crate": {
+        addBox(terrain, x0, yb, -0.8, x0 + d.w * 0.6, yb + 1, -0.2, wood, {});
+        addBox(terrain, x0 + d.w * 0.5, yb, -0.7, x0 + d.w, yb + 1.6, -0.15, mix3(wood, [0, 0, 0], 0.15), {});
+        break;
+      }
+      case "pots": {
+        for (let k = 0; k < d.w; k++) {
+          addSphere(terrain, x0 + k + 0.5, yb + 0.55, -0.6, 0.5, 10, 8, [0.2, 0.2, 0.24]);
+          addCone(terrain, x0 + k + 0.5, yb + 0.95, -0.6, 0.3, 0.38, 0.12, 10, [0.15, 0.15, 0.18]);
+        }
+        break;
+      }
+      case "lamp": {
+        addBox(terrain, x0, yb, -0.7, x0 + 0.5, yb + 0.1, -0.5, gold, {});
+        addSphere(glow, x0 + 0.25, yb + 0.5, -0.6, 0.22, 8, 6, [1, 0.85, 0.5]);
+        lights.push({ x: x0 + 0.25, y: yb + 0.5, r: 4, c: [1, 0.85, 0.5], k: rnd() });
+        break;
+      }
+      case "clock": {
+        const cx = x0 + d.w / 2;
+        addBox(terrain, cx - 0.5, yb, -0.9, cx + 0.5, yb + d.h, -0.5, wood, {});
+        addSphere(glow, cx, yb + d.h * 0.72, -0.48, 0.34, 10, 8, [0.95, 0.9, 0.75]);
+        addBox(terrain, cx - 0.04, yb + 0.4, -0.52, cx + 0.04, yb + d.h * 0.55, -0.46, gold, {});
+        break;
+      }
+      case "chain": {
+        addBox(terrain, x0 + 0.45, yb, -0.7, x0 + 0.55, yb + d.h, -0.6, [0.2, 0.2, 0.22], {});
+        for (let k = 0; k < 3; k++) addCone(terrain, x0 + 0.5 + (k - 1) * 0.5, yb, -0.65, 0.12, 0, 0.7, 5, [0.25, 0.25, 0.28]);
+        break;
+      }
+      case "cobweb": {
+        const a: Vec3 = [0.8, 0.8, 0.82];
+        addCone(terrain, x0, yb + d.h, -0.95, 0.04, 0.04, 0.01, 4, a, undefined, false);
+        for (let k = 0; k < 4; k++) addBox(terrain, x0 + k * 0.5, yb + d.h - 0.04 - k * 0.7, -0.94, x0 + k * 0.5 + 0.03, yb + d.h, -0.92, a, {});
+        break;
+      }
+      case "rail": {
+        const up = d.v === 1;
+        for (let k = 0; k < 10; k++) {
+          const c0 = up ? x0 + k * 2 : x0 + (9 - k) * 2;
+          const top = ROWS - (d.r - 1 - k);
+          addBox(terrain, c0, top + 0.05, 0.85, c0 + 0.12, top + 1.2, 0.97, wood, {});
+          addBox(terrain, c0, top + 1.1, 0.85, c0 + 2.0, top + 1.2, 0.97, gold, {});
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return lights;
 }

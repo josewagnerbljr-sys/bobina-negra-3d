@@ -269,7 +269,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let attractLevel: Level | null = null;
   let lastT = 0;
   const qaZoom = (() => { try { const z = Number(new URLSearchParams(location.search).get("zoom")); return z > 0.2 && z <= 1 ? z : 1; } catch { return 1; } })();
-  const qaPv = (() => { try { const q = new URLSearchParams(location.search); return q.has("pva") ? { a: Number(q.get("pva")) || 0, d: Number(q.get("pvd")) || 1 } : null; } catch { return null; } })();
+  const qaPv = (() => { try { const q = new URLSearchParams(location.search); return q.has("pva") ? { a: Number(q.get("pva")) || 0, d: Number(q.get("pvd")) || 1, y: q.has("pvy") ? Number(q.get("pvy")) : 0.78 } : null; } catch { return null; } })();
   const tmpBlob = m4.create();
   let ambBase = 1.5;
   let ambInit = false;
@@ -300,7 +300,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const L = g.level;
 
     // câmera: mais próxima, presa ao herói, orbita para trás dele (ângulo 3/4) e abre da visão 2D lateral
-    const visH = Math.max(4.3, 7.4 / aspect);
+    const visH = Math.max(5.5, 8.8 / aspect);
     const dist0 = visH / 2 / Math.tan(FOV / 2);
     let cx: number;
     let cy: number;
@@ -341,7 +341,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.95 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      const rT = (1.5 - 0.78 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
@@ -366,9 +366,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       camCY = cy;
     } else {
       camInit = false;
-      const span = Math.max(1, L.cols - 40);
-      const ph = (Math.sin(f.t * 0.035) * 0.5 + 0.5) * span;
-      cx = 20 + ph;
+      // a vitrine anda sempre para a frente (antes oscilava e parecia que o herói corria de costas)
+      const span = Math.max(40, L.cols - 60);
+      cx = 24 + ((f.t * 4.6) % span);
       cy = ROWS - GROUND + 1.2 - Math.min(1.8, visH * 0.1) + 1.0;
       heroX = cx - 3.2;
       const sway = Math.sin(f.t * 0.2) * 3.0;
@@ -393,9 +393,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const tc = g.trim;
       for (const z of L.risers) {
         if (z.vis < 0.02) continue;
-        const wob = z.col !== Math.round(z.vis) ? Math.sin(f.t * 40 + z.c) * 0.012 : 0;
+        const wob = 0;
         const hgt = z.vis + 0.6;
-        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND - 0.6 + hgt / 2, -0.05], [0, 0, 0], [z.w, hgt, 2.1]);
+        m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND - 0.6 + hgt / 2 - 0.07, -0.05], [0, 0, 0], [z.w - 0.02, hgt - 0.14, 1.96]);
         e.draw(e.prims.cube, tmpBlob, { color: gc });
         m4.compose(tmpBlob, [z.c + z.w / 2 + wob, ROWS - GROUND + z.vis - 0.08, 0.0], [0, 0, 0], [z.w + 0.04, 0.16, 2.2]);
         e.draw(e.prims.cube, tmpBlob, { color: [tc[0] * 0.8 + gc[0] * 0.2, tc[1] * 0.8 + gc[1] * 0.2, tc[2] * 0.8 + gc[2] * 0.2] as Vec3 });
@@ -507,6 +507,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       e.draw(e.prims.sphere, tmpBlob, { color: [0.0, 0.0, 0.01], unlit: true, soft: true, alpha: a });
     }
     drawAmbientBlend(ambCtx);
+    for (const lg of g.parts.lights) {
+      if (!near(lg.x)) continue;
+      const fl = 0.8 + 0.2 * Math.sin(f.t * (7 + lg.k * 5) + lg.k * 40) + 0.08 * Math.sin(f.t * 23 + lg.k * 9);
+      glowSprite(lg.x, lg.y, -0.3, lg.r * 0.55 * fl, lg.c, 0.34 * fl);
+    }
     for (const lt of f.loot) {
       if (!near(lt.x * S)) continue;
       drawLoot(lt, f.t);
@@ -990,7 +995,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       pe.begin([0.1, 0.06, 0.09]);
       const pva = qaPv ? qaPv.a : Math.sin(t * 0.7) * 0.5;
       const pvd = qaPv ? qaPv.d : 1;
-      pe.setCamera([Math.sin(pva) * 3.0 * pvd, 1.0 * (0.4 + 0.6 * pvd), Math.cos(pva) * 3.0 * pvd], [0, 0.78, 0], (34 * Math.PI) / 180, 0.3, 40);
+      const pvy = qaPv ? qaPv.y : 0.78;
+      pe.setCamera([Math.sin(pva) * 3.0 * pvd, pvy + 0.22 * (0.4 + 0.6 * pvd), Math.cos(pva) * 3.0 * pvd], [0, pvy, 0], (34 * Math.PI) / 180, 0.3, 40);
       pe.drawSky(hex("#2a1824"), hex("#241420"), hex("#140c10"), t, 0, [0, 0, 0], [-2, -2], [0, 0]);
       pe.useLit({
         sun: [0.85, 0.8, 0.7],
@@ -1011,7 +1017,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const pose: Pose = { t, phase: t * 4, speed: 0.2, vy: 0, facing: 1, form, hurt: false, ally: false, world: 0, attack: 0, gear };
       m.update(pose);
       const yaw = Math.sin(t * 0.9) * 0.55 + 0.25;
-      const mat = m4.compose(m4.create(), [0, 0.02, 0], [0, yaw, 0], [1.5, 1.5, 1.5]);
+      const mat = m4.compose(m4.create(), [0, 0.02, 0], [0, yaw, 0], [1.3, 1.3, 1.3]);
       const st: DrawState = { ...tmpDraw, thick: 0.05 };
       drawModel(pe, m, mat, st, 0);
       pe.blend(true);

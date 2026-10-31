@@ -359,6 +359,119 @@ function hemiGeo(): Geo {
   return g;
 }
 
+
+/* ----------------------------------------------------------- superfícies suaves */
+type PV = [number, number, number];
+function surfGeo(nu: number, nv: number, f: (u: number, v: number) => PV, capBottom = true, capTop = false): Geo {
+  const g = newGeo();
+  const E = 0.5 / nv;
+  for (let j = 0; j <= nv; j++) {
+    const v = j / nv;
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu;
+      const p = f(u, v);
+      const vn = Math.min(1 - E * 0.6, Math.max(E * 0.6, v));
+      const du = 1e-3;
+      const a = f(u + du, vn), b = f(u - du, vn), c = f(u, Math.min(1, vn + E)), d = f(u, Math.max(0, vn - E));
+      const pu: PV = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+      const pv: PV = [c[0] - d[0], c[1] - d[1], c[2] - d[2]];
+      let nx = pv[1] * pu[2] - pv[2] * pu[1];
+      let ny = pv[2] * pu[0] - pv[0] * pu[2];
+      let nz = pv[0] * pu[1] - pv[1] * pu[0];
+      const l = Math.hypot(nx, ny, nz);
+      if (l < 1e-9) { nx = 0; ny = v < 0.5 ? -1 : 1; nz = 0; } else { nx /= l; ny /= l; nz /= l; }
+      g.pos.push(p[0], p[1], p[2]);
+      g.nor.push(nx, ny, nz);
+      g.col.push(1, 1, 1);
+    }
+  }
+  for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+    const a = j * (nu + 1) + i, b = a + nu + 1;
+    g.idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const cap = (y: number, ny: number, r: (a: number) => PV) => {
+    const base = g.pos.length / 3;
+    const c0 = r(-1);
+    g.pos.push(c0[0], c0[1], c0[2]); g.nor.push(0, ny, 0); g.col.push(1, 1, 1);
+    for (let i = 0; i <= nu; i++) { const q = r(i / nu); g.pos.push(q[0], q[1], q[2]); g.nor.push(0, ny, 0); g.col.push(1, 1, 1); }
+    for (let i = 0; i < nu; i++) { if (ny < 0) g.idx.push(base, base + 1 + i, base + 2 + i); else g.idx.push(base, base + 2 + i, base + 1 + i); }
+    void y;
+  };
+  if (capBottom) cap(-0.5, -1, (a) => (a < 0 ? f(0, 0) : f(a, 0)));
+  if (capTop) cap(0.5, 1, (a) => (a < 0 ? f(0, 1) : f(a, 1)));
+  return g;
+}
+
+/** ogiva: cone com ombros arredondados e ponta suave */
+function ogiveGeo(bend: number): Geo {
+  return surfGeo(18, 14, (u, v) => {
+    const a = u * Math.PI * 2;
+    const r = 0.5 * Math.pow(Math.max(0, 1 - v), 0.82) * (1 + 0.14 * Math.sin(Math.PI * Math.min(1, v * 1.15)));
+    return [Math.cos(a) * r, -0.5 + v, Math.sin(a) * r + bend * v * v * 0.55];
+  });
+}
+
+/** chama: gota ondulada com ponta curva */
+function flameGeo(): Geo {
+  return surfGeo(14, 14, (u, v) => {
+    const a = u * Math.PI * 2;
+    const r = 0.5 * Math.pow(Math.max(0, Math.sin(Math.PI * Math.pow(Math.min(1, v), 0.6))), 0.85) * (1 - 0.12 * v) * (1 + 0.1 * Math.sin(3 * a + v * 7));
+    return [Math.cos(a) * r + 0.16 * v * v * v, -0.5 + v, Math.sin(a) * r];
+  }, true);
+}
+
+/** cilindro com a quina arredondada */
+function rcylGeo(): Geo {
+  const e = 0.09;
+  const pts: [number, number][] = [[0, -0.5]];
+  const arc = (cx: number, cy: number, a0: number, a1: number) => { for (let k = 0; k <= 4; k++) { const a = a0 + (a1 - a0) * (k / 4); pts.push([cx + Math.cos(a) * e, cy + Math.sin(a) * e]); } };
+  arc(0.5 - e, -0.5 + e, -Math.PI / 2, 0);
+  arc(0.5 - e, 0.5 - e, 0, Math.PI / 2);
+  pts.push([0, 0.5]);
+  const n = pts.length - 1;
+  return surfGeo(20, n * 2, (u, v) => {
+    const a = u * Math.PI * 2;
+    const t = Math.min(n - 1e-6, v * n);
+    const k = Math.floor(t), fr = t - k;
+    const r = pts[k]![0] * (1 - fr) + pts[k + 1]![0] * fr;
+    const y = pts[k]![1] * (1 - fr) + pts[k + 1]![1] * fr;
+    return [Math.cos(a) * r, y, Math.sin(a) * r];
+  }, false);
+}
+
+/** caixa com bordas arredondadas (cada face é uma grade) */
+function rboxGeo(r = 0.13, N = 5): Geo {
+  const g = newGeo();
+  const h = 0.5 - r;
+  const faces: [PV, PV, PV][] = [
+    [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
+    [[0, 0, -1], [-1, 0, 0], [0, 1, 0]],
+    [[1, 0, 0], [0, 0, -1], [0, 1, 0]],
+    [[-1, 0, 0], [0, 0, 1], [0, 1, 0]],
+    [[0, 1, 0], [1, 0, 0], [0, 0, -1]],
+    [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+  ];
+  for (const [n, ua, va] of faces) {
+    const base = g.pos.length / 3;
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+      const s = (i / N - 0.5), t = (j / N - 0.5);
+      const q: PV = [n[0] * 0.5 + ua[0] * s + va[0] * t, n[1] * 0.5 + ua[1] * s + va[1] * t, n[2] * 0.5 + ua[2] * s + va[2] * t];
+      const c: PV = [Math.max(-h, Math.min(h, q[0])), Math.max(-h, Math.min(h, q[1])), Math.max(-h, Math.min(h, q[2]))];
+      let d: PV = [q[0] - c[0], q[1] - c[1], q[2] - c[2]];
+      const l = Math.hypot(d[0], d[1], d[2]) || 1;
+      d = [d[0] / l, d[1] / l, d[2] / l];
+      g.pos.push(c[0] + d[0] * r, c[1] + d[1] * r, c[2] + d[2] * r);
+      g.nor.push(d[0], d[1], d[2]);
+      g.col.push(1, 1, 1);
+    }
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const a = base + j * (N + 1) + i, b = a + N + 1;
+      g.idx.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  }
+  return g;
+}
+
 /** Anel (toro) no plano XZ, raio maior R e espessura r. */
 export function addTorus(g: Geo, R: number, r: number, seg: number, rseg: number, col: Vec3) {
   const base = g.pos.length / 3;
@@ -593,7 +706,7 @@ export class Engine {
   private nmat = new Float32Array(9);
   private ident = m4.create();
   private identN = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
-  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh; ring: GpuMesh; hemi: GpuMesh; blade: GpuMesh; shard: GpuMesh; plate: GpuMesh; gem: GpuMesh };
+  prims: { cube: GpuMesh; sphere: GpuMesh; cone: GpuMesh; cyl: GpuMesh; quad: GpuMesh; ring: GpuMesh; hemi: GpuMesh; blade: GpuMesh; shard: GpuMesh; plate: GpuMesh; gem: GpuMesh; ogive: GpuMesh; horn: GpuMesh; flame: GpuMesh; rcyl: GpuMesh; rbox: GpuMesh };
   drawCalls = 0;
   lost = false;
 
@@ -645,6 +758,11 @@ export class Engine {
       shard: this.upload(polyGeo(shardFaces())),
       plate: this.upload(polyGeo(plateFaces(0.14))),
       gem: this.upload(polyGeo(gemFaces())),
+      ogive: this.upload(ogiveGeo(0)),
+      horn: this.upload(ogiveGeo(1)),
+      flame: this.upload(flameGeo()),
+      rcyl: this.upload(rcylGeo()),
+      rbox: this.upload(rboxGeo()),
     };
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);

@@ -59,6 +59,7 @@ import {
 const STEP = 1 / 60;
 
 type Actor = Body & {
+  room?: number;
   kind: Kind;
   hp: number;
   maxHp: number;
@@ -277,17 +278,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       let tgt = want;
       if (tgt > z.col) {
         // não sobe em cima de ninguém
-        const top = (GROUND - tgt) * TILE;
+        const fl = z.f ?? GROUND;
+        const top = (fl - tgt) * TILE;
         const x0 = z.c * TILE - 2;
         const x1 = (z.c + z.w) * TILE + 2;
         const bodies: Body[] = [player, ...actors.filter((a) => !a.dead)];
         for (const b of bodies) {
-          if (b.x + b.w > x0 && b.x < x1 && b.y + b.h > top - 6 && b.y < GROUND * TILE) { tgt = z.col; break; }
+          if (b.x + b.w > x0 && b.x < x1 && b.y + b.h > top - 6 && b.y < fl * TILE) { tgt = z.col; break; }
         }
       }
       const pv = z.vis;
       z.vis += Math.max(-3.2 * dt, Math.min(3.2 * dt, tgt - z.vis));
-      if (Math.abs(z.vis - pv) > 0.02 && Math.random() < 0.35 && Math.abs(dxToPlayer(z, pc)) < 14) dust((z.c + z.w / 2) * TILE, GROUND * TILE - 2, 1, 60);
+      if (Math.abs(z.vis - pv) > 0.02 && Math.random() < 0.35 && Math.abs(dxToPlayer(z, pc)) < 14) dust((z.c + z.w / 2) * TILE, (z.f ?? GROUND) * TILE - 2, 1, 60);
       const nc = Math.max(0, Math.min(z.h, Math.floor(z.vis + 0.55)));
       if (nc < z.col || (nc > z.col && tgt >= nc)) z.col = nc;
     }
@@ -584,7 +586,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     lit = new Set();
     shots = [];
     sparks = [];
-    actors = level.ents.map((e) => spawnActor(e.kind, e.c, e.foot, false, Boolean(e.mini)));
+    actors = level.ents.map((e) => { const a = spawnActor(e.kind, e.c, e.foot, false, Boolean(e.mini)); a.room = e.room; return a; });
     loot = [];
     buffs = [];
     opened.clear();
@@ -1041,7 +1043,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const hit = moveBody(player, level, dt, dropT, wasGround && player.vy >= 0 && Math.abs(player.vx) > 20);
     if (stepInfo.lift > 0) stepVis += stepInfo.lift;
     // teto de altura: o herói nunca sai da tela em super-pulos/voos
-    const ceilY = (GROUND - 7) * TILE;
+    const ceilY = level.rooms ? -400 : (GROUND - 7) * TILE;
     if (player.y < ceilY) {
       player.y = ceilY;
       if (player.vy < 0) player.vy = 0;
@@ -1124,6 +1126,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       a.hurt = Math.max(0, a.hurt - dt);
       a.cd = Math.max(0, a.cd - dt);
       const dx = player.x - a.x;
+      if (level.rooms && !a.boss && !a.mini && !a.ally && (Math.abs(dx) > 1300 || Math.abs(player.y - a.y) > 900)) continue;
       if (a.behavior === "fly") {
         a.facing = dx >= 0 ? 1 : -1;
         a.vx = a.facing * a.speed * (a.ally ? 1.1 : 1);
@@ -1131,8 +1134,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (!a.ally) a.vx = Math.sign(dx || 1) * a.speed;
         a.x += a.vx * dt;
         a.y += a.vy * dt;
-        if (a.y < 20) a.y = 20;
-        if (a.y > GROUND * TILE - a.h) a.y = GROUND * TILE - a.h;
+        const rm = a.room !== undefined ? level.rooms?.[a.room] : undefined;
+        if (rm) {
+          // voador fica dentro do cômodo
+          if (a.x < rm.c0 * TILE + 10) a.x = rm.c0 * TILE + 10;
+          if (a.x + a.w > rm.c1 * TILE - 10) a.x = rm.c1 * TILE - 10 - a.w;
+          if (a.y < (rm.r0 + 0.3) * TILE) a.y = (rm.r0 + 0.3) * TILE;
+          if (a.y > rm.r1 * TILE - a.h - 20) a.y = rm.r1 * TILE - a.h - 20;
+          if (Math.abs(dx) > 520 || Math.abs(player.y - a.y) > 420) a.vx = 0;
+        } else {
+          if (a.y < 20) a.y = 20;
+          if (a.y > GROUND * TILE - a.h) a.y = GROUND * TILE - a.h;
+        }
       } else if (a.behavior !== "item" && a.behavior !== "still") {
         if (a.behavior === "charge" && Math.abs(dx) < 260 && Math.abs(player.y - a.y) < 50) {
           a.facing = dx >= 0 ? 1 : -1;

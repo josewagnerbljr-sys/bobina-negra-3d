@@ -3,6 +3,8 @@ import { G, glow, mix, Node, P, type DrawState, type GearLook, type GearPiece, t
 import { buildPiece as buildPieceFam, makeFeatherWing, makeCloth, makeWing, poseWing, weaponNode, GOLD, RAR, type Anim, type Mount, type WingRig } from "./gearparts";
 import { charAsset, RIG_SCALE, skinMeshFor, SkinRig, type CharAsset } from "./skin";
 import { HEROES } from "../game/content";
+import { applyBody } from "./herobody";
+import { addFace, addHair, type HairStyle } from "./herolook";
 import type { EquipKey, HeroId } from "../game/types";
 
 /* Heróis com esqueleto: o manequim animado (UAL, CC0) vestido com cores por região
@@ -112,22 +114,25 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
   const HIP = "DEF-hips";
   const hair = def.hair;
   const acc = def.accent;
-  // cabelo (capacete de cabelo) e olhos de anime
-  add(H, P("sphere", [0.26, 0.23, 0.275], hair, [0, 0.145, -0.012]));
-  for (const sx of [-1, 1]) {
-    const w = P("sphere", [0.05, 0.062, 0.02], "#fbf6ea", [sx * 0.05, 0.115, 0.108]);
-    w.ink = false;
-    const i = P("sphere", [0.03, 0.045, 0.02], id === "lena" ? "#c4373a" : id === "syl" ? "#4a9a50" : id === "mari" ? "#2a9ac0" : "#2a1a14", [sx * 0.05, 0.113, 0.118]);
-    i.ink = false;
-    add(H, w);
-    add(H, i);
-    const br = P("cube", [0.058, 0.012, 0.02], hair, [sx * 0.05, 0.165, 0.108], [0, 0, -sx * 0.12]);
-    br.ink = false;
-    add(H, br);
-  }
-  add(H, P("cone", [0.025, 0.035, 0.02], mix(def.skin, "#8a4a3a", 0.3), [0, 0.085, 0.118], [Math.PI / 2, 0, 0]));
+  // rosto e cabelo de anime (herolook.ts): cada herói tem o seu
+  const STYLE: Record<HeroId, HairStyle> = { ivo: "spiky", lena: "long", osso: "bald", syl: "ponytail", tito: "pompadour", mari: "twin", pia: "bob", lumen: "wild" };
+  const IRIS: Record<HeroId, string> = { ivo: "#6a4a2a", lena: "#c4373a", osso: "#e0b15a", syl: "#3fa24a", tito: "#ffb13a", mari: "#2a9ac0", pia: "#ff9a3a", lumen: "#5fd0ff" };
+  const FEM = id === "lena" || id === "syl" || id === "mari" || id === "pia";
+  anim.extra = anim.extra ?? [];
+  addHair(add, H, STYLE[id], hair, anim);
+  if (id === "osso") {
+    // caveira: órbitas escuras, nariz vazado e dentes
+    for (const sx of [-1, 1]) {
+      const o = P("sphere", [0.07, 0.085, 0.03], "#120a0c", [sx * 0.05, 0.11, 0.112]);
+      o.ink = false;
+      add(H, o);
+      const f = glow(P("sphere", [0.022, 0.03, 0.02], acc, [sx * 0.05, 0.108, 0.13]), 1);
+      add(H, f);
+    }
+    add(H, P("sphere", [0.02, 0.03, 0.02], "#120a0c", [0, 0.065, 0.125]));
+    for (let i = -2; i <= 2; i++) add(H, P("cube", [0.014, 0.022, 0.012], "#f4efe4", [i * 0.016, 0.035, 0.12]));
+  } else addFace(add, H, { skin: def.skin, hair, iris: IRIS[id], fem: FEM, eye: FEM ? 1.12 : 0.95, lash: FEM });
   if (id === "ivo") {
-    add(H, P("cube", [0.1, 0.02, 0.03], "#24160f", [0, 0.055, 0.115]));
     for (const sx of [-1, 1]) {
       add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("cyl", [0.1, 0.06, 0.1], "#e0b15a", [-sx * 0.13, 0.0, 0], [0, 0, Math.PI / 2]));
       add(S3, P("cube", [0.035, 0.3, 0.02], def.cloth2, [sx * 0.08, 0.04, 0.125]));
@@ -148,10 +153,6 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     anim.tail = [tail];
     for (const sx of [-1, 1]) for (let k = -1; k <= 1; k++) add(`DEF-hand.${sx > 0 ? "L" : "R"}`, P("cone", [0.025, 0.1, 0.025], "#f4efe4", [-sx * 0.1, 0, k * 0.035], [0, 0, sx * -Math.PI / 2]), true);
   } else if (id === "lena") {
-    const pony = G(0, 0.12, -0.11);
-    for (let i = 0; i < 4; i++) pony.add(P("sphere", [0.1 - i * 0.015, 0.1 - i * 0.015, 0.1 - i * 0.015], hair, [0, -0.07 * i, -0.04 * i]));
-    add(H, pony);
-    anim.tail = [pony];
     for (const sx of [-1, 1]) add(H, P("cone", [0.045, 0.1, 0.04], def.skin, [sx * 0.125, 0.14, 0], [0, 0, -sx * 1.3]));
     add(H, P("cube", [0.02, 0.03, 0.015], "#f4efe4", [-0.025, 0.045, 0.112]));
     add(H, P("cube", [0.02, 0.03, 0.015], "#f4efe4", [0.025, 0.045, 0.112]));
@@ -170,7 +171,6 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add(H, P("cyl", [0.2, 0.24, 0.2], "#1c1612", [0, 0.34, 0]));
     add(H, P("cyl", [0.34, 0.03, 0.34], "#1c1612", [0, 0.225, 0]));
     add(H, P("cyl", [0.205, 0.04, 0.205], acc, [0, 0.27, 0], [0, 0, 0], true));
-    for (const sx of [-1, 1]) add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("cube", [0.012, 0.7, 0.012], "#c8c2b4", [-sx * 0.05, 0.38, 0]));
     add(S3, P("cube", [0.34, 0.3, 0.04], def.cloth, [0, -0.02, -0.12], [0.18, 0, 0]));
     add(S3, glow(P("sphere", [0.045, 0.045, 0.035], acc, [0, 0.1, 0.13]), 0.7));
     for (const sx of [-1, 1]) {
@@ -200,13 +200,12 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     }
   } else if (id === "tito") {
     add(H, P("cyl", [0.27, 0.05, 0.27], "#c4373a", [0, 0.22, 0]));
-    add(H, P("cube", [0.2, 0.025, 0.03], "#24160f", [0, 0.055, 0.115]));
     for (const sx of [-1, 1]) add(S3, P("cube", [0.045, 0.34, 0.02], "#e0b15a", [sx * 0.08, 0.04, 0.125]));
     add(HIP, P("cyl", [0.31, 0.09, 0.22], "#1c1210", [0, 0.08, 0.01]));
     const torch = G(-0.03, -0.04, 0.02);
     torch.add(P("cyl", [0.035, 0.38, 0.035], "#6b4a2f", [0, 0.18, 0]));
-    const tf = glow(P("cone", [0.12, 0.26, 0.12], "#ff8a2a", [0, 0.46, 0]), 1);
-    const tf2 = glow(P("cone", [0.07, 0.2, 0.07], "#ffe24a", [0, 0.44, 0]), 1);
+    const tf = glow(P("flame", [0.16, 0.3, 0.16], "#ff8a2a", [0, 0.5, 0]), 1);
+    const tf2 = glow(P("flame", [0.09, 0.2, 0.09], "#ffe24a", [0, 0.47, 0.01]), 1);
     torch.add(tf, tf2);
     torch.rot = [0.0, 0, 0];
     add("DEF-hand.L", torch);
@@ -279,7 +278,7 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
     add("DEF-shoulder.L", P("ring", [0.26, 0.2, 0.26], "#e0602a", [0.04, 0.12, -0.02], [0.4, 0, 0.3]));
     const rod = G(0, 0, 0);
     rod.add(P("cyl", [0.035, 0.42, 0.035], "#8a8e98", [0, 0.2, 0]));
-    const tip = glow(P("cone", [0.07, 0.14, 0.07], "#ffe24a", [0, 0.48, 0]), 1);
+    const tip = glow(P("flame", [0.1, 0.18, 0.1], "#ffe24a", [0, 0.5, 0]), 1);
     rod.add(tip);
     add("DEF-hand.L", rod);
     anim.flame = [tip];
@@ -342,6 +341,7 @@ export function buildSkinHero(id: HeroId): Model | null {
     if (j === undefined) throw new Error("osso ausente: " + name);
     return j;
   };
+  applyBody(rig, J, id);
   const ctx: Ctx = { a, J };
   const anim: Anim = {};
   const base = baseMounts(id, ctx, anim);

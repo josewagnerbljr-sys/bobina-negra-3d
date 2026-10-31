@@ -132,3 +132,9 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Mapas vivos: trechos "swell" (colinas que sobem à frente do herói e afundam atrás) e "tides" (blocos que pulsam); degrau automático de 1 tile ao andar.
 - Poeira nos passos, pousos e quando o chão sobe.
 - Cena de fala de chefe/mini-chefe renderiza em resolução menor para não engasgar.
+
+## v7.3 — Mansões do Inferno + corpos de anime
+- Todas as fases agora são mansões de 10–15 cômodos em 2–3 andares (térreo, nobre, sótão), com portas, escadas, salas temáticas (biblioteca, salão de baile, capela, armaria, sótão...), lustres, quadros, luzes de cômodo e muitos monstros dentro e fora das salas.
+- Percurso em serpentina (sobe no leste, atravessa para oeste, sobe de novo); validado por BFS: as 60 fases têm saída e baús alcançáveis.
+- Heróis com físicos distintos (inclui mulheres), rostos/cabelos estilo anime; primitivas cruas (cubo/cone/cilindro) trocadas por formas suaves.
+- Câmera mais afastada; abertura sem vai-e-vem; tremor dos blocos móveis removido.
