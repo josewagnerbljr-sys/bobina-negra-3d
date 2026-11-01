@@ -159,3 +159,7 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 
 - **Mundo Aberto** (botão no mapa): planície de 300 colunas com profundidade larga (±6 tiles), o herói anda em todas as direções, 25 portais (um por reino; fique parado no portal ~1s para entrar; selados até concluir o reino anterior), monstros por região, baús, ruínas e luzes de checkpoint.
 - Câmera mais próxima do herói; o chefe não puxa mais o enquadramento para fora do herói (limite de 1,6 tile) e o afastamento é só 7%. No Mundo Aberto a câmera sobe para as colinas não taparem o herói.
+
+## v8.3 — Câmera dinâmica
+
+Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey): fica de lado e atrás do herói; abre um pouco ao correr e no ar; aproxima como "cobertura" em cômodos estreitos; afasta em salões largos e no Mundo Aberto; segue o herói também na profundidade (z) sem deixá-lo cair para trás dos botões.

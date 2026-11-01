@@ -1741,6 +1741,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
               return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2, z: b.z ?? 0 } : null;
             })(),
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
+            space: level?.rooms && curRoom >= 0 ? level.rooms[curRoom]!.c1 - level.rooms[curRoom]!.c0 : 0,
           }
         : undefined,
       loot: playing ? loot.map<LootPaint>((l) => ({ z: l.z ?? 0, x: l.x + l.w / 2, y: l.y + l.h / 2, color: l.item.rarity > 0 ? RARITY_COLOR[l.item.rarity]! : baseOf(l.item).color, rarity: l.item.rarity, t: l.t, slot: baseOf(l.item).slot, fam: baseOf(l.item).fam, acc: baseOf(l.item).acc ?? baseOf(l.item).color })) : [],

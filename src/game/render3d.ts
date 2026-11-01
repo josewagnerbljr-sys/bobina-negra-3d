@@ -62,7 +62,7 @@ export type Frame = {
   flash: number;
   loot: LootPaint[];
   /** câmera dinâmica: tempo de fase, chefe próximo e alvo de cinemática */
-  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null };
+  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null; /** largura do cômodo em tiles (0 = espaço aberto) */ space?: number };
 };
 
 const S = 1 / TILE;
@@ -272,6 +272,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camYawS = 0;
   let camRS = 1.5;
   let camBossK = 0;
+  let camSP = 1;
   let camCineK = 0;
   let camCX = 0;
   let camCY = 0;
@@ -311,7 +312,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const L = g.level;
 
     // câmera: mais próxima, presa ao herói, orbita para trás dele (ângulo 3/4) e abre da visão 2D lateral
-    const visH = Math.max(3.7, 5.7 / aspect);
+    const visH = Math.max(4.2, 6.6 / aspect);
     const dist0 = visH / 2 / Math.tan(FOV / 2);
     let cx: number;
     let cy: number;
@@ -331,16 +332,17 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         camYawS = 0;
         camRS = 1.5;
         camBossK = 0;
+        camSP = 1;
         camCineK = 0;
         camInit = true;
       }
       const airUp = fo.grounded ? 0 : Math.max(0, -fo.vy) / 60;
       const airDown = fo.grounded ? 0 : Math.max(0, fo.vy) / 90;
-      const ty = hy + 0.7 - Math.min(2.2, airDown) + Math.min(1.2, airUp * 0.4);
+      const ty = hy + 1.0 - Math.min(2.2, airDown) + Math.min(1.2, airUp * 0.4);
       const kx = 1 - Math.exp(-4.2 * dt);
       const ky = 1 - Math.exp(-(fo.grounded ? 2.8 : 6.0) * dt);
       camPX += (tx - camPX) * kx;
-      camPZ += ((fo.z ?? 0) * S * 0.8 - camPZ) * (1 - Math.exp(-5 * dt));
+      camPZ += ((fo.z ?? 0) * S - camPZ) * (1 - Math.exp(-7 * dt));
       camPY += (ty - camPY) * ky;
       // abertura: começa aberta e lateral (como o 2D) e vai aproximando e girando para trás do herói
       const intro = cam.t >= 99 ? 1 : Math.min(1, cam.t / 3.4);
@@ -353,7 +355,13 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.98 * ease) * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
+      // câmera de seguimento por contexto (estilo Zelda/Uncharted): corrida abre um pouco,
+      // espaço apertado (cômodo estreito) aproxima como "cobertura", salão/mundo aberto afasta
+      const spaceT = cam.space ?? 0;
+      const tightK = spaceT > 0 ? Math.max(0, Math.min(1, (22 - spaceT) / 12)) : 0;
+      const wideK = L.open ? 1 : spaceT > 0 ? Math.max(0, Math.min(1, (spaceT - 30) / 20)) : 0;
+      camSP += ((1 - 0.16 * tightK + 0.12 * wideK + 0.07 * cam.moving + (fo.grounded ? 0 : 0.05)) - camSP) * (1 - Math.exp(-1.2 * dt));
+      const rT = (1.5 - 0.92 * ease) * camSP * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
