@@ -48,8 +48,9 @@ export function resolveY(body: Body, level: Level, drop: number, prevBottom: num
   let onOneWay = false;
   let spring = false;
   let spike = false;
-  const c0 = Math.floor((body.x + 3) / TILE);
-  const c1 = Math.floor((body.x + body.w - 3) / TILE);
+  const inset = Math.min(9, body.w * 0.34);
+  const c0 = Math.floor((body.x + inset) / TILE);
+  const c1 = Math.floor((body.x + body.w - inset) / TILE);
   const r0 = Math.floor(body.y / TILE);
   const r1 = Math.floor((body.y + body.h - 0.01) / TILE);
   for (let r = r0; r <= r1; r++) {

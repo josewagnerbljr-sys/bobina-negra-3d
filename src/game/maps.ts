@@ -1,6 +1,6 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
 import { buildMansion } from "./mansion";
-import { GROUND, MAIN_LEVELS, ROWS, Tile, type Kind, type Level, type LevelEnt, type Riser } from "./types";
+import { GROUND, MAIN_LEVELS, ROWS, Tile, worldOfLevel, type Kind, type Level, type LevelEnt, type Riser } from "./types";
 
 export function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -356,7 +356,7 @@ function fixEnts(sk: Sketch) {
 }
 
 function build(i: number, bonus: boolean): Level {
-  const world = bonus ? i - MAIN_LEVELS : Math.floor(i / 5);
+  const world = worldOfLevel(i);
   const stage = bonus ? 5 : i % 5;
   const boss = !bonus && stage === 4;
   const mini = !bonus && stage === 2;
@@ -468,7 +468,7 @@ function mk(sk: Sketch, i: number, world: number, boss: boolean, mini: boolean, 
 export function buildLevel(index: number): Level {
   const i = Math.max(0, Math.min(MAIN_LEVELS + 9, index));
   const bonus = i >= MAIN_LEVELS;
-  const world = bonus ? i - MAIN_LEVELS : Math.floor(i / 5);
+  const world = worldOfLevel(i);
   const stage = bonus ? 5 : i % 5;
   return buildMansion(i, bonus, world, stage);
 }

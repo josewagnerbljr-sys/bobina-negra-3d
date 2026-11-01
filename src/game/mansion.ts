@@ -1,5 +1,5 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
-import { GROUND, MAIN_LEVELS, ROWS, Tile, type Decor, type Kind, type Level, type LevelEnt, type Riser, type Room } from "./types";
+import { GROUND, MAIN_LEVELS, ROWS, Tile, type Decor, type Gate, type Kind, type Level, type LevelEnt, type Riser, type Room } from "./types";
 
 /**
  * Mansão do inferno: cada fase é uma casa de 10 a 15 cômodos em 2 ou 3 andares,
@@ -44,22 +44,25 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   const rng = mulberry32(5000 + i * 131 + world * 17);
   const rint = (a: number, b: number) => a + Math.floor(rng() * (b - a + 1));
   const chance = (p: number) => rng() < p;
-  const boss = !bonus && stage === 4;
-  const mini = !bonus && stage === 2;
-  const nRooms = bonus ? 10 : [10, 11, 12, 13, 15][stage]!;
-  const attic = nRooms - 10;
+  // reino (mundo aberto): 9 cômodos por andar, 3 andares, vários guardiões e portões
+  const realmMode = !bonus;
+  const NC = realmMode ? 9 : 5;
+  const boss = realmMode ? true : stage === 4;
+  const mini = realmMode ? true : stage === 2;
+  const nRooms = realmMode ? NC * 3 : 10;
+  const attic = realmMode ? NC : nRooms - 10;
   const nFloors = attic > 0 ? 3 : 2;
 
   // largura dos cômodos (colunas iguais nos andares)
   // serpentina: sobe no extremo leste do térreo, atravessa o 1º andar para oeste, sobe no extremo oeste
-  const s0 = 4;
+  const s0 = NC - 1;
   const s1 = 0;
-  const widths = Array.from({ length: 5 }, (_, j) => (j === s0 || j === s1 ? rint(36, 42) : rint(26, 40)));
-  if (boss) widths[4] = 40;
+  const widths = Array.from({ length: NC }, (_, j) => (j === s0 || j === s1 ? rint(36, 42) : rint(26, 40)));
+  if (boss) widths[NC - 1] = 40;
   const PART = 2;
   const xs: number[] = [];
   let x = 2;
-  for (let j = 0; j < 5; j++) {
+  for (let j = 0; j < NC; j++) {
     xs.push(x);
     x += widths[j]! + PART;
   }
@@ -82,7 +85,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
 
   // atico: quais cômodos do 3º andar
   const atA = 0;
-  const roomsOf = (f: number) => (f < 2 ? [0, 1, 2, 3, 4] : Array.from({ length: attic }, (_, k) => atA + k));
+  const roomsOf = (f: number) => (f < 2 ? Array.from({ length: NC }, (_, k) => k) : Array.from({ length: attic }, (_, k) => atA + k));
 
   // ---- cascas: pisos, tetos, paredes
   const wallL = xs[0]! - 2;
@@ -94,12 +97,12 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
     const a = rs[0]!;
     const b = rs[rs.length - 1]!;
     const left = a === 0 ? wallL : xs[a]! - PART;
-    const right = b === 4 ? cols : xs[b]! + widths[b]!;
+    const right = b === NC - 1 ? cols : xs[b]! + widths[b]!;
     // teto/piso de cima
-    fill(left, right + (b === 4 ? 0 : PART), F - FLOOR_PITCH, F - FLOOR_PITCH + 1, Tile.Solid);
+    fill(left, right + (b === NC - 1 ? 0 : PART), F - FLOOR_PITCH, F - FLOOR_PITCH + 1, Tile.Solid);
     // paredes externas e divisórias
     fill(left, left + PART, F - FLOOR_PITCH, F, Tile.Solid);
-    fill(right - (b === 4 ? PART : 0), right + (b === 4 ? 0 : PART), F - FLOOR_PITCH, F, Tile.Solid);
+    fill(right - (b === NC - 1 ? PART : 0), right + (b === NC - 1 ? 0 : PART), F - FLOOR_PITCH, F, Tile.Solid);
     for (let k = 0; k < rs.length - 1; k++) {
       const j = rs[k]!;
       const px = xs[j]! + widths[j]!;
@@ -175,10 +178,11 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   };
 
   const spawnC = xs[0]! + 4;
-  let exitC = xs[4]! + widths[4]! - 5;
+  let exitC = xs[NC - 1]! + widths[NC - 1]! - 5;
   let exitFoot = GROUND;
   let bossPlaced = false;
 
+  const gateSpots: { f: number; j: number; ri: number }[] = [];
   const mkRoom = (f: number, j: number): void => {
     const F = FL(f);
     const c0 = xs[j]!;
@@ -410,7 +414,11 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
         exitFoot = F;
       }
     }
-    if (mini && f === 1 && j === 2) ents.push({ kind: "boss", c: cx + 4, foot: F, mini: true, room: ri });
+    const miniHere = realmMode ? (f === 0 && j === 4) || (f === 1 && (j === 6 || j === 2)) || (f === 2 && j === 3) : mini && f === 1 && j === 2;
+    if (miniHere && kind !== "boss" && !isStair && !aboveStair) {
+      ents.push({ kind: "boss", c: cx + 4, foot: F, mini: true, room: ri });
+      if (realmMode) gateSpots.push({ f, j, ri });
+    }
     if (chance(0.4) && kind !== "boss") ents.push({ kind: "candle", c: c0 + rint(5, c1 - c0 - 6), foot: F, room: ri });
   };
 
@@ -432,7 +440,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   for (let f = 0; f < nFloors; f++) {
     const rs = roomsOf(f);
     for (const j of rs) {
-      if (rs.length < 3 || j !== rs[Math.floor(rs.length / 2)]) continue;
+      if (rs.length < 3 || (rs.indexOf(j) % 3 !== 1 && !(rs.length < 7 && j === rs[Math.floor(rs.length / 2)]))) continue;
       const F = FL(f);
       const c = xs[j]! + Math.floor(widths[j]! / 2) + 4;
       if (get(c, F) === Tile.Solid && get(c, F - 1) === Tile.Air) set(c, F - 1, Tile.Checkpoint);
@@ -440,6 +448,16 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   }
   // primeira lanterna perto da entrada
   set(spawnC + 6, GROUND - 1, Tile.Checkpoint);
+
+  // portões: a porta de saída do cômodo do guardião só abre quando ele cai
+  const gates: Gate[] = [];
+  for (const g of gateSpots) {
+    const east = g.f !== 1;
+    const jj = east ? g.j : g.j - 1;
+    if (jj < 0 || jj >= NC - 1) continue;
+    const px = xs[jj]! + widths[jj]!;
+    gates.push({ c: px, w: PART, f: FL(g.f), room: g.ri, open: false });
+  }
 
   // limpa espinhos junto a buraco e saídas
   fixEnts(G, ents);
@@ -459,6 +477,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
       if (d.k === "rail") d.v = d.v === 1 ? 2 : 1;
     }
     for (const z of risers) z.c = cols - (z.c + z.w);
+    for (const g of gates) g.c = cols - (g.c + g.w);
     for (const rm of rooms) {
       const a = cols - rm.c1;
       rm.c1 = cols - rm.c0;
@@ -482,6 +501,7 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
     spawn: spawnOut,
     exit: exitOut,
     risers: risers.length ? risers : undefined,
+    gates: gates.length ? gates : undefined,
     rooms,
     decor,
   };

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
-import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, WORLDS, heroById } from "../game/content";
-import { BASE_BY_ID, RARITY_COLOR, RARITY_NAME, baseOf, compareItem, describeMods, itemInfo, itemName, itemSize, modText } from "../game/items";
+import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, REGIONS, heroById } from "../game/content";
+import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf, compareItem, describeMods, itemInfo, itemName, itemSize, modText } from "../game/items";
 import { ItemIcon } from "./ItemIcon";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
@@ -122,7 +122,7 @@ export function Bobina() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="hud-title font-display text-lg leading-none text-brass">
-                  {snap.bonus ? "Bis" : "Rolo"} {snap.bonus ? snap.reel - 50 : snap.reel}
+                  {snap.bonus ? "Bis" : "Reino"} {snap.bonus ? snap.reel - 25 : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
                 <p className="hud-sub mt-1 text-sm text-paper/75">
@@ -203,9 +203,9 @@ export function Bobina() {
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
-                  Cinquenta rolos longos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
+                  Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v8.0 · profundidade {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v8.1 · reinos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -254,7 +254,7 @@ export function Bobina() {
                   <li>Molas lançam. Espinhos e buracos cobram coração. Lanternas gravam o retorno.</li>
                   <li>Cada nível dá 5 pontos para FOR, INT, DES, SAB e REC (tecla C). FOR/INT aumentam o dano, DES a velocidade, SAB as recargas, REC os corações.</li>
                   <li>Monstros e baús soltam itens. A mochila tem 32 blocos: cada objeto ocupa blocos pelo tamanho (poção 1, cajado 3, armadura 5). Q bebe poção de cura.</li>
-                  <li>A cada 5 rolos abre um Bis: mapa bônus cheio de baús. Mini-chefes aparecem no meio de alguns rolos.</li>
+                  <li>A cada 2 ou 3 reinos abre um Bis. Cada reino tem três andares, guardiões por cômodo e portões que só abrem quando o guardião cai.</li>
                   <li>No telefone, use os botões. De lado cabe mais picadeiro.</li>
                 </ul>
                 <div className="mt-4">
@@ -267,6 +267,9 @@ export function Bobina() {
           {snap.screen === "cast" && (
             <section className="pointer-events-auto mx-auto flex h-full w-full max-w-5xl flex-col gap-2 px-3 pb-3">
               <div className="flex items-baseline justify-between gap-3">
+                <button type="button" aria-label="Voltar" onClick={() => rtRef.current?.backTitle()} className="grid h-10 shrink-0 place-items-center rounded-md border border-brass/60 bg-ink/90 px-3 text-sm text-brass">
+                  ← Voltar
+                </button>
                 <h2 className="font-display text-2xl leading-none sm:text-3xl">Quem assina</h2>
                 <p className="hidden text-sm text-paper/70 sm:block">Deslize os cartões ou use as setas. Os outros ficam no camarim, comentando.</p>
               </div>
@@ -333,60 +336,57 @@ export function Bobina() {
                   </div>
                 </div>
                 <div className="mt-3 grid max-h-[40dvh] gap-3 overflow-y-auto pr-1">
-                  {WORLDS.map((world) => {
-                    const bonusN = 51 + world.id;
-                    const bonusLocked = snap.bonusOpen <= world.id;
-                    return (
-                      <div key={world.id}>
-                        <h3 className="text-sm text-brass">
-                          {world.id + 1}. {world.name}
-                        </h3>
-                        <div className="mt-1 grid grid-cols-6 gap-1.5">
-                          {Array.from({ length: 5 }, (_, k) => {
-                            const n = world.id * 5 + k + 1;
-                            const locked = n > snap.next;
-                            const on = pick === n;
-                            const boss = k === 4;
-                            const mini = k === 2;
-                            return (
-                              <button
-                                key={n}
-                                type="button"
-                                disabled={locked}
-                                onClick={() => setPick(n)}
-                                className={
-                                  "min-h-12 rounded-md border text-sm " +
-                                  (locked ? "border-paper/10 text-paper/30" : on ? "border-brass bg-brass text-ink" : "border-paper/25 bg-ink text-paper")
-                                }
-                              >
-                                {n}
-                                {boss ? <span className="block text-xs leading-none">chefe</span> : mini ? <span className="block text-xs leading-none">mini</span> : null}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            disabled={bonusLocked}
-                            onClick={() => setPick(bonusN)}
-                            className={
-                              "min-h-12 rounded-md border text-sm " +
-                              (bonusLocked ? "border-paper/10 text-paper/30" : pick === bonusN ? "border-moon bg-moon text-ink" : "border-moon/60 bg-ink text-moon")
-                            }
-                          >
-                            ★<span className="block text-xs leading-none">bis</span>
-                          </button>
-                        </div>
+                  {REGIONS.map((reg) => (
+                    <div key={reg.name}>
+                      <h3 className="text-sm text-brass">{reg.name}</h3>
+                      <div className="mt-1 grid grid-cols-6 gap-1.5">
+                        {Array.from({ length: reg.to - reg.from + 1 }, (_, k) => {
+                          const n = reg.from + k + 1;
+                          const locked = n > snap.next;
+                          const on = pick === n;
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              disabled={locked}
+                              onClick={() => setPick(n)}
+                              className={"min-h-12 rounded-md border text-sm " + (locked ? "border-paper/10 text-paper/30" : on ? "border-brass bg-brass text-ink" : "border-paper/25 bg-ink text-paper")}
+                            >
+                              {n}
+                            </button>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
+                  <div>
+                    <h3 className="text-sm text-moon">Bis (tesouros)</h3>
+                    <div className="mt-1 grid grid-cols-6 gap-1.5">
+                      {Array.from({ length: 10 }, (_, k) => {
+                        const n = 26 + k;
+                        const locked = snap.bonusOpen < k + 1;
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            disabled={locked}
+                            onClick={() => setPick(n)}
+                            className={"min-h-12 rounded-md border text-sm " + (locked ? "border-paper/10 text-paper/30" : pick === n ? "border-moon bg-moon text-ink" : "border-moon/60 bg-ink text-moon")}
+                          >
+                            ★{k + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-3 font-display text-xl">{pick > 50 ? `Bis: ${BONUS_NAMES[pick - 51] ?? ""}` : REEL_NAMES[pick - 1]}</p>
+                <p className="mt-3 font-display text-xl">{pick > 25 ? `Bis: ${BONUS_NAMES[pick - 26] ?? ""}` : `${pick}. ${REEL_NAMES[pick - 1]}`}</p>
                 <p className="text-sm text-paper/70">
-                  {pick > 50 ? "Mapa de tesouro: baús e poucos monstros. Sem chefe." : pick % 5 === 0 ? "Chefe no fim do rolo. " : pick % 5 === 3 ? "Tem mini-chefe no caminho. " : "Travessia longa, com lanternas no caminho."}
+                  {pick > 25 ? "Mapa de tesouro: baús e poucos monstros. Sem chefe." : "Reino aberto: três andares, cômodos com guardiões, portões que só abrem quando o guardião cai e um chefe no fim. Explore em profundidade."}
                 </p>
                 <div className="mt-3">
-                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > 50 ? snap.bonusOpen < pick - 50 : pick > snap.next}>
-                    {pick > 50 ? `Entrar no bis ${pick - 50}` : `Entrar no rolo ${pick}`}
+                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > 25 ? snap.bonusOpen < pick - 25 : pick > snap.next}>
+                    {pick > 25 ? `Entrar no bis ${pick - 25}` : `Entrar no reino ${pick}`}
                   </Primary>
                 </div>
               </div>
@@ -483,7 +483,7 @@ export function Bobina() {
           {snap.screen === "ending" && (
             <CenterCard title="Rescisão carimbada" kicker="Bobina Negra">
               <p className="text-base leading-relaxed text-paper/85">
-                Cinquenta rolos queimados. O Empresário assinou a própria rescisão. Os quatro podem sair; o arquivo fica. Os bis e os rolos antigos continuam no mapa — teimosia também é um atributo.
+                Vinte e cinco reinos atravessados. O Empresário assinou a própria rescisão. Os quatro podem sair; o arquivo fica. Os bis e os rolos antigos continuam no mapa — teimosia também é um atributo.
               </p>
               <Primary onClick={() => rtRef.current?.quitToMap()}>Reabrir o arquivo</Primary>
               <Ghost onClick={() => rtRef.current?.backTitle()}>Voltar ao cartaz</Ghost>
@@ -675,11 +675,14 @@ function ItemDetail({ it, equip, rt, onDone }: { it: Item; equip: Snap["equip"];
         <span className="text-paper/80">Como usar:</span> {info.how}
       </p>
       {info.tierText && <p className="text-[11px] text-paper/45">{info.tierText}</p>}
+      {!potion && b.slot !== "gem" && <p className="text-[11px] text-paper/60">Encaixes livres: {it.sockets ?? 0}{it.gems && it.gems.length ? ` · pedras: ${it.gems.join(", ")}` : ""}</p>}
       <div className="mt-2 flex gap-2">
         {potion ? (
           <button type="button" onClick={() => rt?.useItem(it.uid)} className="min-h-10 rounded-md bg-blood px-3 font-display">
             Usar
           </button>
+        ) : b.slot === "gem" ? (
+          <p className="self-center text-xs text-moon">Pedra: encaixe pela Forja (marque como 2º item).</p>
         ) : (
           <button
             type="button"
@@ -707,8 +710,78 @@ function ItemDetail({ it, equip, rt, onDone }: { it: Item; equip: Snap["equip"];
   );
 }
 
+function ForgePanel({ snap, a, b, pick2, setPick2, clear2, rt }: { snap: Snap; a: Item | null; b: Item | null; pick2: boolean; setPick2: (v: boolean) => void; clear2: () => void; rt: Runtime | null }) {
+  const ba = a ? baseOf(a) : null;
+  const gearA = Boolean(a && ba && ba.slot !== "potion" && ba.slot !== "gem");
+  const bb = b ? baseOf(b) : null;
+  const gearB = Boolean(b && bb && bb.slot !== "potion" && bb.slot !== "gem");
+  const gemB = Boolean(bb && bb.slot === "gem");
+  const chance = a && b && gearA && gearB ? Math.round(fuseChance(a, b) * 100) : 0;
+  const keys = ["str", "int", "dex", "wis", "rec"] as const;
+  void snap;
+  return (
+    <div className="mt-3 rounded-md border border-ember/50 bg-ink p-2 text-sm" style={{ borderColor: "#c4573a88" }}>
+      <p className="font-display text-lg text-brass">Forja</p>
+      <p className="text-[11px] text-paper/60">Toque num item da mochila (1º). Para fundir ou encaixar pedra, use “Escolher 2º” e toque no outro. Equipamentos vestidos não vão à forja: tire-os antes.</p>
+      {!a || !gearA ? (
+        <p className="mt-2 text-xs text-paper/50">Selecione um equipamento na mochila.</p>
+      ) : (
+        <div className="mt-2 grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="min-h-10 rounded-md bg-blood px-3 font-display" onClick={() => rt?.forgeUpgrade(a.uid)}>
+              Forjar +1 ({Math.round(FORGE_CHANCE * 100)}% acerta · {Math.round(FORGE_CHANCE * 100)}% quebra)
+            </button>
+            <button type="button" className="min-h-10 rounded-md border border-paper/30 px-3" onClick={() => setPick2(!pick2)}>
+              {pick2 ? "Toque no 2º item…" : "Escolher 2º item/pedra"}
+            </button>
+            {b && (
+              <button type="button" className="min-h-10 rounded-md border border-paper/30 px-3 text-xs" onClick={clear2}>
+                limpar 2º
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-paper/70">
+            1º: <span style={{ color: RARITY_COLOR[a.rarity] }}>{itemName(a)}</span> · encaixes livres: {a.sockets ?? 0}
+            {a.gems && a.gems.length > 0 ? ` · pedras: ${a.gems.join(", ")}` : ""}
+          </p>
+          {b && (
+            <p className="text-[11px] text-paper/70">
+              2º: <span style={{ color: RARITY_COLOR[b.rarity] }}>{itemName(b)}</span>
+            </p>
+          )}
+          {b && gearB && a.uid !== b.uid && (
+            <button type="button" className="min-h-10 rounded-md bg-blood px-3 font-display" onClick={() => rt?.forgeFuse(a.uid, b.uid)}>
+              Fundir os dois ({chance}% acerta; se falhar, os dois quebram)
+            </button>
+          )}
+          {b && gemB && (
+            <button type="button" className="min-h-10 rounded-md bg-blood px-3 font-display" onClick={() => rt?.forgeSocket(a.uid, b.uid)}>
+              Encaixar {bb!.name} no 1º
+            </button>
+          )}
+          {a.supreme && (
+            <div className="rounded-sm border border-brass/50 p-1.5">
+              <p className="text-xs text-brass">Matador de Deuses e Demônios: {a.free ?? 0} pontos livres</p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {keys.map((k) => (
+                  <button key={k} type="button" disabled={(a.free ?? 0) <= 0} className="min-h-9 rounded-sm border border-paper/30 px-2 text-xs disabled:opacity-40" onClick={() => rt?.forgeAlloc(a.uid, k)}>
+                    +1 {k.toUpperCase()} ({a.mods[k] ?? 0})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; setSel: (n: number | null) => void; rt: Runtime | null }) {
+  const [sel2, setSel2] = useState<number | null>(null);
+  const [pick2, setPick2] = useState(false);
   const cells = layoutBag(snap.bag);
+  const chosen2 = snap.bag.find((i) => i.uid === sel2) ?? null;
   const chosen = snap.bag.find((i) => i.uid === sel) ?? null;
   const equipped = EQUIP_KEYS.map((k) => ({ slot: k, label: SLOT_LABEL[k], item: snap.equip[k] }));
   const hero = heroById(snap.hero);
@@ -824,7 +897,12 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
                   <button
                     key={i}
                     type="button"
-                    onClick={() => setSel(on ? null : c.item.uid)}
+                    onClick={() => {
+                      if (pick2) {
+                        setSel2(c.item.uid);
+                        setPick2(false);
+                      } else setSel(on ? null : c.item.uid);
+                    }}
                     aria-label={itemName(c.item)}
                     className={"grid aspect-square place-items-center rounded-sm border " + (on ? "ring-2 ring-brass" : "")}
                     style={{ borderColor: color, background: `${color}26` }}
@@ -834,6 +912,7 @@ function CharSheet({ snap, sel, setSel, rt }: { snap: Snap; sel: number | null; 
                 );
               })}
             </div>
+            <ForgePanel snap={snap} a={chosen} b={chosen2} pick2={pick2} setPick2={setPick2} clear2={() => setSel2(null)} rt={rt} />
             <div className="mt-3 min-h-24 rounded-md border border-paper/15 bg-ink p-2 text-sm">
               {chosen ? (
                 <ItemDetail it={chosen} equip={snap.equip} rt={rt} onDone={() => setSel(null)} />

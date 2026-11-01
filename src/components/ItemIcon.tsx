@@ -38,6 +38,15 @@ function shape(fam: string, id: string, x: Ctx): ReactNode {
   const main = g("main");
   const acc = g("acc");
   switch (fam) {
+    case "gem":
+      return (
+        <g {...S}>
+          <path d="M16 4l9 6-3 14-6 5-6-5-3-14z" fill={main} />
+          <path d="M16 4l-3 7h6z" fill="#fff6" stroke="none" />
+          <path d="M7 10h18M13 11l3 18M19 11l-3 18" stroke="#fff7" fill="none" strokeWidth="1" />
+          <circle cx="12" cy="15" r="1.4" fill="#fffc" stroke="none" />
+        </g>
+      );
     case "flask":
       return (
         <g {...S}>

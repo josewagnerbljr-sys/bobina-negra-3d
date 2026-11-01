@@ -171,6 +171,13 @@ export const BASES: BaseDef[] = [
   I("ring_emerald", "Anel de Esmeralda Mata-Cega", "ring", 1, { dex: 2, wis: 1 }, "#d8d0a0", "ring", "Verde de tanto olhar a mata sem piscar.", { look: "ring", minWorld: 3, acc: "#3ad07a" }),
   I("ring_topaz", "Anel de Topázio Solar", "ring", 1, { str: 2, wis: 1 }, "#c8a050", "ring", "Pedra de sol que esquenta o dedo.", { look: "ring", minWorld: 5, acc: "#ffc02a" }),
   I("ring_thread", "Aliança de Fio Vermelho", "ring", 1, { rec: 2, dex: 1, wis: 1 }, "#c3101e", "ringthin", "Fio de destino enrolado três vezes. Difícil de tirar.", { look: "ring", minWorld: 1, acc: "#ffffff" }),
+  // ---- pedras de encaixe (linkam em itens e dão bônus permanente)
+  I("gem_str", "Rubi de Brasa", "gem", 1, { str: 1 }, "#e0303a", "gem", "Pedra de encaixe: aumenta FOR.", { acc: "#ffd0d0" }),
+  I("gem_int", "Safira do Véu", "gem", 1, { int: 1 }, "#3a6aff", "gem", "Pedra de encaixe: aumenta INT.", { acc: "#d0e0ff" }),
+  I("gem_dex", "Esmeralda de Folha", "gem", 1, { dex: 1 }, "#3ac060", "gem", "Pedra de encaixe: aumenta DES.", { acc: "#d0ffe0" }),
+  I("gem_wis", "Topázio do Contrato", "gem", 1, { wis: 1 }, "#f0b83a", "gem", "Pedra de encaixe: aumenta SAB.", { acc: "#fff0c0" }),
+  I("gem_rec", "Ametista da Vigília", "gem", 1, { rec: 1 }, "#a050e0", "gem", "Pedra de encaixe: aumenta REC.", { acc: "#f0d8ff" }),
+  I("gem_all", "Opala do Limiar", "gem", 1, { str: 1, int: 1 }, "#e8e0f0", "gem", "Pedra de encaixe: aumenta FOR e INT.", { acc: "#ffffff", minWorld: 3 }),
 ];
 
 /** conjuntos: bônus extras por número de peças equipadas */
@@ -202,10 +209,11 @@ export function setBonus(eq: Equip): { set: string; name: string; count: number;
 
 export const BASE_BY_ID: Record<string, BaseDef> = Object.fromEntries(BASES.map((b) => [b.id, b]));
 
-export const RARITY_NAME = ["Comum", "Raro", "Épico", "Lendário"];
-export const RARITY_COLOR = ["#cfc7b8", "#5fb4ff", "#c07aff", "#ffb23a"];
-const RARITY_MUL = [1, 1.5, 2.1, 3];
-const RARITY_PRE = ["", "Polido", "Encantado", "Lendário"];
+export const RARITY_NAME = ["Normal", "Raro", "Épico", "Lendário", "Divino/Infernal"];
+export const RARITY_COLOR = ["#cfc7b8", "#5fb4ff", "#c07aff", "#ffb23a", "#ff4d6d"];
+const RARITY_MUL = [1, 1.5, 2.1, 3, 4.2];
+const RARITY_PRE = ["", "Polido", "Encantado", "Lendário", "Divino"];
+const SOCKETS_BY_RARITY = [1, 1, 2, 2, 3];
 
 export function baseOf(it: Item): BaseDef {
   return BASE_BY_ID[it.base] ?? BASES[0]!;
@@ -220,7 +228,8 @@ export function itemName(it: Item): string {
   if (b.slot === "potion") return b.name;
   if (b.boss !== undefined) return `${b.name}${it.tier > 1 ? ` +${it.tier - 1}` : ""}`;
   const pre = RARITY_PRE[it.rarity] ? ` ${RARITY_PRE[it.rarity]}` : "";
-  return `${b.name}${pre}${it.tier > 1 ? ` +${it.tier - 1}` : ""}`;
+  const sup = it.supreme ? " · Matador de Deuses e Demônios" : "";
+  return `${b.name}${pre}${it.tier > 1 ? ` +${it.tier - 1}` : ""}${sup}`;
 }
 
 export function modText(it: Item): string {
@@ -259,7 +268,9 @@ export function makeItem(baseId: string, rarity: Rarity, tier: number, rnd: () =
       mods[k] = (mods[k] ?? 0) + Math.max(1, Math.round((1 + tier * 0.4) * rarity));
     }
   }
-  return { uid: uidSeed++, base: baseId, rarity, tier, mods };
+  const out: Item = { uid: uidSeed++, base: baseId, rarity, tier, mods };
+  if (b.slot !== "potion" && b.slot !== "gem") out.sockets = SOCKETS_BY_RARITY[rarity] ?? 1;
+  return out;
 }
 
 export type DropSource = "mob" | "mini" | "boss" | "chest";
@@ -271,6 +282,7 @@ export function rollDrops(src: DropSource, world: number, luck: number, rnd: () 
   const out: Item[] = [];
   const rar = (bonus: number): Rarity => {
     const t = (0.06 + bonus + world * 0.004) * luck;
+    if (rnd() < t * 0.012) return 4;
     if (rnd() < t * 0.18) return 3;
     if (rnd() < t * 0.55) return 2;
     if (rnd() < t * 1.5 + 0.1) return 1;
@@ -293,10 +305,15 @@ export function rollDrops(src: DropSource, world: number, luck: number, rnd: () 
     return makeItem(b.id, 0, tier, rnd);
   };
   const gear = (bonus: number, force?: Rarity) => {
-    const pool = BASES.filter((b) => b.slot !== "potion" && b.boss === undefined && (b.minWorld ?? 0) <= world);
+    const pool = BASES.filter((b) => b.slot !== "potion" && b.slot !== "gem" && b.boss === undefined && (b.minWorld ?? 0) <= world);
     // novidades do mundo atual aparecem mais
     const b = pick(pool, (x) => ((x.minWorld ?? 0) === world && world > 0 ? 2.2 : 1));
     return makeItem(b.id, force ?? rar(bonus), tier, rnd);
+  };
+  const gem = (bonus: number): Item => {
+    const pool = BASES.filter((b) => b.slot === "gem");
+    const b = pool[Math.floor(rnd() * pool.length)]!;
+    return makeItem(b.id, rar(bonus), tier, rnd);
   };
   const unique = (): Item | null => {
     const u = BASES.find((b) => b.boss === world);
@@ -305,11 +322,12 @@ export function rollDrops(src: DropSource, world: number, luck: number, rnd: () 
   };
   if (src === "mob") {
     if (rnd() < 0.15 * luck) out.push(rnd() < 0.62 ? potion() : gear(0));
+    if (rnd() < 0.045 * luck) out.push(gem(0));
   } else if (src === "mini") {
-    out.push(potion(), gear(0.12));
+    out.push(potion(), gear(0.12), gem(0.1));
     if (rnd() < 0.5) out.push(gear(0.12));
   } else if (src === "boss") {
-    out.push(potion(), potion(), gear(0.3, 1), gear(0.3));
+    out.push(potion(), potion(), gear(0.3, 1), gear(0.3), gem(0.3), gem(0.2));
     if (rnd() < 0.4) out.push(gear(0.4, 2));
     // item único do chefe: cai em mais de metade das lutas
     if (rnd() < Math.min(0.9, 0.5 * luck)) {
@@ -319,6 +337,7 @@ export function rollDrops(src: DropSource, world: number, luck: number, rnd: () 
   } else {
     const n = 3 + Math.floor(rnd() * 2);
     for (let i = 0; i < n; i++) out.push(rnd() < 0.4 ? potion() : gear(0.2));
+    if (rnd() < 0.5) out.push(gem(0.15));
   }
   return out;
 }
@@ -330,7 +349,7 @@ export function emptyEquip(): Equip {
 /** em qual espaço do personagem o item entra (anéis: primeiro vazio, senão o do primeiro anel) */
 export function equipKeyFor(it: Item, eq: Equip): EquipKey | null {
   const slot = baseOf(it).slot;
-  if (slot === "potion") return null;
+  if (slot === "potion" || slot === "gem") return null;
   if (slot === "ring") return !eq.ring1 ? "ring1" : !eq.ring2 ? "ring2" : "ring1";
   return slot;
 }
@@ -367,6 +386,7 @@ export function compareItem(it: Item, eq: Equip): { key: EquipKey; diff: Partial
 }
 
 export const SLOT_NAME: Record<ItemSlot, string> = {
+  gem: "Pedra de encaixe",
   potion: "Consumível",
   weapon: "Arma",
   offhand: "Mão secundária",
@@ -404,6 +424,7 @@ export const RARITY_MEANING = [
   "Bônus ×1,5 e mais 1 atributo sorteado.",
   "Bônus ×2,1 e mais 1 atributo sorteado, forte.",
   "Bônus ×3 e atributo extra: o melhor que o contrato permite.",
+  "Bônus ×4,2: o auge. Só cai de chefes (raro) ou nasce na forja. Dois divinos/infernais fundidos viram um item supremo.",
 ];
 
 export type ItemInfo = {
@@ -449,4 +470,76 @@ export function itemInfo(it: Item): ItemInfo {
     special: b.special,
     set,
   };
+}
+
+
+/* ------------------------------------------------------------------ forja */
+
+export const FORGE_CHANCE = 0.5;
+export const FORGE_CHANCE_DIVINE = 0.35;
+export const SUPREME_POINTS = 12;
+
+export type ForgeResult = { ok: boolean; item: Item | null; text: string };
+
+const gearOnly = (it: Item) => baseOf(it).slot !== "potion" && baseOf(it).slot !== "gem";
+
+/** melhora o item em +1 nível: 50% de acertar, 50% de quebrar */
+export function forgeUpgrade(it: Item, rnd: () => number): ForgeResult {
+  if (!gearOnly(it)) return { ok: false, item: it, text: "Só equipamentos vão à forja." };
+  if (it.tier >= 12) return { ok: false, item: it, text: "Esse item já está no limite da forja (+11)." };
+  if (rnd() < FORGE_CHANCE) {
+    const mods: Partial<Stats> = {};
+    for (const k of STAT_KEYS) if (it.mods[k]) mods[k] = Math.round((it.mods[k] ?? 0) * 1.15) + 1;
+    return { ok: true, item: { ...it, tier: it.tier + 1, mods }, text: `A forja aceitou: ${baseOf(it).name} subiu para +${it.tier}.` };
+  }
+  return { ok: false, item: null, text: `${baseOf(it).name} quebrou na bigorna.` };
+}
+
+/** chance de fundir: 50%, ou 35% quando há item divino/infernal */
+export function fuseChance(a: Item, b: Item) {
+  return a.rarity === 4 || b.rarity === 4 ? FORGE_CHANCE_DIVINE : FORGE_CHANCE;
+}
+
+/** funde dois itens. Falhou, os dois quebram. Dois divinos/infernais viram um item supremo. */
+export function forgeFuse(a: Item, b: Item, rnd: () => number): ForgeResult {
+  if (!gearOnly(a) || !gearOnly(b)) return { ok: false, item: a, text: "Só equipamentos podem ser fundidos." };
+  if (rnd() >= fuseChance(a, b)) return { ok: false, item: null, text: "A fusão desandou: os dois itens quebraram." };
+  const tier = Math.max(a.tier, b.tier);
+  const sum: Partial<Stats> = {};
+  if (a.rarity === 4 && b.rarity === 4) {
+    for (const k of STAT_KEYS) {
+      const v = (a.mods[k] ?? 0) + (b.mods[k] ?? 0);
+      if (v) sum[k] = Math.round(v * 0.8);
+    }
+    const it: Item = { uid: uidSeed++, base: a.base, rarity: 4, tier: tier + 1, mods: sum, sockets: 4, gems: [...(a.gems ?? []), ...(b.gems ?? [])].slice(0, 4), supreme: true, free: SUPREME_POINTS };
+    return { ok: true, item: it, text: "Nasceu um item supremo: Matador de Deuses e Demônios! Distribua 12 pontos." };
+  }
+  const rarity = Math.min(4, Math.max(a.rarity, b.rarity) + 1) as Rarity;
+  const base = makeItem(a.base, rarity, tier, rnd);
+  for (const k of STAT_KEYS) {
+    const extra = Math.round((b.mods[k] ?? 0) * 0.25);
+    const v = (base.mods[k] ?? 0) + extra;
+    if (v) sum[k] = v;
+  }
+  base.mods = sum;
+  base.gems = a.gems ? [...a.gems] : undefined;
+  base.sockets = Math.max(0, (base.sockets ?? 0) - (a.gems?.length ?? 0));
+  return { ok: true, item: base, text: `Fusão perfeita: ${itemName(base)} (${RARITY_NAME[rarity]}).` };
+}
+
+/** encaixa uma pedra: o bônus da pedra entra no item para sempre */
+export function socketGem(it: Item, gem: Item): ForgeResult {
+  if (!gearOnly(it)) return { ok: false, item: it, text: "Só equipamentos têm encaixes." };
+  if (baseOf(gem).slot !== "gem") return { ok: false, item: it, text: "Isso não é uma pedra." };
+  if ((it.sockets ?? 0) <= 0) return { ok: false, item: it, text: "Sem encaixe livre nesse item." };
+  const mods: Partial<Stats> = { ...it.mods };
+  for (const k of STAT_KEYS) if (gem.mods[k]) mods[k] = (mods[k] ?? 0) + (gem.mods[k] ?? 0);
+  const out: Item = { ...it, mods, sockets: (it.sockets ?? 0) - 1, gems: [...(it.gems ?? []), baseOf(gem).name] };
+  return { ok: true, item: out, text: `${baseOf(gem).name} encaixada em ${baseOf(it).name}.` };
+}
+
+/** distribui 1 ponto do item supremo */
+export function allocSupreme(it: Item, key: StatKey): Item | null {
+  if (!it.supreme || (it.free ?? 0) <= 0) return null;
+  return { ...it, mods: { ...it.mods, [key]: (it.mods[key] ?? 0) + 1 }, free: (it.free ?? 0) - 1 };
 }

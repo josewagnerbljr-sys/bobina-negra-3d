@@ -25,18 +25,29 @@ export type Stats = Record<StatKey, number>;
 export const BAG_SIZE = 32;
 export const POINTS_PER_LEVEL = 5;
 export const MAX_LEVEL = 50;
-export const MAIN_LEVELS = 50;
+export const MAIN_LEVELS = 25;
+/** tema visual (0-9) de cada reino: 25 reinos espalhados nos 10 temas */
+export const worldOfLevel = (i: number) => (i >= MAIN_LEVELS ? i - MAIN_LEVELS : Math.min(9, Math.floor((i * 10) / MAIN_LEVELS)));
+/** quantos bis liberados depois de concluir `next-1` reinos */
+export const bonusUnlocked = (next: number) => Math.min(10, Math.floor((next - 1) / 2.5));
 export const BONUS_LEVELS = 10;
 export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
 
-export type ItemSlot = "potion" | "weapon" | "offhand" | "helmet" | "necklace" | "ring" | "armor" | "cape" | "gloves" | "pants" | "boots";
-export type Rarity = 0 | 1 | 2 | 3;
+export type ItemSlot = "gem" | "potion" | "weapon" | "offhand" | "helmet" | "necklace" | "ring" | "armor" | "cape" | "gloves" | "pants" | "boots";
+export type Rarity = 0 | 1 | 2 | 3 | 4;
 export type Item = {
   uid: number;
   base: string;
   rarity: Rarity;
   tier: number;
   mods: Partial<Stats>;
+  /** encaixes livres para pedras */
+  sockets?: number;
+  /** nomes das pedras já encaixadas */
+  gems?: string[];
+  /** item supremo (Matador de Deuses e Demônios): pontos livres para distribuir */
+  supreme?: boolean;
+  free?: number;
 };
 /** os 11 espaços de equipamento do personagem */
 export const EQUIP_KEYS = ["helmet", "necklace", "armor", "cape", "gloves", "pants", "boots", "weapon", "offhand", "ring1", "ring2"] as const;
@@ -134,10 +145,15 @@ export type Level = {
   spawn: { c: number; foot: number };
   exit: { c: number; foot: number };
   risers?: Riser[];
+  /** portões que se abrem quando o guardião do cômodo cai */
+  gates?: Gate[];
   /** mansão: cômodos e decoração; ausente nos mapas antigos */
   rooms?: Room[];
   decor?: Decor[];
 };
+
+/** portão: bloqueia a porta (3 tiles) até o guardião do cômodo `room` ser derrotado */
+export type Gate = { c: number; w: number; f: number; room: number; open: boolean };
 
 /** colina dinâmica: sobe/desce com a caminhada (mode 0) ou em pulso (mode 1). col = altura de colisão, vis = visual suave */
 export type Riser = { c: number; w: number; h: number; mode: number; ph: number; col: number; vis: number; f?: number };
@@ -212,6 +228,13 @@ export function isSolidTile(t: number): boolean {
 export function tileAt(level: Level, c: number, r: number): number {
   if (c < 0 || c >= level.cols) return Tile.Solid;
   if (r < 0 || r >= level.rows) return Tile.Air;
+  const gs = level.gates;
+  if (gs) {
+    for (let i = 0; i < gs.length; i++) {
+      const g = gs[i]!;
+      if (!g.open && c >= g.c && c < g.c + g.w && r >= g.f - 3 && r < g.f) return Tile.Solid;
+    }
+  }
   const rs = level.risers;
   if (rs) {
     for (let i = 0; i < rs.length; i++) {

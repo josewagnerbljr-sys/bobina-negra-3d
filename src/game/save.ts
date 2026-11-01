@@ -16,6 +16,8 @@ export type Save = {
   points: number;
   alloc: Stats;
   seen: number;
+  /** reinos (0..24) cujo prefácio já foi lido */
+  realms: number;
   best: number[];
   bag: Item[];
   equip: Equip;
@@ -33,6 +35,7 @@ export function emptySave(hero: HeroId): Save {
     points: 0,
     alloc: { ...EMPTY_STATS },
     seen: 0,
+    realms: 0,
     best: Array.from({ length: TOTAL_REELS }, () => 0),
     bag: [],
     equip: emptyEquip(),
@@ -61,7 +64,7 @@ function parse(text: string): Save | null {
   if (data.v === 1) {
     return {
       ...emptySave(data.hero),
-      next: clampInt(data.next, 1, 51),
+      next: clampInt(data.next, 1, 26),
       level,
       xp: Math.max(0, Math.floor(data.xp ?? 0)),
       points: (level - 1) * POINTS_PER_LEVEL,
@@ -91,12 +94,13 @@ function parse(text: string): Save | null {
   return {
     v: 2,
     hero: data.hero,
-    next: clampInt(data.next, 1, 51),
+    next: clampInt(data.next, 1, 26),
     level,
     xp: Math.max(0, Math.floor(data.xp ?? 0)),
     points: Math.max(0, Math.floor(data.points ?? 0)),
     alloc,
     seen: data.seen ?? 0,
+    realms: data.realms ?? 0,
     best,
     bag,
     equip: eq,

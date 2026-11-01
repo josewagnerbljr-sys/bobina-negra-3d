@@ -145,3 +145,12 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Mapas variados: salas preferidas por círculo do inferno, larguras variáveis, fossos, palanques e plataformas suspensas, metade das fases espelhada (entrada no leste). Nome do cômodo aparece ao entrar.
 - Correções: plataformas que sobem/descem desenhadas no andar errado (heróis/monstros "atravessavam"), mini-chefe disparando fora do andar, formas primitivas nos heróis (tiras, coldres, chapéus de cone).
 - Limite conhecido: obstáculos (mesas, caixas) ocupam toda a profundidade; não dá para contorná-los.
+
+## v8.1 — Reinos (25 níveis gigantes)
+
+- **25 reinos** no lugar dos 50 rolos: 1 = a Mansão (3 andares, cômodos, escadas), 2–11 Inferno de Dante, 12–14 Tártaro, 15–21 Purgatório, 22–24 Paraíso/Olimpo, 25 a Passagem. Cada reino abre com um prefácio (Dante, Perseu, literatura grega sobre Hades e Tártaro).
+- Mini-chefes por cômodo e **portões** de ferro que só abrem quando o guardião cai.
+- **Forja** (50% acerta/quebra; fusão com 35% em divino/infernal), 5 raridades (normal, raro, épico, lendário, divino/infernal), **encaixes de gemas** e item supremo *Matador de Deuses e Demônios* (12 pontos distribuíveis).
+- Botão **Voltar** na seleção de personagem (mobile); caminhada lateral e bordas de plataforma corrigidas.
+- Mapa reorganizado por regiões; 10 bis liberados a cada 2–3 reinos. Saves antigos migram automaticamente.
+- Pendências: enigmas/portais invocáveis, mais monstros por reino, desempenho em fases longas.

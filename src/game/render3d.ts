@@ -11,6 +11,7 @@ export type Spark = { z?: number; x: number; y: number; vx: number; vy: number; 
 export type Paint = {
   ref: object;
   z?: number;
+  vz?: number;
   x: number;
   y: number;
   w: number;
@@ -227,7 +228,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const pose: Pose = {
       t,
       phase: p.phase,
-      speed: Math.min(1, Math.abs(p.vx) / Math.max(1, p.speed)),
+      speed: Math.min(1, Math.hypot(p.vx, p.vz ?? 0) / Math.max(1, p.speed)),
       vy: p.vy,
       facing: p.facing,
       form: p.form,
@@ -239,9 +240,16 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       dying: p.dying ?? 0,
     };
     m.update(pose);
-    const target = p.facing >= 0 ? Math.PI / 2 - 0.5 : -(Math.PI / 2 - 0.5);
+    let target = p.facing >= 0 ? Math.PI / 2 - 0.5 : -(Math.PI / 2 - 0.5);
+    const vzp = p.vz ?? 0;
+    const spd = Math.hypot(p.vx, vzp);
+    if (Math.abs(vzp) > 24 && Math.abs(vzp) > Math.abs(p.vx) * 0.5) {
+      // anda em profundidade: o corpo vira para onde caminha (de frente ou de costas para a câmera)
+      target = Math.atan2(p.vx, vzp) - 0.5 * Math.sign(p.vx || 0) * (Math.abs(p.vx) / Math.max(1, spd));
+    }
     const cur = yawOf.get(m) ?? target;
-    const next = cur + (target - cur) * (1 - Math.exp(-16 * dt));
+    const dAng = ((target - cur + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    const next = cur + dAng * (1 - Math.exp(-16 * dt));
     yawOf.set(m, next);
     const d = p.dying ?? 0;
     const sc = p.h * S * (1 - d * (m.skin ? 0.35 : 0.75));
@@ -402,6 +410,24 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         e.draw(e.prims.cube, tmpBlob, { color: gc });
         m4.compose(tmpBlob, [z.c + z.w / 2, base + hv - 0.06, 0.0], [0, 0, 0], [z.w + 0.04, 0.12, 2.2]);
         e.draw(e.prims.cube, tmpBlob, { color: [tc[0] * 0.8 + gc[0] * 0.2, tc[1] * 0.8 + gc[1] * 0.2, tc[2] * 0.8 + gc[2] * 0.2] as Vec3 });
+      }
+    }
+
+    if (L.gates) {
+      for (const gt of L.gates) {
+        if (gt.open) continue;
+        const gx = gt.c + gt.w / 2;
+        const gb = ROWS - gt.f;
+        for (let k = 0; k < 5; k++) {
+          for (let q = 0; q < 2; q++) {
+            m4.compose(tmpBlob, [gt.c + 0.5 + q * (gt.w - 1), gb + 1.5, -0.8 + k * 0.4], [0, 0, 0], [0.12, 3, 0.12]);
+            e.draw(e.prims.cube, tmpBlob, { color: [0.2, 0.19, 0.2] as Vec3 });
+          }
+        }
+        for (const yy of [0.3, 1.5, 2.7]) {
+          m4.compose(tmpBlob, [gx, gb + yy, 0], [0, 0, 0], [gt.w, 0.16, 2.0]);
+          e.draw(e.prims.cube, tmpBlob, { color: [0.5, 0.36, 0.14] as Vec3 });
+        }
       }
     }
 

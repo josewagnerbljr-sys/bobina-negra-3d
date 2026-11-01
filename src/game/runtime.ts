@@ -8,6 +8,7 @@ import {
   heroById,
   MODES,
   midEnding,
+  REALM_PREFACE,
   miniIntro,
   MINI_NAMES,
   POOLS,
@@ -23,7 +24,7 @@ import {
   WORLDS,
 } from "./content";
 import { buildLevel } from "./maps";
-import { baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
+import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
@@ -35,6 +36,7 @@ import {
   GROUND,
   HERO_IDS,
   MAIN_LEVELS,
+  bonusUnlocked,
   MAX_LEVEL,
   POINTS_PER_LEVEL,
   STAT_KEYS,
@@ -59,6 +61,7 @@ import {
 const STEP = 1 / 60;
 
 type Actor = Body & {
+  vz?: number;
   room?: number;
   zOff: number;
   kind: Kind;
@@ -121,6 +124,10 @@ export type Runtime = {
   unequip: (slot: EquipKey) => void;
   useItem: (uid: number) => void;
   discardItem: (uid: number) => void;
+  forgeUpgrade: (uid: number) => void;
+  forgeFuse: (uidA: number, uidB: number) => void;
+  forgeSocket: (uidA: number, uidGem: number) => void;
+  forgeAlloc: (uid: number, key: "str" | "int" | "dex" | "wis" | "rec") => void;
   quickPotion: () => void;
   resume: () => void;
   pause: () => void;
@@ -476,9 +483,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     toastT = 2.8;
   }
 
+  function nearBoss() {
+    let best: Actor | undefined;
+    let bd = 1e9;
+    for (const a of actors) {
+      if ((!a.boss && !a.mini) || a.dead) continue;
+      const d = Math.abs(a.x - player.x);
+      if (d < bd) { bd = d; best = a; }
+    }
+    return best;
+  }
+
   function makeSnap(): Snap {
     const world = level ? reelWorld(level.index) : WORLDS[0]!;
-    const boss = actors.find((a) => (a.boss || a.mini) && !a.dead);
+    const nb = nearBoss();
+    const boss = nb && Math.abs(nb.x - player.x) < 1500 ? nb : undefined;
     const stats = totalStats(save.hero, save.alloc, save.equip);
     const d = D();
     return {
@@ -487,7 +506,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       hero: save.hero,
       selectedHero: selected,
       next: save.next,
-      bonusOpen: Math.min(10, Math.floor((save.next - 1) / 5)),
+      bonusOpen: bonusUnlocked(save.next),
       mode: save.mode,
       meleeCd: Math.max(0, meleeCd),
       meleeMax: meleeMax,
@@ -1010,7 +1029,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         }
       }
     }
-    player.phase += dt * (4 + Math.abs(player.vx) / 50);
+    player.phase += dt * (4 + Math.hypot(player.vx, player.vz ?? 0) / 50);
 
     if (hasBuff("ward")) iframe = Math.max(iframe, 0.1);
     const bat = formed && save.hero === "lena";
@@ -1061,6 +1080,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
 
     updateRisers(dt);
+    if (level.gates) {
+      for (const gt of level.gates) {
+        if (gt.open) continue;
+        if (!actors.some((a) => a.mini && !a.dead && a.room === gt.room)) {
+          gt.open = true;
+          showToast("Um portão se abriu.");
+          audio.ui();
+        }
+      }
+    }
     stepVis *= Math.exp(-14 * dt);
     if (stepVis < 0.3) stepVis = 0;
     const hit = moveBody(player, level, dt, dropT, wasGround && player.vy >= 0 && Math.abs(player.vx) > 20);
@@ -1165,8 +1194,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
           const tz = (player.z ?? 0) + (a.ally ? 1 : 1) * Math.sin(a.phase * 0.6 + a.seq * 2 + a.zOff * 9) * TILE * (a.boss ? 0.2 : 0.7);
           const zs = Math.max(40, a.speed) * (a.boss ? 0.5 : 0.62);
           const dz = tz - (a.z ?? 0);
-          a.z = Math.max(-ZW, Math.min(ZW, (a.z ?? 0) + Math.max(-zs * dt, Math.min(zs * dt, dz))));
-        }
+          const z0 = a.z ?? 0;
+          a.z = Math.max(-ZW, Math.min(ZW, z0 + Math.max(-zs * dt, Math.min(zs * dt, dz))));
+          a.vz = (a.z - z0) / Math.max(dt, 0.001);
+        } else a.vz = 0;
       }
       if (level.rooms && !a.boss && !a.mini && !a.ally && (Math.abs(dx) > 1300 || Math.abs(player.y - a.y) > 900)) continue;
       if (a.behavior === "fly") {
@@ -1508,7 +1539,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       lineIndex = 0;
       screen = "talk";
       afterTalk = "ending";
-    } else if (first && idx === 24) {
+    } else if (first && idx === 11) {
       lines = midEnding();
       lineIndex = 0;
       screen = "talk";
@@ -1602,6 +1633,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         x: a.x,
         y: a.y,
         z: a.z ?? 0,
+        vz: a.vz ?? 0,
         w: a.w,
         h: a.h,
         vx: a.vx,
@@ -1628,6 +1660,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         x: player.x,
         y: player.y + stepVis,
         z: player.z ?? 0,
+        vz: player.vz ?? 0,
         w: player.w,
         h: player.h,
         vx: player.vx,
@@ -1679,7 +1712,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             t: reelTime,
             moving: Math.min(1, Math.abs(player.vx) / 240),
             boss: (() => {
-              const b = actors.find((a) => (a.boss || a.mini) && !a.dead);
+              const b = nearBoss();
               return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2, z: b.z ?? 0 } : null;
             })(),
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
@@ -1872,14 +1905,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (index0 < 0 || index0 >= total) return;
       if (index0 < MAIN_LEVELS) {
         if (index0 + 1 > save.next) return;
-      } else if (save.next - 1 < (index0 - MAIN_LEVELS + 1) * 5) return;
+      } else if (bonusUnlocked(save.next) < index0 - MAIN_LEVELS + 1) return;
       afterTalk = "play";
       loadLevel(index0);
       const world = level?.world ?? 0;
       const fresh: Snap["lines"] = [];
-      if (index0 < MAIN_LEVELS && world > 0 && (save.seen & (1 << world)) === 0) {
-        fresh.push(...worldIntro(world));
-        save.seen |= 1 << world;
+      if (index0 < MAIN_LEVELS && (save.realms & (1 << index0)) === 0) {
+        const pre = REALM_PREFACE[index0];
+        if (pre) fresh.push({ who: "Narrador", text: pre });
+        if (world > 0 && (save.seen & (1 << world)) === 0) {
+          fresh.push(...worldIntro(world));
+          save.seen |= 1 << world;
+        }
+        save.realms |= 1 << index0;
         persist();
       }
       if (fresh.length) {
@@ -2003,6 +2041,59 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     useItem(uid: number) {
       consume(uid);
+      emit();
+    },
+    forgeUpgrade(uid: number) {
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (i < 0) return;
+      const r = forgeUpgrade(save.bag[i]!, Math.random);
+      if (r.item) save.bag[i] = r.item;
+      else save.bag.splice(i, 1);
+      showToast(r.text);
+      if (r.ok) audio.pickup();
+      else audio.hit();
+      persist();
+      emit();
+    },
+    forgeFuse(uidA: number, uidB: number) {
+      const ia = save.bag.findIndex((x) => x.uid === uidA);
+      const ib = save.bag.findIndex((x) => x.uid === uidB);
+      if (ia < 0 || ib < 0 || ia === ib) return;
+      const r = forgeFuse(save.bag[ia]!, save.bag[ib]!, Math.random);
+      const keep = r.item;
+      const hi = Math.max(ia, ib);
+      const lo = Math.min(ia, ib);
+      save.bag.splice(hi, 1);
+      if (keep) save.bag[lo] = keep;
+      else save.bag.splice(lo, 1);
+      showToast(r.text);
+      if (r.ok) audio.loot(4);
+      else audio.hit();
+      persist();
+      emit();
+    },
+    forgeSocket(uidA: number, uidGem: number) {
+      const ia = save.bag.findIndex((x) => x.uid === uidA);
+      const ig = save.bag.findIndex((x) => x.uid === uidGem);
+      if (ia < 0 || ig < 0) return;
+      const r = socketGem(save.bag[ia]!, save.bag[ig]!);
+      showToast(r.text);
+      if (r.ok && r.item) {
+        save.bag[ia] = r.item;
+        save.bag.splice(ig, 1);
+        audio.pickup();
+      }
+      persist();
+      emit();
+    },
+    forgeAlloc(uid: number, key: "str" | "int" | "dex" | "wis" | "rec") {
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (i < 0) return;
+      const n = allocSupreme(save.bag[i]!, key);
+      if (!n) return;
+      save.bag[i] = n;
+      audio.ui();
+      persist();
       emit();
     },
     discardItem(uid: number) {
@@ -2159,6 +2250,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         addToBag(makeItem(kinds[i % kinds.length]!, (i % 4) as 0 | 1 | 2 | 3, 3, Math.random));
       }
     },
+    giveForge: () => {
+      addToBag(makeItem("sword", 4, 3, Math.random));
+      addToBag(makeItem("plate", 4, 3, Math.random));
+      addToBag(makeItem("ring", 1, 3, Math.random));
+      addToBag(makeItem("gem_str", 1, 3, Math.random));
+      addToBag(makeItem("gem_int", 2, 3, Math.random));
+    },
+    openChar: () => api.openChar(),
     setKeys: (codes: string[]) => {
       qa = new Set(codes);
     },
