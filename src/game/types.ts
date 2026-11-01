@@ -22,6 +22,8 @@ export const STAT_KEYS = ["str", "int", "dex", "wis", "rec"] as const;
 export type StatKey = (typeof STAT_KEYS)[number];
 export type Stats = Record<StatKey, number>;
 
+export const CAM_MODES = ["Lateral", "Atrás do herói", "Dinâmica", "Multi-dinâmica", "Aérea"] as const;
+
 export const BAG_SIZE = 32;
 export const POINTS_PER_LEVEL = 5;
 export const MAX_LEVEL = 50;
@@ -221,6 +223,10 @@ export type Snap = {
   buffs: BuffSnap[];
   derived: Record<string, string>;
   levelupFresh: boolean;
+  /** modo de câmera escolhido (0..4) */
+  camMode: number;
+  /** nome do controle conectado ('' = nenhum) */
+  pad: string;
 };
 
 export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean };

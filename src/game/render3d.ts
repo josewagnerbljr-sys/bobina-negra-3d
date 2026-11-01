@@ -62,7 +62,7 @@ export type Frame = {
   flash: number;
   loot: LootPaint[];
   /** câmera dinâmica: tempo de fase, chefe próximo e alvo de cinemática */
-  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null; /** largura do cômodo em tiles (0 = espaço aberto) */ space?: number };
+  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null; /** largura do cômodo em tiles (0 = espaço aberto) */ space?: number; mode?: number; hazard?: number };
 };
 
 const S = 1 / TILE;
@@ -273,6 +273,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camRS = 1.5;
   let camBossK = 0;
   let camSP = 1;
+  let camHz = 0;
   let camCineK = 0;
   let camCX = 0;
   let camCY = 0;
@@ -353,15 +354,26 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const cineOn = cam.cine ? 1 : 0;
       camCineK += (cineOn - camCineK) * (1 - Math.exp(-2.4 * dt));
       // ângulo: atrás do herói, mais forte em movimento
-      const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
-      camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
+      const cmode = cam.mode ?? 3;
+      camHz += ((cam.hazard ?? 0) - camHz) * (1 - Math.exp(-(camHz < (cam.hazard ?? 0) ? 3.2 : 1.4) * dt));
+      const spaceNow = cam.space ?? 0;
+      const tightNow = spaceNow > 0 ? Math.max(0, Math.min(1, (22 - spaceNow) / 12)) : 0;
+      let yawAbs: number;
+      if (cmode === 0) yawAbs = 0.05;
+      else if (cmode === 1) yawAbs = 1.0;
+      else if (cmode === 2) yawAbs = 0.08 + camHz * 0.95;
+      else if (cmode === 4) yawAbs = 0.3;
+      else yawAbs = 0.1 + 0.12 * cam.moving + Math.max(camHz, tightNow * 0.55) * 0.9;
+      const yawT = (fo.facing >= 0 ? 1 : -1) * Math.min(1.1, yawAbs) * ease * (1 - 0.5 * camBossK);
+      camYawS += (yawT - camYawS) * (1 - Math.exp(-(cmode === 3 || cmode === 2 ? 2.4 : 1.3) * dt));
       // câmera de seguimento por contexto (estilo Zelda/Uncharted): corrida abre um pouco,
       // espaço apertado (cômodo estreito) aproxima como "cobertura", salão/mundo aberto afasta
       const spaceT = cam.space ?? 0;
       const tightK = spaceT > 0 ? Math.max(0, Math.min(1, (22 - spaceT) / 12)) : 0;
       const wideK = L.open ? 1 : spaceT > 0 ? Math.max(0, Math.min(1, (spaceT - 30) / 20)) : 0;
       camSP += ((1 - 0.16 * tightK + 0.12 * wideK + 0.07 * cam.moving + (fo.grounded ? 0 : 0.05)) - camSP) * (1 - Math.exp(-1.2 * dt));
-      const rT = (1.5 - 0.92 * ease) * camSP * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
+      const modeDist = cmode === 0 ? 1.1 : cmode === 1 ? 0.95 : cmode === 4 ? 1.2 : cmode === 2 ? 1.08 - 0.12 * camHz : 1;
+      const rT = (1.5 - 0.92 * ease) * (cmode === 3 ? camSP : 1) * modeDist * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
@@ -380,7 +392,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const sh = f.shake * 0.012;
       const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
-      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1);
+      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1) * (cmode === 4 ? 2.4 : cmode === 1 ? 1.25 : 1);
       at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, camPZ];
       eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), camPZ + Math.cos(yaw) * R];
       camCX = cx;

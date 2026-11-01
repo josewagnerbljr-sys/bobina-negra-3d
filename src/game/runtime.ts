@@ -36,6 +36,8 @@ import {
   EQUIP_KEYS,
   GROUND,
   HERO_IDS,
+  CAM_MODES,
+  Tile,
   MAIN_LEVELS,
   OPEN_INDEX,
   OPEN_Z,
@@ -135,6 +137,7 @@ export type Runtime = {
   resume: () => void;
   pause: () => void;
   toggleMute: () => void;
+  cycleCam: () => void;
   quitToMap: () => void;
   skipDead: () => void;
   openHelp: (on: boolean) => void;
@@ -153,6 +156,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let save: Save = loadSave() ?? emptySave("ivo");
   let hasSave = loadSave() !== null;
   let mute = loadMute();
+  let camMode = (() => { try { const v = Number(localStorage.getItem("bn_cam")); return v >= 0 && v <= 4 && localStorage.getItem("bn_cam") !== null ? v : 3; } catch { return 3; } })();
+  let padName = "";
+  let padPrev: boolean[] = [];
+  const padHold: Record<Action, boolean> = { left: false, right: false, up: false, down: false, jump: false, attack: false, form: false, s1: false, s2: false, s3: false, s4: false, potion: false, melee: false };
   audio.setMuted(mute);
 
   let screen: Screen = "title";
@@ -553,6 +560,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       buffs: buffs.map((b) => ({ kind: b.kind, left: b.left })),
       derived: derivedLines(d),
       levelupFresh: save.points > 0,
+      camMode,
+      pad: padName,
     };
   }
 
@@ -1596,16 +1605,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   function readHold() {
     const down = (code: string) => keys.has(code) || (qa ? qa.has(code) : false);
     return {
-      left: touch.left || down("KeyA") || down("ArrowLeft"),
-      right: touch.right || down("KeyD") || down("ArrowRight"),
-      up: touch.up || down("KeyW") || down("ArrowUp"),
-      down: touch.down || down("KeyS") || down("ArrowDown"),
-      jump: touch.jump || down("Space"),
-      attack: touch.attack || down("KeyJ") || down("KeyZ"),
-      form: touch.form || down("KeyK") || down("KeyL") || down("ShiftLeft"),
-      s: [touch.s1 || down("KeyU") || down("Digit1"), touch.s2 || down("KeyI") || down("Digit2"), touch.s3 || down("KeyO") || down("Digit3"), touch.s4 || down("KeyP") || down("Digit4")],
-      potion: touch.potion || down("KeyQ"),
-      melee: touch.melee || down("KeyH") || down("KeyX"),
+      left: touch.left || padHold.left || down("KeyA") || down("ArrowLeft"),
+      right: touch.right || padHold.right || down("KeyD") || down("ArrowRight"),
+      up: touch.up || padHold.up || down("KeyW") || down("ArrowUp"),
+      down: touch.down || padHold.down || down("KeyS") || down("ArrowDown"),
+      jump: touch.jump || padHold.jump || down("Space"),
+      attack: touch.attack || padHold.attack || down("KeyJ") || down("KeyZ"),
+      form: touch.form || padHold.form || down("KeyK") || down("KeyL") || down("ShiftLeft"),
+      s: [touch.s1 || padHold.s1 || down("KeyU") || down("Digit1"), touch.s2 || padHold.s2 || down("KeyI") || down("Digit2"), touch.s3 || padHold.s3 || down("KeyO") || down("Digit3"), touch.s4 || padHold.s4 || down("KeyP") || down("Digit4")],
+      potion: touch.potion || padHold.potion || down("KeyQ"),
+      melee: touch.melee || padHold.melee || down("KeyH") || down("KeyX"),
     };
   }
 
@@ -1741,6 +1750,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
               return b ? { x: b.x + b.w / 2, y: b.y + b.h / 2, z: b.z ?? 0 } : null;
             })(),
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
+            mode: camMode,
+            hazard: hazardAhead(),
             space: level?.rooms && curRoom >= 0 ? level.rooms[curRoom]!.c1 - level.rooms[curRoom]!.c0 : 0,
           }
         : undefined,
@@ -1757,11 +1768,95 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   let last = performance.now();
+  /** perigo à frente (espinhos, buracos, passagem estreita): 0..1, faz a câmera ir para trás do herói */
+  function hazardAhead() {
+    if (!level) return 0;
+    const dir = player.facing >= 0 ? 1 : -1;
+    const pc = Math.floor((player.x + player.w / 2) / TILE);
+    const r0 = Math.floor((player.y + player.h - 2) / TILE);
+    let best = 0;
+    for (let k = 1; k <= 8; k++) {
+      const c = pc + dir * k;
+      if (c < 0 || c >= level.cols) break;
+      const t0 = tileAt(level, c, r0);
+      const t1 = tileAt(level, c, r0 + 1);
+      if (t0 === Tile.Spike || t1 === Tile.Spike || t0 === Tile.Spring || t1 === Tile.Spring) best = Math.max(best, 1 - (k - 1) / 9);
+      let floor = false;
+      for (let r = r0 + 1; r <= r0 + 5; r++) {
+        const t = tileAt(level, c, r);
+        if (t === Tile.Solid || t === Tile.OneWay || t === Tile.Spike) { floor = true; break; }
+      }
+      if (!floor) best = Math.max(best, 0.95 - (k - 1) / 10);
+      if (level.risers?.some((z) => c >= z.c && c < z.c + z.w)) best = Math.max(best, 0.7 - (k - 1) / 12);
+    }
+    return best;
+  }
+
+  /** controles por Bluetooth/USB (Gamepad API): Xbox, PlayStation, Switch Pro e genéricos */
+  function pollPad() {
+    if (typeof navigator === "undefined" || !navigator.getGamepads) return;
+    const pads = navigator.getGamepads();
+    let gp: Gamepad | null = null;
+    for (const p of pads) if (p && p.connected) { gp = p; break; }
+    if (!gp) {
+      if (padName) { padName = ""; showToast("Controle desconectado."); emit(); }
+      for (const k of Object.keys(padHold) as Action[]) padHold[k] = false;
+      return;
+    }
+    const name = gp.id.replace(/\(.*?\)/g, "").replace(/Vendor:.*$/i, "").trim().slice(0, 32) || "Controle";
+    const b = (i: number) => Boolean(gp!.buttons[i]?.pressed) || (gp!.buttons[i]?.value ?? 0) > 0.5;
+    const ax = gp.axes[0] ?? 0;
+    const ay = gp.axes[1] ?? 0;
+    const dz = 0.38;
+    const cur: boolean[] = [];
+    for (let i = 0; i < 17; i++) cur[i] = b(i);
+    const anyBtn = cur.some(Boolean) || Math.abs(ax) > dz || Math.abs(ay) > dz;
+    if (!padName && anyBtn) { padName = name; showToast(`Controle conectado: ${name}`); audio.unlock(); emit(); }
+    if (!padName) return;
+    padHold.left = ax < -dz || cur[14]!;
+    padHold.right = ax > dz || cur[15]!;
+    padHold.up = ay < -dz || cur[12]!;
+    padHold.down = ay > dz || cur[13]!;
+    padHold.jump = cur[0]!;
+    padHold.attack = cur[2]! || cur[7]!;
+    padHold.melee = cur[1]!;
+    padHold.form = cur[3]!;
+    padHold.s1 = cur[4]!;
+    padHold.s2 = cur[5]!;
+    padHold.s3 = cur[6]!;
+    padHold.s4 = false;
+    padHold.potion = cur[10]!;
+    const edge = (i: number) => cur[i]! && !padPrev[i];
+    if (screen === "play") {
+      if (edge(0)) wantJump = true;
+      if (edge(3)) wantForm = true;
+      if (edge(1)) wantMelee = true;
+      if (edge(10)) wantPotion = true;
+      if (edge(4)) wantSkill[0] = true;
+      if (edge(5)) wantSkill[1] = true;
+      if (edge(6)) wantSkill[2] = true;
+      if (edge(7)) wantSkill[3] = true;
+      if (edge(11)) api.cycleCam();
+      if (edge(9)) { screen = "pause"; emit(); }
+      if (edge(8)) api.openChar();
+    } else if (screen === "pause") {
+      if (edge(9) || edge(1)) { screen = "play"; emit(); }
+      if (edge(8)) api.openChar();
+      if (edge(11)) api.cycleCam();
+    } else if (screen === "char") {
+      if (edge(1) || edge(8) || edge(9)) api.closeChar();
+    } else if (screen === "talk" || screen === "clear") {
+      if (edge(0) || edge(9)) { if (screen === "talk") bridge.advance(); }
+    }
+    padPrev = cur;
+  }
+
   function frame(now: number) {
     if (!alive) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     clock += dt;
+    pollPad();
     for (const s of sparks) {
       if (s.z === undefined) s.z = player.z ?? 0;
       s.life -= dt;
@@ -1827,6 +1922,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (e.code === "Space") wantJump = true;
         if (e.code === "KeyK" || e.code === "KeyL" || e.code === "ShiftLeft") wantForm = true;
       }
+      if (e.code === "KeyV" && !e.repeat && (screen === "play" || screen === "pause")) api.cycleCam();
       if (e.code === "Escape" && screen === "play") {
         screen = "pause";
         emit();
@@ -2147,6 +2243,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         screen = "pause";
         emit();
       }
+    },
+    cycleCam() {
+      camMode = (camMode + 1) % 5;
+      try { localStorage.setItem("bn_cam", String(camMode)); } catch { /* sem armazenamento */ }
+      showToast(`Câmera: ${CAM_MODES[camMode]}`);
+      emit();
     },
     toggleMute() {
       mute = !mute;

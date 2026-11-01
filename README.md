@@ -163,3 +163,8 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 ## v8.3 — Câmera dinâmica
 
 Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey): fica de lado e atrás do herói; abre um pouco ao correr e no ar; aproxima como "cobertura" em cômodos estreitos; afasta em salões largos e no Mundo Aberto; segue o herói também na profundidade (z) sem deixá-lo cair para trás dos botões.
+
+## v8.4 — 5 câmeras + controles
+
+- **Câmeras** (botão "Cam N" no HUD, tecla V, pausa, R3 no controle; escolha salva): 1 Lateral, 2 Atrás do herói, 3 Dinâmica (lateral; vai para trás do herói ao se aproximar de espinhos, buracos, molas e colinas), 4 Multi-dinâmica (padrão: dinâmica + cômodo apertado aproxima/"cobertura" + salão afasta + chefe), 5 Aérea.
+- **Controles** via Gamepad API (Bluetooth/USB, PC e celular com navegador compatível): Xbox, PlayStation, Switch Pro e genéricos. Mapa: analógico/direcional = andar e profundidade; A pular; X ou RT tiro; B golpe; Y forma; LB/RB/LT poderes 1-3; RT poder 4 (também tiro); L3 poção; R3 trocar câmera; Select personagem; Start pausa.

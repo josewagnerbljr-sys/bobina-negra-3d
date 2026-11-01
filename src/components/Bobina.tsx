@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
+import { CAM_MODES } from "../game/types";
 import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, REGIONS, heroById } from "../game/content";
 import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf, compareItem, describeMods, itemInfo, itemName, itemSize, modText } from "../game/items";
 import { ItemIcon } from "./ItemIcon";
@@ -56,6 +57,8 @@ const BOOT: Snap = {
   buffs: [],
   derived: {},
   levelupFresh: false,
+  camMode: 3,
+  pad: "",
 };
 
 function clock(s: number) {
@@ -150,6 +153,11 @@ export function Bobina() {
                   </button>
                 )}
                 {playing && (
+                  <button type="button" aria-label="Trocar câmera" onClick={() => rtRef.current?.cycleCam()} className="hud-ico grid size-11 place-items-center rounded-md border border-paper/30 bg-panel text-xs text-paper">
+                    Cam {snap.camMode + 1}
+                  </button>
+                )}
+                {playing && (
                   <IconButton label="Pausar" onClick={() => rtRef.current?.pause()}>
                     <Pause className="size-5" />
                   </IconButton>
@@ -205,7 +213,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v8.3 · câmera dinâmica {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v8.4 · câmeras e controles {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -457,6 +465,8 @@ export function Bobina() {
               </p>
               <Primary onClick={() => rtRef.current?.resume()}>Voltar ao rolo</Primary>
               <Ghost onClick={() => rtRef.current?.openChar()}>Personagem e mochila{snap.points > 0 ? ` (${snap.points} pontos)` : ""}</Ghost>
+              <Ghost onClick={() => rtRef.current?.cycleCam()}>Câmera: {CAM_MODES[snap.camMode] ?? "Multi-dinâmica"} (trocar)</Ghost>
+              <p className="text-xs text-paper/60">{snap.pad ? `Controle conectado: ${snap.pad}` : "Controle: conecte por Bluetooth/USB e aperte qualquer botão."}</p>
               <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Ligar som" : "Silenciar"}</Ghost>
               <Ghost onClick={() => rtRef.current?.quitToMap()}>Sair para o arquivo</Ghost>
             </CenterCard>
