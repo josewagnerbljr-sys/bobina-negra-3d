@@ -1,6 +1,7 @@
 import { addBox, addCone, addSphere, hex, m4, mix3, newGeo, type Geo, type Vec3 } from "./gl";
 import { GROUND, OPEN_Z, ROWS, Tile, type Level } from "../game/types";
 import type { WorldDef } from "../game/content";
+import { REALM_THEMES, type RealmStyle } from "../game/realms";
 
 /* Geração procedural do cenário 3D: terreno (blocos), decoração do chão e fundo
    com profundidade real (a perspectiva cria o paralaxe sozinha). */
@@ -106,7 +107,9 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
       const y0 = y1 - 1;
       if (t === Tile.Solid) {
         const deep = r > GROUND;
-        const base = jitter(deep ? pal.groundDark : pal.ground, 0.16, rnd);
+        const rt = level.open ? REALM_THEMES[Math.max(0, Math.min(REALM_THEMES.length - 1, Math.floor((c - 8) / 11)))]! : null;
+        const gcol: Vec3 = rt ? hex(deep ? rt.pal.dark : rt.pal.ground) : deep ? pal.groundDark : pal.ground;
+        const base = jitter(gcol, 0.16, rnd);
         const open = !solid(c, r - 1);
         // blocos totalmente cercados só aparecem pela frente
         addBox(
@@ -176,7 +179,7 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
     if (!solid(c, GROUND) || solid(c, GROUND - 1)) continue;
     if (rnd() > (level.open ? 0.5 : 0.2)) continue;
     const z = level.open ? -2.4 - rnd() * 3.2 : -0.3 - rnd() * 0.55; // sempre atrás da pista, para nunca esconder o herói
-    decor(terrain, glow, world.id, c + 0.2 + rnd() * 0.6, ROWS - GROUND, z, rnd, pal);
+    decor(terrain, glow, level.open ? REALM_THEMES[Math.max(0, Math.min(REALM_THEMES.length - 1, Math.floor((c - 8) / 11)))]!.amb : world.id, c + 0.2 + rnd() * 0.6, ROWS - GROUND, z, rnd, pal);
   }
 
   buildBackdrop(back, glow, level, world, pal);
@@ -794,6 +797,7 @@ const WALLTINT: Vec3[] = [
 export function buildMansionParts(level: Level, terrain: Geo, glow: Geo, pal: Palette, rnd: () => number): RoomLight[] {
   const lights: RoomLight[] = [];
   const Y = (r: number) => ROWS - r;
+  const style: RealmStyle = !level.bonus && level.index < REALM_THEMES.length ? REALM_THEMES[level.index]!.style : "mansion";
   const wood: Vec3 = mix3([0.3, 0.18, 0.1], pal.groundDark, 0.3);
   const gold: Vec3 = mix3([0.9, 0.7, 0.25], pal.trim, 0.35);
   const stone: Vec3 = [0.5, 0.5, 0.54];
@@ -811,15 +815,18 @@ export function buildMansionParts(level: Level, terrain: Geo, glow: Geo, pal: Pa
     const wallD = mix3(wall, [0, 0, 0], 0.35);
     const rt0 = terrain.pos.length;
     const rg0 = glow.pos.length;
+    if (style !== "mansion") themedWall(style, terrain, glow, lights, rm.c0, rm.c1, yb, hgt, wall, wallD, pal, rnd);
+    else {
     // parede de fundo
-    addBox(terrain, rm.c0, yb, -1.1, rm.c1, yb + hgt, -1.02, wall, { px: false, nx: false, py: false, ny: false, pz: true });
-    // painel inferior (lambril) e sanca
-    addBox(terrain, rm.c0, yb, -1.02, rm.c1, yb + 2.4, -0.94, wallD, { px: false, nx: false, py: true, ny: false, pz: true }, mix3(wallD, pal.trim, 0.3));
-    addBox(terrain, rm.c0, yb + 2.35, -1.02, rm.c1, yb + 2.5, -0.9, mix3(pal.trim, wallD, 0.4), { px: false, nx: false, py: true, ny: false, pz: true });
-    addBox(terrain, rm.c0, yb + hgt - 0.3, -1.02, rm.c1, yb + hgt, -0.9, mix3(pal.trim, wall, 0.5), { px: false, nx: false, py: false, ny: true, pz: true });
-    for (let c = rm.c0 + 1; c < rm.c1; c += 3) {
-      addBox(terrain, c, yb + 0.05, -0.94, c + 0.1, yb + 2.35, -0.9, mix3(wallD, pal.trim, 0.15), { px: false, nx: false, py: false, ny: false, pz: true });
-      addBox(terrain, c, yb + 2.5, -1.02, c + 0.25, yb + hgt - 0.3, -0.97, mix3(wall, [1, 1, 1], 0.08), { px: false, nx: false, py: false, ny: false, pz: true });
+      addBox(terrain, rm.c0, yb, -1.1, rm.c1, yb + hgt, -1.02, wall, { px: false, nx: false, py: false, ny: false, pz: true });
+      // painel inferior (lambril) e sanca
+      addBox(terrain, rm.c0, yb, -1.02, rm.c1, yb + 2.4, -0.94, wallD, { px: false, nx: false, py: true, ny: false, pz: true }, mix3(wallD, pal.trim, 0.3));
+      addBox(terrain, rm.c0, yb + 2.35, -1.02, rm.c1, yb + 2.5, -0.9, mix3(pal.trim, wallD, 0.4), { px: false, nx: false, py: true, ny: false, pz: true });
+      addBox(terrain, rm.c0, yb + hgt - 0.3, -1.02, rm.c1, yb + hgt, -0.9, mix3(pal.trim, wall, 0.5), { px: false, nx: false, py: false, ny: true, pz: true });
+      for (let c = rm.c0 + 1; c < rm.c1; c += 3) {
+        addBox(terrain, c, yb + 0.05, -0.94, c + 0.1, yb + 2.35, -0.9, mix3(wallD, pal.trim, 0.15), { px: false, nx: false, py: false, ny: false, pz: true });
+        addBox(terrain, c, yb + 2.5, -1.02, c + 0.25, yb + hgt - 0.3, -0.97, mix3(wall, [1, 1, 1], 0.08), { px: false, nx: false, py: false, ny: false, pz: true });
+      }
     }
     void w;
     shiftZ(terrain, rt0, -(MANS_Z - 1.0));
@@ -832,7 +839,11 @@ export function buildMansionParts(level: Level, terrain: Geo, glow: Geo, pal: Pa
     const yb = Y(d.r);
     const seed = d.v;
     const col = (k: number): Vec3 => [0.4 + ((seed * (k + 3)) % 60) / 100, 0.25 + ((seed * (k + 7)) % 50) / 100, 0.25 + ((seed * (k + 11)) % 55) / 100];
-    switch (d.k) {
+    const dk = style === "mansion" ? d.k : remapDecor(style, d.k);
+    switch (dk) {
+      case "spire": case "gargoyle": case "bones": case "hearth": case "vent": case "brazier": case "hang": case "plaque": case "tomb": case "pool": case "marble": case "boulder": case "bench": case "tree": case "bush": case "flowers": case "fountain": case "cloudpuff": case "coins":
+        themedDecor(style, dk, terrain, glow, lights, x0, yb, d, pal, rnd, seed);
+        break;
       case "door": {
         addBox(terrain, x0 - 0.1, yb, 0.8, x0 + 0.35, yb + d.h + 0.4, 1.06, gold, { ny: false });
         addBox(terrain, x0 + d.w - 0.35, yb, 0.8, x0 + d.w + 0.1, yb + d.h + 0.4, 1.06, gold, { ny: false });
@@ -1032,4 +1043,249 @@ export function buildMansionParts(level: Level, terrain: Geo, glow: Geo, pal: Pa
     shiftZ(glow, dg0, dz);
   }
   return lights;
+}
+
+
+/* ===================================================================== reinos temáticos */
+
+const STYLE_COL: Record<RealmStyle, { rock: Vec3; rock2: Vec3; glow: Vec3; flame: Vec3; bone: Vec3 }> = {
+  mansion: { rock: [0.5, 0.5, 0.54], rock2: [0.4, 0.4, 0.44], glow: [1, 0.7, 0.25], flame: [1, 0.7, 0.25], bone: [0.9, 0.88, 0.8] },
+  cave: { rock: [0.28, 0.22, 0.22], rock2: [0.18, 0.14, 0.15], glow: [1, 0.35, 0.12], flame: [1, 0.45, 0.15], bone: [0.82, 0.78, 0.66] },
+  swamp: { rock: [0.2, 0.24, 0.2], rock2: [0.13, 0.16, 0.14], glow: [0.3, 0.9, 0.55], flame: [0.4, 0.95, 0.6], bone: [0.7, 0.72, 0.6] },
+  city: { rock: [0.24, 0.2, 0.22], rock2: [0.14, 0.12, 0.14], glow: [1, 0.3, 0.1], flame: [1, 0.4, 0.12], bone: [0.75, 0.7, 0.62] },
+  ice: { rock: [0.62, 0.8, 0.94], rock2: [0.42, 0.62, 0.82], glow: [0.5, 0.85, 1], flame: [0.55, 0.85, 1], bone: [0.85, 0.95, 1] },
+  ruin: { rock: [0.7, 0.68, 0.62], rock2: [0.5, 0.48, 0.44], glow: [1, 0.85, 0.5], flame: [1, 0.8, 0.45], bone: [0.9, 0.88, 0.8] },
+  garden: { rock: [0.62, 0.64, 0.56], rock2: [0.3, 0.5, 0.28], glow: [1, 0.95, 0.6], flame: [1, 0.9, 0.55], bone: [0.95, 0.92, 0.8] },
+  cloud: { rock: [0.95, 0.94, 0.98], rock2: [0.8, 0.84, 0.95], glow: [1, 0.95, 0.7], flame: [1, 0.95, 0.7], bone: [1, 0.98, 0.9] },
+  gold: { rock: [0.82, 0.78, 0.66], rock2: [0.6, 0.56, 0.46], glow: [1, 0.82, 0.3], flame: [1, 0.85, 0.35], bone: [0.95, 0.9, 0.7] },
+};
+
+function remapDecor(style: RealmStyle, k: string): string {
+  const hellish = style === "cave" || style === "swamp" || style === "city" || style === "ice";
+  const table: Record<string, string> = hellish
+    ? { column: "spire", statue: "gargoyle", bookshelf: "bones", fireplace: "hearth", candelabra: "brazier", lamp: "brazier", chandelier: "hang", painting: "plaque", mirror: "plaque", banner: "plaque", window: "vent", table: "bones", desk: "bones", chair: "bones", crate: "bones", pots: "bones", tableware: "bones", rack: "bones", clock: "spire", coffin: "tomb", altar: "tomb", throne: "tomb", rug: "pool" }
+    : style === "garden"
+      ? { column: "tree", bookshelf: "bush", fireplace: "fountain", candelabra: "flowers", lamp: "flowers", chandelier: "hang", painting: "plaque", mirror: "plaque", banner: "plaque", table: "bench", desk: "bench", chair: "bench", crate: "bush", pots: "bush", tableware: "flowers", rack: "bush", clock: "tree", coffin: "altar", throne: "altar", rug: "flowers" }
+      : style === "cloud"
+        ? { column: "marble", bookshelf: "cloudpuff", fireplace: "fountain", candelabra: "brazier", lamp: "brazier", chandelier: "hang", painting: "plaque", mirror: "plaque", banner: "plaque", table: "bench", desk: "bench", chair: "bench", crate: "cloudpuff", pots: "cloudpuff", tableware: "cloudpuff", rack: "cloudpuff", clock: "marble", coffin: "altar", rug: "cloudpuff" }
+        : style === "gold"
+          ? { column: "marble", bookshelf: "coins", fireplace: "hearth", candelabra: "brazier", lamp: "brazier", chandelier: "hang", painting: "plaque", mirror: "plaque", banner: "plaque", table: "bench", desk: "bench", chair: "bench", crate: "coins", pots: "coins", tableware: "coins", rack: "coins", clock: "marble", coffin: "tomb", rug: "coins" }
+          : { column: "marble", bookshelf: "boulder", fireplace: "brazier", candelabra: "brazier", lamp: "brazier", chandelier: "hang", painting: "plaque", mirror: "plaque", banner: "plaque", table: "bench", desk: "bench", chair: "bench", crate: "boulder", pots: "boulder", tableware: "boulder", rack: "boulder", clock: "marble", coffin: "tomb", rug: "pool" };
+  return table[k] ?? k;
+}
+
+/** parede de fundo e teto do cômodo, no estilo do reino */
+function themedWall(style: RealmStyle, t: Geo, g: Geo, lights: RoomLight[], c0: number, c1: number, yb: number, hgt: number, wall: Vec3, wallD: Vec3, pal: Palette, rnd: () => number) {
+  const C = STYLE_COL[style];
+  const w = c1 - c0;
+  const base = style === "ice" || style === "cloud" || style === "ruin" || style === "garden" || style === "gold" ? mix3(C.rock, pal.groundDark, 0.45) : mix3(wallD, C.rock2, 0.4);
+  const top = yb + hgt;
+  addBox(t, c0, yb, -1.1, c1, top, -1.02, mix3(base, wall, 0.3), { px: false, nx: false, py: false, ny: false, pz: true });
+  const bumpy = style === "cave" || style === "swamp" || style === "ice";
+  if (bumpy) {
+    // rocha irregular em camadas
+    for (let k = 0; k < w * 0.9; k++) {
+      const x = c0 + rnd() * (w - 2);
+      const y = yb + rnd() * (hgt - 1.5);
+      const bw = 1.4 + rnd() * 3.2;
+      const bh = 1 + rnd() * 2.4;
+      const zf = -1.02 + rnd() * 0.22;
+      addBox(t, x, y, -1.05, Math.min(c1, x + bw), Math.min(top, y + bh), zf, mix3(base, C.rock, 0.15 + rnd() * 0.45), { px: false, nx: false, py: false, ny: false, pz: true });
+    }
+    // estalactites e estalagmites
+    for (let x = c0 + 1; x < c1 - 1; x += 1.6 + rnd() * 2.4) {
+      const hh = 0.8 + rnd() * 2.4;
+      addCone(t, x, top - hh, -0.8 - rnd() * 0.2, 0, 0.3 + rnd() * 0.25, hh, 6, mix3(C.rock, base, 0.4), style === "ice" ? [0.9, 0.98, 1] : undefined);
+    }
+    for (let x = c0 + 2; x < c1 - 2; x += 4 + rnd() * 5) {
+      const hh = 0.7 + rnd() * 1.8;
+      addCone(t, x, yb, -0.85 - rnd() * 0.2, 0.34 + rnd() * 0.2, 0, hh, 6, mix3(C.rock, base, 0.3), style === "ice" ? [0.9, 0.98, 1] : undefined);
+    }
+    // veios de brilho
+    for (let k = 0; k < Math.max(2, Math.floor(w / 9)); k++) {
+      const x = c0 + 2 + rnd() * (w - 5);
+      const y = yb + 1.5 + rnd() * (hgt - 4);
+      addBox(g, x, y, -0.99, x + 0.1 + rnd() * 0.08, y + 1 + rnd() * 2, -0.96, C.glow, { px: false, nx: false, py: false, ny: false, pz: true });
+      if (rnd() < 0.5) lights.push({ x: x + 0.1, y: y + 1, r: 3.4, c: C.glow, k: rnd() });
+    }
+    if (style === "swamp") addBox(g, c0, yb, -0.9, c1, yb + 0.25, 0.9, mix3(C.glow, [0, 0.1, 0.05], 0.7), { px: false, nx: false, ny: false, py: true, pz: false });
+  } else if (style === "city" || style === "gold") {
+    // placas de metal/mármore com rebites, frestas acesas e correntes
+    for (let x = c0; x < c1; x += 3) {
+      addBox(t, x + 0.05, yb + 0.1, -1.02, x + 2.92, top - 0.5, -0.97, mix3(base, wall, 0.2 + rnd() * 0.3), { px: false, nx: false, py: false, ny: false, pz: true });
+      for (let y = yb + 0.6; y < top - 0.8; y += 1.9) {
+        addSphere(t, x + 0.25, y, -0.95, 0.07, 5, 4, C.rock);
+        addSphere(t, x + 2.75, y, -0.95, 0.07, 5, 4, C.rock);
+      }
+    }
+    for (let x = c0 + 3; x < c1 - 2; x += 7 + rnd() * 5) {
+      const y = yb + 3 + rnd() * (hgt - 6);
+      addBox(g, x, y, -0.96, x + 0.18, y + 1.8, -0.93, C.glow, { px: false, nx: false, py: false, ny: false, pz: true });
+      lights.push({ x: x + 0.1, y: y + 0.9, r: 3.6, c: C.glow, k: rnd() });
+    }
+    addBox(t, c0, top - 0.5, -1.02, c1, top, -0.88, mix3(pal.trim, base, 0.4), { px: false, nx: false, py: false, ny: true, pz: true });
+  } else {
+    // ruínas, jardim e nuvens: arcadas, colunas e luz suave
+    const bright = style === "cloud" || style === "ruin" || style === "garden";
+    for (let x = c0 + 2; x < c1 - 3; x += 7.5 + rnd() * 3) {
+      const hh = hgt - 1.2 - (style === "ruin" && rnd() < 0.4 ? rnd() * 3 : 0);
+      addCone(t, x, yb, -0.9, 0.42, 0.42, 0.3, 10, C.rock2);
+      addCone(t, x, yb + 0.3, -0.9, 0.3, 0.27, hh - 0.6, 12, C.rock);
+      if (hh > hgt - 2) addCone(t, x, yb + hh - 0.3, -0.9, 0.44, 0.44, 0.3, 10, mix3(C.rock, pal.trim, 0.3));
+      if (style === "garden") for (let q = 0; q < 5; q++) addSphere(t, x + (rnd() - 0.5) * 0.7, yb + 0.8 + q * 1.2, -0.7, 0.28, 6, 4, [0.2 + rnd() * 0.15, 0.5 + rnd() * 0.2, 0.2]);
+    }
+    if (bright) {
+      addBox(g, c0, yb + 2, -1.0, c1, top - 0.5, -0.98, mix3(pal.fog, [1, 1, 1], 0.3), { px: false, nx: false, py: false, ny: false, pz: true });
+      lights.push({ x: (c0 + c1) / 2, y: yb + hgt * 0.6, r: Math.min(14, w * 0.5), c: mix3(C.glow, [1, 1, 1], 0.3), k: rnd() });
+    }
+    if (style === "cloud") for (let x = c0 + 1; x < c1 - 1; x += 3 + rnd() * 3) {
+      const y = yb + 1 + rnd() * (hgt - 3);
+      for (let q = 0; q < 4; q++) addSphere(g, x + q * 0.55, y + (q % 2) * 0.2, -0.8 - rnd() * 0.3, 0.5 + rnd() * 0.35, 8, 6, [0.95, 0.96, 1]);
+    }
+    addBox(t, c0, top - 0.35, -1.02, c1, top, -0.88, mix3(pal.trim, base, 0.5), { px: false, nx: false, py: false, ny: true, pz: true });
+    addBox(t, c0, yb, -1.02, c1, yb + 0.5, -0.9, mix3(pal.trim, base, 0.55), { px: false, nx: false, py: true, ny: false, pz: true });
+  }
+}
+
+/** móveis do cenário temático */
+function themedDecor(style: RealmStyle, k: string, t: Geo, g: Geo, lights: RoomLight[], x0: number, yb: number, d: { w: number; h: number; v: number }, pal: Palette, rnd: () => number, seed: number) {
+  const C = STYLE_COL[style];
+  const cx = x0 + d.w / 2;
+  const fl = (x: number, y: number, z: number, sz: number) => {
+    addSphere(g, x, y + sz * 0.5, z, sz * 0.55, 6, 4, C.flame);
+    addCone(g, x, y + sz * 0.6, z, sz * 0.45, 0, sz * 1.5, 6, C.flame, [1, 0.95, 0.65]);
+    lights.push({ x, y: y + sz, r: 3.6 + sz * 4, c: C.flame, k: rnd() });
+  };
+  switch (k) {
+    case "spire": {
+      const n = 3 + (seed % 3);
+      for (let q = 0; q < n; q++) {
+        const hh = Math.max(1.6, d.h * (0.5 + ((seed + q * 13) % 50) / 100));
+        addCone(t, x0 + 0.3 + q * 0.5, yb, -0.8 - (q % 2) * 0.15, 0.4 - q * 0.04, 0.04, hh, 6, mix3(C.rock, C.rock2, (q % 3) / 3), style === "ice" ? [0.92, 0.98, 1] : undefined);
+      }
+      break;
+    }
+    case "gargoyle": {
+      addBox(t, cx - 0.7, yb, -0.8, cx + 0.7, yb + 0.6, -0.4, C.rock2, {});
+      addCone(t, cx, yb + 0.6, -0.6, 0.45, 0.32, 1.3, 8, C.rock);
+      addSphere(t, cx, yb + 2.1, -0.6, 0.32, 8, 6, C.rock);
+      addCone(t, cx - 0.22, yb + 2.3, -0.6, 0.1, 0, 0.5, 5, C.rock2);
+      addCone(t, cx + 0.22, yb + 2.3, -0.6, 0.1, 0, 0.5, 5, C.rock2);
+      addBox(t, cx - 1.1, yb + 1.3, -0.62, cx - 0.4, yb + 2.1, -0.55, C.rock2, {});
+      addBox(t, cx + 0.4, yb + 1.3, -0.62, cx + 1.1, yb + 2.1, -0.55, C.rock2, {});
+      addSphere(g, cx - 0.12, yb + 2.12, -0.3, 0.05, 4, 3, C.glow);
+      addSphere(g, cx + 0.12, yb + 2.12, -0.3, 0.05, 4, 3, C.glow);
+      break;
+    }
+    case "bones": {
+      for (let q = 0; q < Math.max(2, d.w + 1); q++) {
+        const hh = 0.25 + ((seed + q * 7) % 5) * 0.12;
+        addSphere(t, x0 + q * 0.7 + 0.3, yb + hh, -0.5 - (q % 2) * 0.2, 0.28 + (q % 3) * 0.06, 6, 4, C.bone);
+        addBox(t, x0 + q * 0.7, yb + 0.05, -0.6, x0 + q * 0.7 + 0.7, yb + 0.14, -0.52, C.bone, {});
+      }
+      addSphere(t, x0 + 0.6, yb + 0.6, -0.4, 0.2, 6, 4, C.bone);
+      addSphere(g, x0 + 0.52, yb + 0.62, -0.22, 0.04, 4, 3, C.glow);
+      addSphere(g, x0 + 0.68, yb + 0.62, -0.22, 0.04, 4, 3, C.glow);
+      break;
+    }
+    case "hearth": {
+      addBox(t, x0, yb, -1.0, x0 + d.w, yb + d.h, -0.7, C.rock2, {});
+      addBox(g, x0 + 0.4, yb + 0.2, -0.72, x0 + d.w - 0.4, yb + d.h - 0.8, -0.68, C.glow, { px: false, nx: false, py: false, ny: false, pz: true });
+      for (let q = 0; q < 4; q++) fl(x0 + 0.8 + q * (d.w - 1.6) / 3, yb + 0.1, -0.6, 0.3);
+      break;
+    }
+    case "vent": {
+      addBox(t, x0 - 0.1, yb - 0.1, -1.0, x0 + d.w + 0.1, yb + d.h + 0.1, -0.92, C.rock2, {});
+      addBox(g, x0, yb, -0.93, x0 + d.w, yb + d.h, -0.9, mix3(C.glow, [0, 0, 0], 0.35), { px: false, nx: false, py: false, ny: false, pz: true });
+      lights.push({ x: cx, y: yb + d.h / 2, r: 4, c: C.glow, k: rnd() });
+      break;
+    }
+    case "brazier": {
+      addCone(t, cx, yb, -0.6, 0.35, 0.2, 0.15, 8, C.rock2);
+      addBox(t, cx - 0.06, yb + 0.15, -0.66, cx + 0.06, yb + 1.1, -0.54, C.rock2, {});
+      addCone(t, cx, yb + 1.1, -0.6, 0.18, 0.46, 0.34, 8, C.rock);
+      fl(cx, yb + 1.45, -0.6, 0.36);
+      break;
+    }
+    case "hang": {
+      addBox(t, cx - 0.03, yb + 0.2, -0.7, cx + 0.03, yb + d.h + 1.4, -0.66, C.rock2, {});
+      addCone(t, cx, yb - 0.3, -0.68, 0.3, 0.12, 0.7, 8, C.rock);
+      fl(cx, yb - 0.1, -0.68, 0.22);
+      break;
+    }
+    case "plaque": {
+      addBox(t, x0 - 0.1, yb - 0.1, -0.99, x0 + d.w + 0.1, yb + d.h + 0.1, -0.9, C.rock2, {});
+      addBox(t, x0, yb, -0.9, x0 + d.w, yb + d.h, -0.88, mix3(C.rock, pal.accent, 0.25), { px: false, nx: false, py: false, ny: false, pz: true });
+      addSphere(t, cx, yb + d.h * 0.6, -0.84, Math.min(d.w, d.h) * 0.22, 8, 6, C.bone);
+      addSphere(g, cx - 0.12, yb + d.h * 0.62, -0.66, 0.05, 4, 3, C.glow);
+      addSphere(g, cx + 0.12, yb + d.h * 0.62, -0.66, 0.05, 4, 3, C.glow);
+      break;
+    }
+    case "tomb": {
+      addBox(t, x0, yb, -0.8, x0 + d.w, yb + 0.9, -0.2, C.rock2, {});
+      addBox(t, x0 - 0.1, yb + 0.9, -0.85, x0 + d.w + 0.1, yb + 1.05, -0.15, C.rock, {});
+      addBox(t, cx - 0.05, yb + 1.05, -0.55, cx + 0.05, yb + 2.0, -0.45, C.rock, {});
+      addBox(t, cx - 0.35, yb + 1.65, -0.55, cx + 0.35, yb + 1.75, -0.45, C.rock, {});
+      break;
+    }
+    case "pool": {
+      addBox(g, x0, yb, -0.6, x0 + d.w, yb + 0.05, 0.8, mix3(C.glow, [0, 0, 0], style === "ice" ? 0 : 0.35), { px: false, nx: false, ny: false, py: true, pz: true });
+      lights.push({ x: cx, y: yb + 0.3, r: 4, c: C.glow, k: rnd() });
+      break;
+    }
+    case "marble": {
+      addCone(t, cx, yb, -0.78, 0.5, 0.5, 0.35, 10, C.rock2);
+      addCone(t, cx, yb + 0.35, -0.78, 0.34, 0.3, d.h - 0.9, 14, C.rock);
+      addCone(t, cx, yb + d.h - 0.55, -0.78, 0.52, 0.52, 0.4, 10, mix3(C.rock, pal.trim, 0.45));
+      break;
+    }
+    case "boulder": {
+      for (let q = 0; q < Math.max(1, Math.round(d.w / 1.4)); q++) {
+        addSphere(t, x0 + 0.7 + q * 1.2, yb + 0.55 + (q % 2) * 0.25, -0.5, 0.55 + (q % 2) * 0.2, 8, 6, mix3(C.rock, C.rock2, (q % 3) / 3));
+      }
+      break;
+    }
+    case "bench": {
+      addBox(t, x0, yb + 0.45, -0.7, x0 + Math.max(1.6, d.w), yb + 0.6, -0.3, C.rock, {});
+      addBox(t, x0 + 0.1, yb, -0.65, x0 + 0.35, yb + 0.45, -0.35, C.rock2, {});
+      addBox(t, x0 + Math.max(1.6, d.w) - 0.35, yb, -0.65, x0 + Math.max(1.6, d.w) - 0.1, yb + 0.45, -0.35, C.rock2, {});
+      break;
+    }
+    case "tree": {
+      addCone(t, cx, yb, -0.7, 0.3, 0.2, d.h * 0.55, 8, [0.38, 0.26, 0.16]);
+      for (let q = 0; q < 5; q++) addSphere(t, cx + ((q * 37 + seed) % 15) / 10 - 0.7, yb + d.h * 0.55 + (q % 3) * 0.4, -0.7 + ((q * 13) % 5) / 10, 0.7 + (q % 2) * 0.2, 8, 6, [0.2 + (q % 3) * 0.05, 0.52 + (q % 2) * 0.1, 0.22]);
+      break;
+    }
+    case "bush": {
+      for (let q = 0; q < Math.max(2, d.w); q++) addSphere(t, x0 + 0.5 + q * 0.8, yb + 0.45, -0.55 - (q % 2) * 0.1, 0.55, 8, 6, [0.22 + (q % 3) * 0.04, 0.5, 0.24]);
+      break;
+    }
+    case "flowers": {
+      for (let q = 0; q < Math.max(3, d.w * 2); q++) {
+        const fx = x0 + 0.2 + q * 0.45;
+        addBox(t, fx, yb, -0.5, fx + 0.04, yb + 0.5 + (q % 3) * 0.12, -0.46, [0.2, 0.5, 0.2], {});
+        addSphere(t, fx + 0.02, yb + 0.6 + (q % 3) * 0.12, -0.48, 0.1, 6, 4, [[1, 0.5, 0.6], [1, 0.9, 0.4], [0.7, 0.6, 1], [1, 1, 1]][(q + seed) % 4] as Vec3);
+      }
+      break;
+    }
+    case "fountain": {
+      addCone(t, cx, yb, -0.6, 0.9, 0.8, 0.45, 12, C.rock);
+      addBox(g, cx - 0.75, yb + 0.45, -0.95, cx + 0.75, yb + 0.5, -0.25, [0.4, 0.7, 1], { px: false, nx: false, ny: false, py: true, pz: true });
+      addCone(t, cx, yb + 0.45, -0.6, 0.12, 0.08, 1.2, 8, C.rock);
+      addSphere(g, cx, yb + 1.75, -0.6, 0.18, 6, 4, [0.6, 0.85, 1]);
+      lights.push({ x: cx, y: yb + 1.2, r: 4, c: [0.5, 0.8, 1], k: rnd() });
+      break;
+    }
+    case "cloudpuff": {
+      for (let q = 0; q < Math.max(3, d.w + 1); q++) addSphere(g, x0 + 0.5 + q * 0.7, yb + 0.35 + (q % 2) * 0.2, -0.5, 0.5 + (q % 3) * 0.12, 8, 6, [0.96, 0.97, 1]);
+      break;
+    }
+    case "coins": {
+      for (let q = 0; q < Math.max(3, d.w + 1); q++) addCone(t, x0 + 0.5 + q * 0.8, yb, -0.5 - (q % 2) * 0.2, 0.65, 0.12, 0.6 + (q % 3) * 0.3, 10, mix3(C.glow, [0.5, 0.35, 0.05], 0.3 + (q % 3) * 0.15));
+      lights.push({ x: cx, y: yb + 0.8, r: 4, c: C.glow, k: rnd() });
+      break;
+    }
+    default:
+      break;
+  }
 }

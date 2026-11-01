@@ -40,17 +40,17 @@ const BASE_SONGS: Song[] = [
   // 2 · Forja dos Golens — industrial/grunge, anos 90
   { name: "Bigorna Quente", era: "90s", bpm: 96, prog: [38, 38, 41, 36, 38, 38, 43, 41], scale: [0, 3, 5, 7, 10, 12], leadRoot: 62, style: "chug", kick: "x..x..x.x..x..x.", snare: "....x.......x...", hat: "..x...x...x...xx", seed: 37, leadWave: "square", swing: 0.05 },
   // 3 · Mata Cega — rock psicodélico sulista, anos 70
-  { name: "Seiva e Ruído", era: "70s", bpm: 92, prog: [45, 50, 45, 52, 45, 50, 52, 45], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "pluck", kick: "x.....x.x.......", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 41, leadWave: "triangle", swing: 0.12 },
+  { name: "Seiva e Ruído", era: "70s", bpm: 92, prog: [45, 50, 45, 52, 45, 50, 52, 45], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "boogie", kick: "x.....x.x.......", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 41, leadWave: "triangle", swing: 0.12 },
   // 4 · Arquivo do Contrato — synth-rock progressivo, anos 80
-  { name: "Cláusula Final", era: "80s", bpm: 120, prog: [48, 44, 51, 46, 48, 44, 43, 46], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 72, style: "synth", kick: "x...x...x...x...", snare: "....x.......x..x", hat: "x.xxx.xxx.xxx.xx", seed: 53, leadWave: "sawtooth", swing: 0 },
+  { name: "Cláusula Final", era: "80s", bpm: 120, prog: [48, 44, 51, 46, 48, 44, 43, 46], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 72, style: "chug", kick: "x...x...x...x...", snare: "....x.......x..x", hat: "x.xxx.xxx.xxx.xx", seed: 53, leadWave: "sawtooth", swing: 0 },
   // 5 · Dunas do Sol Morto — hard rock árabe, anos 80
   { name: "Sol de Papiro", era: "80s", bpm: 104, prog: [40, 41, 40, 45, 40, 41, 44, 40], scale: [0, 1, 4, 5, 7, 8, 10, 12], leadRoot: 64, style: "gallop", kick: "x..xx..xx..xx..x", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 61, leadWave: "sawtooth", swing: 0.04 },
   // 6 · Geleira Silenciosa — synth gélido, anos 80
-  { name: "Cristal Fino", era: "80s", bpm: 86, prog: [45, 41, 43, 40, 45, 41, 38, 40], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 76, style: "synth", kick: "x.......x...x...", snare: "........x.......", hat: "x.x.x.x.x.x.x.xx", seed: 67, leadWave: "triangle", swing: 0 },
+  { name: "Cristal Fino", era: "80s", bpm: 92, prog: [45, 41, 43, 40, 45, 41, 38, 40], scale: [0, 2, 3, 5, 7, 8, 10, 12], leadRoot: 76, style: "gallop", kick: "x.......x...x...", snare: "........x.......", hat: "x.x.x.x.x.x.x.xx", seed: 67, leadWave: "triangle", swing: 0 },
   // 7 · Lagoa dos Náufragos — surf rock, anos 60/70
-  { name: "Maré Alta", era: "70s", bpm: 134, prog: [45, 45, 50, 45, 52, 50, 45, 52], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "pluck", kick: "x...x...x...x.x.", snare: "....x.......x...", hat: "xxxxxxxxxxxxxxxx", seed: 71, leadWave: "square", swing: 0.08 },
+  { name: "Maré Alta", era: "70s", bpm: 134, prog: [45, 45, 50, 45, 52, 50, 45, 52], scale: [0, 2, 4, 7, 9, 12], leadRoot: 69, style: "boogie", kick: "x...x...x...x.x.", snare: "....x.......x...", hat: "xxxxxxxxxxxxxxxx", seed: 71, leadWave: "square", swing: 0.08 },
   // 8 · Cidadela Celeste — rock progressivo sinfônico, anos 70
-  { name: "Coro de Trombetas", era: "70s", bpm: 112, prog: [48, 50, 52, 47, 48, 50, 55, 52], scale: [0, 2, 4, 5, 7, 9, 11, 12], leadRoot: 72, style: "synth", kick: "x.....x.x.....x.", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 79, leadWave: "triangle", swing: 0.06 },
+  { name: "Coro de Trombetas", era: "70s", bpm: 112, prog: [48, 50, 52, 47, 48, 50, 55, 52], scale: [0, 2, 4, 5, 7, 9, 11, 12], leadRoot: 72, style: "gallop", kick: "x.....x.x.....x.", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x.", seed: 79, leadWave: "triangle", swing: 0.06 },
   // 9 · Palácio do Empresário — metal industrial, anos 90
   { name: "Contrato de Ferro", era: "90s", bpm: 138, prog: [36, 36, 39, 38, 36, 36, 43, 41], scale: [0, 2, 3, 5, 7, 8, 11, 12], leadRoot: 60, style: "chug", kick: "x.xxx.xxx.xx.xxx", snare: "....x.......x..x", hat: "x.x.x.x.x.x.xxxx", seed: 83, leadWave: "sawtooth", swing: 0 },
 ];
@@ -170,7 +170,7 @@ export function createAudio() {
     const music = ctx.createGain();
     const sfx = ctx.createGain();
     master.gain.value = muted ? 0 : 0.9;
-    music.gain.value = 0.65;
+    music.gain.value = 0.3;
     sfx.gain.value = 0.85;
     // eco do solo
     const delay = ctx.createGain();
@@ -336,36 +336,61 @@ export function createAudio() {
     cleanup([sh, fl, g, ...oscs], [oscs[oscs.length - 1]!]);
   };
 
-  const lead = (b: Buses, t: number, m: number, dur: number, wave: OscillatorType, v = 1) => {
+  /** solo de guitarra: serra + quadrada distorcidas, vibrato tardio, bend de entrada e eco */
+  const lead = (b: Buses, t: number, m: number, dur: number, _wave: OscillatorType, v = 1) => {
     if (voices > 38) return;
     const ctx = b.ctx;
-    const o = ctx.createOscillator();
-    o.type = wave;
-    o.frequency.setValueAtTime(mtof(m), t);
+    const f = mtof(m);
+    const bend = m % 3 === 0 ? 1 : m % 5 === 0 ? 2 : 0;
+    const o1 = ctx.createOscillator();
+    const o2 = ctx.createOscillator();
+    o1.type = "sawtooth";
+    o2.type = "square";
+    for (const o of [o1, o2]) {
+      if (bend) {
+        o.frequency.setValueAtTime(f * Math.pow(2, -bend / 12), t);
+        o.frequency.exponentialRampToValueAtTime(f, t + 0.07);
+      } else o.frequency.setValueAtTime(f, t);
+    }
+    o2.detune.value = 6;
     const lfo = ctx.createOscillator();
-    lfo.frequency.value = 5.5;
+    lfo.frequency.value = 5.8;
     const lg = ctx.createGain();
     lg.gain.setValueAtTime(0, t);
-    lg.gain.linearRampToValueAtTime(7, t + dur * 0.7);
+    lg.gain.setValueAtTime(0, t + 0.12);
+    lg.gain.linearRampToValueAtTime(14, t + Math.max(0.2, dur * 0.8));
     lfo.connect(lg);
-    lg.connect(o.detune);
+    lg.connect(o1.detune);
+    lg.connect(o2.detune);
+    const mix = ctx.createGain();
+    mix.gain.value = 0.5;
     const sh = ctx.createWaveShaper();
-    sh.curve = b.softCurve;
-    const g = ctx.createGain();
-    env(g, t, 0.11 * v, 0.01, dur);
+    sh.curve = b.distCurve;
+    const pk = ctx.createBiquadFilter();
+    pk.type = "peaking";
+    pk.frequency.value = 1500;
+    pk.gain.value = 6;
     const fl = ctx.createBiquadFilter();
     fl.type = "lowpass";
-    fl.frequency.value = 3200;
-    o.connect(sh);
-    sh.connect(fl);
+    fl.frequency.value = 4200;
+    const g = ctx.createGain();
+    env(g, t, 0.075 * v, 0.012, dur);
+    const send = ctx.createGain();
+    send.gain.value = 0.45;
+    o1.connect(mix);
+    o2.connect(mix);
+    mix.connect(sh);
+    sh.connect(pk);
+    pk.connect(fl);
     fl.connect(g);
     g.connect(b.music);
-    g.connect(b.delay);
-    o.start(t);
+    g.connect(send);
+    send.connect(b.delay);
+    o1.start(t);
+    o2.start(t);
     lfo.start(t);
-    o.stop(t + dur + 0.08);
-    lfo.stop(t + dur + 0.08);
-    cleanup([o, lfo, lg, sh, g, fl], [o]);
+    for (const o of [o1, o2, lfo]) o.stop(t + dur + 0.1);
+    cleanup([o1, o2, lfo, lg, mix, sh, pk, fl, g, send], [o1]);
   };
 
   const pad = (b: Buses, t: number, m: number, dur: number, v = 1) => {
@@ -442,7 +467,7 @@ export function createAudio() {
     }
 
     // solo: entra na segunda metade do ciclo (ou o tempo todo contra chefes)
-    if (!menu && (bar >= 4 || intense)) {
+    if (!menu && (bar >= 2 || intense)) {
       const n = leadFor(idx)[bar]![s]!;
       if (n >= 0) {
         const nxt = leadFor(idx)[bar]!.findIndex((v, i) => i > s && v >= 0);

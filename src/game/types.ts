@@ -129,7 +129,7 @@ export type Line = { who: string; text: string };
 
 export type Action = "left" | "right" | "up" | "down" | "jump" | "attack" | "form" | "s1" | "s2" | "s3" | "s4" | "potion" | "melee";
 
-export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean; room?: number };
+export type LevelEnt = { kind: Kind; c: number; foot: number; mini?: boolean; room?: number; /** aparência do mini-chefe (um monstro gigante) */ look?: Kind; /** nome próprio do mini-chefe */ name?: string };
 
 /** cômodo da mansão: interior [c0,c1) x [r0,r1) em tiles; floorRow = linha do chão */
 export type Room = { c0: number; c1: number; r0: number; r1: number; floor: number; kind: string; name: string; theme: number };

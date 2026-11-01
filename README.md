@@ -168,3 +168,10 @@ Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey):
 
 - **Câmeras** (botão "Cam N" no HUD, tecla V, pausa, R3 no controle; escolha salva): 1 Lateral, 2 Atrás do herói, 3 Dinâmica (lateral; vai para trás do herói ao se aproximar de espinhos, buracos, molas e colinas), 4 Multi-dinâmica (padrão: dinâmica + cômodo apertado aproxima/"cobertura" + salão afasta + chefe), 5 Aérea.
 - **Controles** via Gamepad API (Bluetooth/USB, PC e celular com navegador compatível): Xbox, PlayStation, Switch Pro e genéricos. Mapa: analógico/direcional = andar e profundidade; A pular; X ou RT tiro; B golpe; Y forma; LB/RB/LT poderes 1-3; RT poder 4 (também tiro); L3 poção; R3 trocar câmera; Select personagem; Start pausa.
+
+## v9.0 — Reinos temáticos, mini-chefes únicos, música de rock
+
+- **25 ambientes diferentes** (src/game/realms.ts): cada reino tem estilo próprio (mansão, caverna/inferno, pântano, cidade de ferro, gelo, ruínas de mármore, jardim, nuvens, ouro), paleta, céu, partículas, paredes (rocha com estalactites, placas rebitadas, cristais de gelo, colunas e arcadas, nuvens), mobília temática (ossos, braseiros, tumbas, espinhos, gárgulas, árvores, fontes, moedas…) e nomes de cômodos próprios.
+- **Monstros por reino** (5 tipos por reino, mais 2 por sala) e **mini-chefes todos diferentes**: cada um é um monstro gigante com nome próprio (ex.: Escrivão de Minos, Glutão Inchado, Guardião do Cofre…). Cada reino tem seu chefe com nome próprio (Caronte, Minos, Cérbero, Pluto, Flégias, Minotauro, Gerião, Lúcifer, Tisífone, Cronos, Catão, Matelda, Beatriz, Zeus…).
+- **Música:** só instrumentos, estilo hard rock/heavy metal (boogie, galope, riff pesado), com solo de guitarra distorcida (bend + vibrato), 70% mais baixa que antes. Composições originais; não reproduzem músicas de bandas.
+- **Mundo Aberto:** o chão e a decoração mudam por região (cada trecho usa o visual do reino correspondente).

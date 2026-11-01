@@ -4,7 +4,8 @@ import { loadCharAsset } from "../engine/skin";
 import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
-import { GROUND, ROWS, TILE, Tile, type HeroId, type Kind, type Level, tileAt } from "./types";
+import { realmWorld } from "./realms";
+import { GROUND, MAIN_LEVELS, ROWS, TILE, Tile, type HeroId, type Kind, type Level, tileAt } from "./types";
 
 export type Spark = { z?: number; x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
 
@@ -162,7 +163,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   function gfxFor(level: Level): Gfx {
     let g = gfxCache.get(level);
     if (g) return g;
-    const world = themedWorld(level.world, level.index % 5);
+    const world = !level.open && !level.bonus && level.index < MAIN_LEVELS ? realmWorld(level.index) : themedWorld(level.world, level.index % 5);
     const parts = buildLevelParts(level, world);
     const base = MOONS[world.id] ?? MOONS[0]!;
     const st = level.index % 5;

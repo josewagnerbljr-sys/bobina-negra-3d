@@ -213,7 +213,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v8.4 · câmeras e controles {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v9.0 · reinos temáticos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>

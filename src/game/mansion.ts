@@ -1,4 +1,5 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
+import { REALM_THEMES } from "./realms";
 import { GROUND, MAIN_LEVELS, ROWS, Tile, type Decor, type Gate, type Kind, type Level, type LevelEnt, type Riser, type Room } from "./types";
 
 /**
@@ -46,6 +47,8 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   const chance = (p: number) => rng() < p;
   // reino (mundo aberto): 9 cômodos por andar, 3 andares, vários guardiões e portões
   const realmMode = !bonus;
+  const theme = realmMode ? REALM_THEMES[i] : undefined;
+  let miniNo = 0;
   const NC = realmMode ? 9 : 5;
   const boss = realmMode ? true : stage === 4;
   const mini = realmMode ? true : stage === 2;
@@ -135,12 +138,12 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
   void st1;
 
   // ---- cômodos e conteúdo
-  const poolA = POOLS[world] ?? POOLS[0]!;
-  const poolB = POOLS[(world + 3) % 10]!;
+  const poolA = theme ? theme.pool : (POOLS[world] ?? POOLS[0]!);
+  const poolB = theme ? REALM_THEMES[(i + 1) % REALM_THEMES.length]!.pool : POOLS[(world + 3) % 10]!;
   const lvPower = Math.floor(i / 10);
   const monsterCount = (kind: string) => {
     const base = kind === "foyer" ? 1 : kind === "boss" ? 0 : kind === "stairs" ? 2 : kind === "armory" || kind === "ballroom" ? 4 : 3;
-    return Math.min(7, base + (stage > 1 ? 1 : 0) + (lvPower > 2 ? 1 : 0) + (chance(0.35) ? 1 : 0));
+    return Math.min(9, base + (realmMode ? 2 : 0) + (stage > 1 ? 1 : 0) + (lvPower > 2 ? 1 : 0) + (chance(0.35) ? 1 : 0));
   };
   const fliesOK = (k: Kind) => ENT[k].behavior === "fly";
   const pickKind = (dest: Kind[] = poolA) => dest[Math.floor(rng() * dest.length)]!;
@@ -203,7 +206,9 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
       else farEnd = f === 1 && j === 0;
     }
     if (farEnd) kind = "boss";
-    const names = KIND_NAME[kind] ?? ["Cômodo"];
+    const names = theme
+      ? kind === "foyer" ? [theme.entry] : kind === "stairs" ? [theme.stairs] : kind === "boss" ? [theme.bossRoom] : theme.rooms
+      : (KIND_NAME[kind] ?? ["Cômodo"]);
     const ri = rooms.length;
     rooms.push({ c0, c1, r0: F - 9, r1: F, floor: F, kind, name: names[(i + j + f) % names.length]!, theme: (j * 3 + f * 5 + i + world * 2) % 6 });
     roomIndex[f]![j] = ri;
@@ -416,7 +421,8 @@ export function buildMansion(i: number, bonus: boolean, world: number, stage: nu
     }
     const miniHere = realmMode ? (f === 0 && j === 4) || (f === 1 && (j === 6 || j === 2)) || (f === 2 && j === 3) : mini && f === 1 && j === 2;
     if (miniHere && kind !== "boss" && !isStair && !aboveStair) {
-      ents.push({ kind: "boss", c: cx + 4, foot: F, mini: true, room: ri });
+      const mn = theme ? theme.minis[miniNo++ % theme.minis.length] : undefined;
+      ents.push({ kind: "boss", c: cx + 4, foot: F, mini: true, room: ri, look: mn?.look, name: mn?.name });
       if (realmMode) gateSpots.push({ f, j, ri });
     }
     if (chance(0.4) && kind !== "boss") ents.push({ kind: "candle", c: c0 + rint(5, c1 - c0 - 6), foot: F, room: ri });

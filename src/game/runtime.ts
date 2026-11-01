@@ -4,11 +4,13 @@ import {
   clearLine,
   deathLine,
   ending,
+  ENT,
   entDef,
   heroById,
   MODES,
   midEnding,
   REALM_PREFACE,
+  REGIONS,
   miniIntro,
   MINI_NAMES,
   POOLS,
@@ -25,6 +27,7 @@ import {
   WORLDS,
 } from "./content";
 import { buildLevel } from "./maps";
+import { REALM_THEMES } from "./realms";
 import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
@@ -68,6 +71,8 @@ const STEP = 1 / 60;
 type Actor = Body & {
   vz?: number;
   room?: number;
+  look?: Kind;
+  name?: string;
   zOff: number;
   kind: Kind;
   hp: number;
@@ -532,10 +537,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       maxHp: maxHp(),
       reel: level ? level.index + 1 : 0,
       reelName: level?.name ?? "",
-      worldName: level ? world.name : "",
+      worldName: level ? (level.open ? "Mundo Aberto" : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
       bonus: Boolean(level?.bonus),
       bossAlive: Boolean(boss),
-      bossName: level?.boss ? world.boss : level?.mini ? (MINI_NAMES[level.world] ?? "Mini-chefe") : "",
+      bossName: nb && boss ? (nb.boss ? (level && level.index < MAIN_LEVELS ? REALM_THEMES[level.index]!.boss : world.boss) : (nb.name ?? MINI_NAMES[level?.world ?? 0] ?? "Mini-chefe")) : "",
       bossHp: boss ? Math.max(0, boss.hp) : 0,
       bossMax: boss ? boss.maxHp : 0,
       formActive: formT > 0,
@@ -588,9 +593,15 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (sparks.length > 180) sparks.splice(0, sparks.length - 180);
   }
 
-  function spawnActor(kind: Kind, c: number, foot: number, ally = false, mini = false): Actor {
+  function spawnActor(kind: Kind, c: number, foot: number, ally = false, mini = false, look?: Kind, name?: string): Actor {
     const world = level?.world ?? 0;
     const def = entDef(kind, world, mini, save.mode);
+    if (mini && look && ENT[look]) {
+      // mini-chefe: um monstro do reino em tamanho gigante, com nome próprio
+      const ld = ENT[look];
+      def.w = Math.max(48, Math.round(ld.w * 1.5));
+      def.h = Math.max(64, Math.round(ld.h * 1.5));
+    }
     const hp = ally ? Math.max(2, Math.round(def.hp * 0.7)) : def.hp;
     const actor: Actor = {
       kind,
@@ -621,6 +632,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       dashT: 0,
       slamT: 0,
       dyT: 0,
+      look: mini && !ally ? look : undefined,
+      name: mini && !ally ? name : undefined,
     };
     actor.z = (level?.rooms || level?.open) && !ally ? actor.zOff * ZW * 1.5 : 0;
     return actor;
@@ -633,7 +646,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     lit = new Set();
     shots = [];
     sparks = [];
-    actors = level.ents.map((e) => { const a = spawnActor(e.kind, e.c, e.foot, false, Boolean(e.mini)); a.room = e.room; return a; });
+    actors = level.ents.map((e) => { const a = spawnActor(e.kind, e.c, e.foot, false, Boolean(e.mini), e.look, e.name); a.room = e.room; return a; });
     loot = [];
     buffs = [];
     opened.clear();
@@ -674,7 +687,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     fx = [];
     bossAlive = actors.some((a) => a.boss);
     prevPotion = true;
-    audio.setWorld(level.world, level.index % 5, level.bonus);
+    audio.setWorld(level.open ? 2 : !level.bonus && level.index < MAIN_LEVELS ? REALM_THEMES[level.index]!.music : level.world, level.index % 5, level.bonus);
     audio.setBoss(level.boss);
     const mark = level.tiles;
     for (let i = 0; i < mark.length; i++) {
@@ -1675,7 +1688,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         // o monstro olha para onde anda (nunca de costas); chefes e parados olham para o herói
         facing: !a.boss && a.behavior !== "still" && Math.abs(a.vx) > 14 ? (a.vx > 0 ? 1 : -1) : a.facing,
         phase: a.phase,
-        kind: a.kind,
+        kind: a.mini && a.look ? a.look : a.kind,
         hero: save.hero,
         form: false,
         hurt: a.hurt > 0,
