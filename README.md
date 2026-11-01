@@ -154,3 +154,8 @@ José Wagner Blanco Júnior · [GitHub](https://github.com/josewagnerbljr-sys)
 - Botão **Voltar** na seleção de personagem (mobile); caminhada lateral e bordas de plataforma corrigidas.
 - Mapa reorganizado por regiões; 10 bis liberados a cada 2–3 reinos. Saves antigos migram automaticamente.
 - Pendências: enigmas/portais invocáveis, mais monstros por reino, desempenho em fases longas.
+
+## v8.2 — Mundo Aberto + câmera
+
+- **Mundo Aberto** (botão no mapa): planície de 300 colunas com profundidade larga (±6 tiles), o herói anda em todas as direções, 25 portais (um por reino; fique parado no portal ~1s para entrar; selados até concluir o reino anterior), monstros por região, baús, ruínas e luzes de checkpoint.
+- Câmera mais próxima do herói; o chefe não puxa mais o enquadramento para fora do herói (limite de 1,6 tile) e o afastamento é só 7%. No Mundo Aberto a câmera sobe para as colinas não taparem o herói.

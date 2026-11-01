@@ -1,6 +1,6 @@
 import { BONUS_NAMES, ENT, POOLS, REEL_NAMES } from "./content";
 import { buildMansion } from "./mansion";
-import { GROUND, MAIN_LEVELS, ROWS, Tile, worldOfLevel, type Kind, type Level, type LevelEnt, type Riser } from "./types";
+import { GROUND, MAIN_LEVELS, OPEN_INDEX, OPEN_Z, ROWS, Tile, type Portal, worldOfLevel, type Kind, type Level, type LevelEnt, type Riser } from "./types";
 
 export function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -465,7 +465,54 @@ function mk(sk: Sketch, i: number, world: number, boss: boolean, mini: boolean, 
   };
 }
 
+/** Mundo Aberto: planície larga onde o herói anda em todas as direções, com 25 portais para os reinos */
+export function buildOpenWorld(): Level {
+  const rnd = mulberry32(31337);
+  const cols = 300;
+  const tiles = new Uint8Array(cols * ROWS);
+  for (let c = 0; c < cols; c++) for (let r = GROUND; r < ROWS; r++) tiles[r * cols + c] = Tile.Solid;
+  const put = (c: number, r: number, t: number) => { if (c > 0 && c < cols - 1 && r >= 0 && r < ROWS) tiles[r * cols + c] = t; };
+  // colinas e ruínas para explorar
+  for (let k = 0; k < 26; k++) {
+    const c0 = 16 + k * 10 + Math.floor(rnd() * 4);
+    const w = 3 + Math.floor(rnd() * 3);
+    const h = rnd() < 0.8 ? 1 : 2;
+    for (let c = c0; c < c0 + w; c++) for (let hh = 1; hh <= h - (c === c0 || c === c0 + w - 1 ? 1 : 0); hh++) put(c, GROUND - hh, Tile.Solid);
+    if (k % 2 === 0) for (let c = c0 + w + 1; c < c0 + w + 4; c++) put(c, GROUND - h - 2, Tile.OneWay);
+  }
+  const portals: Portal[] = [];
+  for (let k = 0; k < MAIN_LEVELS; k++) portals.push({ c: 14 + k * 11, z: ((k * 7) % 5) - 2, realm: k });
+  // pontos de luz a cada 40 colunas
+  for (let c = 30; c < cols - 20; c += 40) { put(c, GROUND - 1, Tile.Checkpoint); }
+  const ents: LevelEnt[] = [];
+  const pool: Kind[][] = [["imp", "mask", "skel"], ["hound", "wraith", "shade"], ["golem", "troll", "ogre"], ["dryad", "thorn", "witch"], ["cherub", "gargoyle", "seraph"]];
+  for (let c = 24; c < cols - 12; c += 6) {
+    if (rnd() < 0.3) continue;
+    const reg = Math.min(4, Math.floor(((c - 14) / 11 / MAIN_LEVELS) * 5));
+    const ps = pool[reg]!;
+    ents.push({ kind: ps[Math.floor(rnd() * ps.length)]!, c, foot: GROUND });
+  }
+  for (let c = 20; c < cols - 10; c += 23) ents.push({ kind: "chest", c: c + Math.floor(rnd() * 4), foot: GROUND });
+  return {
+    index: OPEN_INDEX,
+    name: "O Mundo Aberto",
+    world: 4,
+    boss: false,
+    mini: false,
+    bonus: false,
+    cols,
+    rows: ROWS,
+    tiles,
+    ents,
+    spawn: { c: 6, foot: GROUND },
+    exit: { c: cols - 4, foot: GROUND },
+    open: true,
+    portals,
+  };
+}
+
 export function buildLevel(index: number): Level {
+  if (index === OPEN_INDEX) return buildOpenWorld();
   const i = Math.max(0, Math.min(MAIN_LEVELS + 9, index));
   const bonus = i >= MAIN_LEVELS;
   const world = worldOfLevel(i);

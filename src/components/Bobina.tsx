@@ -122,7 +122,7 @@ export function Bobina() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="hud-title font-display text-lg leading-none text-brass">
-                  {snap.bonus ? "Bis" : "Reino"} {snap.bonus ? snap.reel - 25 : snap.reel}
+                  {snap.reel > 35 ? "Mundo" : snap.bonus ? "Bis" : "Reino"} {snap.reel > 35 ? "" : snap.bonus ? snap.reel - 25 : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
                 <p className="hud-sub mt-1 text-sm text-paper/75">
@@ -205,7 +205,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v8.1 · reinos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v8.2 · mundo aberto {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -359,6 +359,12 @@ export function Bobina() {
                       </div>
                     </div>
                   ))}
+                  <div>
+                    <h3 className="text-sm text-brass">Mundo Aberto</h3>
+                    <button type="button" onClick={() => rtRef.current?.enterReel(35)} className="mt-1 min-h-12 w-full rounded-md border border-brass bg-ink px-3 text-left text-sm text-paper">
+                      Explorar livremente: planície com os 25 portais, monstros, baús e ruínas
+                    </button>
+                  </div>
                   <div>
                     <h3 className="text-sm text-moon">Bis (tesouros)</h3>
                     <div className="mt-1 grid grid-cols-6 gap-1.5">

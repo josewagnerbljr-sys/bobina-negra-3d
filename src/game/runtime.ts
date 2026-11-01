@@ -14,6 +14,7 @@ import {
   POOLS,
   prologue,
   reelWorld,
+  REEL_NAMES,
   SKILLS,
   SKILL_CD,
   SKILL_KEYS,
@@ -36,6 +37,8 @@ import {
   GROUND,
   HERO_IDS,
   MAIN_LEVELS,
+  OPEN_INDEX,
+  OPEN_Z,
   bonusUnlocked,
   MAX_LEVEL,
   POINTS_PER_LEVEL,
@@ -269,8 +272,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let fx: Fx[] = [];
   let curRoom = -1;
   /** meia-profundidade andável nas mansões (px) */
-  const ZW = 1.8 * TILE;
-  const deep = () => Boolean(level?.rooms);
+  let ZW = 1.8 * TILE;
+  let portalT = 0;
+  const deep = () => Boolean(level?.rooms || level?.open);
   const zd = (a: Body, b: Body) => Math.abs((a.z ?? 0) - (b.z ?? 0));
   let skillCd = [0, 0, 0, 0];
   let prevSkill = [false, false, false, false];
@@ -609,12 +613,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       slamT: 0,
       dyT: 0,
     };
-    actor.z = level?.rooms && !ally ? actor.zOff * ZW * 1.5 : 0;
+    actor.z = (level?.rooms || level?.open) && !ally ? actor.zOff * ZW * 1.5 : 0;
     return actor;
   }
 
   function loadLevel(index0: number) {
     level = buildLevel(index0);
+    ZW = (level.open ? OPEN_Z : 1.8) * TILE;
+    portalT = 0;
     lit = new Set();
     shots = [];
     sparks = [];
@@ -1147,6 +1153,24 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
           showToast("Lanterna acesa. O rolo lembra daqui.");
         }
       }
+    }
+
+    if (level.portals && screen === "play") {
+      const pcx = player.x + player.w / 2;
+      let near: (typeof level.portals)[number] | undefined;
+      for (const pt of level.portals) {
+        if (Math.abs(pt.c * TILE + TILE / 2 - pcx) < TILE * 1.3 && Math.abs((player.z ?? 0) - pt.z * TILE) < TILE * 1.6 && player.y + player.h > (GROUND - 3) * TILE) near = pt;
+      }
+      if (near) {
+        if (near.realm + 1 > save.next) {
+          if (portalT === 0) { showToast(`Selado: conclua o reino ${near.realm} para abrir este portal.`); portalT = 2.5; }
+        } else {
+          if (portalT === 0) { showToast(`Reino ${near.realm + 1}: ${REEL_NAMES[near.realm]}. Fique para entrar.`); }
+          portalT = Math.min(portalT, 0) - dt - 0.0001;
+          if (portalT < -0.9) { portalT = 0; api.enterReel(near.realm); return; }
+        }
+      } else if (portalT < 0) portalT = 0;
+      if (portalT > 0) portalT -= dt;
     }
 
     if (level.rooms && screen === "play") {
@@ -1699,6 +1723,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       shake,
       t: clock,
       playing,
+      unlocked: save.next,
       actors: playing ? paintList() : [],
       shots: shots.map((s) => ({ z: s.z ?? 0, x: s.x, y: s.y, w: s.w, h: s.h, color: s.color, vx: s.vx, foe: s.foe, el: s.el })),
       sparks,
@@ -1901,9 +1926,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     enterReel(index0: number) {
       audio.unlock();
-      const total = MAIN_LEVELS + 10;
+      const total = MAIN_LEVELS + 11;
       if (index0 < 0 || index0 >= total) return;
-      if (index0 < MAIN_LEVELS) {
+      if (index0 === OPEN_INDEX) {
+        // sempre liberado
+      } else if (index0 < MAIN_LEVELS) {
         if (index0 + 1 > save.next) return;
       } else if (bonusUnlocked(save.next) < index0 - MAIN_LEVELS + 1) return;
       afterTalk = "play";
@@ -2185,7 +2212,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       save.points = 0;
     }
     selected = hid;
-    const idx = Math.max(0, Math.min(MAIN_LEVELS + 9, Number(q.get("qa")) || 0));
+    const idx = Math.max(0, Math.min(MAIN_LEVELS + 10, Number(q.get("qa")) || 0));
     loadLevel(idx);
     const at = Number(q.get("at"));
     const lv = level as Level | null;

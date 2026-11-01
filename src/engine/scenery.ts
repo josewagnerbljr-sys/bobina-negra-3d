@@ -1,5 +1,5 @@
 import { addBox, addCone, addSphere, hex, m4, mix3, newGeo, type Geo, type Vec3 } from "./gl";
-import { GROUND, ROWS, Tile, type Level } from "../game/types";
+import { GROUND, OPEN_Z, ROWS, Tile, type Level } from "../game/types";
 import type { WorldDef } from "../game/content";
 
 /* Geração procedural do cenário 3D: terreno (blocos), decoração do chão e fundo
@@ -89,9 +89,10 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
   const glow = newGeo();
   const lanterns: Lantern[] = [];
   const { cols } = level;
-  const DBK = level.rooms ? -MANS_Z : D_BACK;
-  const DFR = level.rooms ? MANS_Z : D_FRONT;
+  const DBK = level.open ? -OPEN_Z : level.rooms ? -MANS_Z : D_BACK;
+  const DFR = level.open ? OPEN_Z : level.rooms ? MANS_Z : D_FRONT;
   const T = level.tiles;
+  const ZO = level.open ? OPEN_Z - 0.15 : 2.85;
   const at = (c: number, r: number) => (c < 0 || c >= cols || r < 0 || r >= ROWS ? (c < 0 || c >= cols ? Tile.Solid : Tile.Air) : T[r * cols + c]!);
   const solid = (c: number, r: number) => at(c, r) === Tile.Solid;
 
@@ -128,11 +129,11 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
         addBox(terrain, x0 + 0.09, y0 + 0.09, DFR, x1 - 0.09, y1 - (open ? 0.24 : 0.09), DFR + 0.035, insetCol, { px: false, nx: false, py: false, ny: false, pz: true });
       } else if (t === Tile.OneWay) {
         const wood = mix3(pal.trim, pal.ground, 0.45);
-        addBox(terrain, x0, y1 - 0.24, level.rooms ? -2.85 : -0.85, x1, y1, level.rooms ? 2.85 : 0.85, jitter(wood, 0.12, rnd), { px: !(at(c + 1, r) === Tile.OneWay), nx: !(at(c - 1, r) === Tile.OneWay), py: true, ny: false, pz: true }, jitter(pal.trim, 0.1, rnd));
-        addBox(terrain, x0 + 0.05, y1 - 0.4, level.rooms ? 2.78 : 0.78, x1 - 0.05, y1 - 0.24, level.rooms ? 2.84 : 0.84, pal.groundDark, { px: false, nx: false, py: false, ny: false, pz: true });
+        addBox(terrain, x0, y1 - 0.24, (level.rooms || level.open) ? -ZO : -0.85, x1, y1, (level.rooms || level.open) ? ZO : 0.85, jitter(wood, 0.12, rnd), { px: !(at(c + 1, r) === Tile.OneWay), nx: !(at(c - 1, r) === Tile.OneWay), py: true, ny: false, pz: true }, jitter(pal.trim, 0.1, rnd));
+        addBox(terrain, x0 + 0.05, y1 - 0.4, (level.rooms || level.open) ? ZO - 0.07 : 0.78, x1 - 0.05, y1 - 0.24, (level.rooms || level.open) ? ZO - 0.01 : 0.84, pal.groundDark, { px: false, nx: false, py: false, ny: false, pz: true });
         if (c % 3 === 0) addBox(terrain, x0 + 0.42, y1 - 0.7, -0.05, x0 + 0.58, y1 - 0.24, 0.05, pal.groundDark, { ny: false });
       } else if (t === Tile.Spike) {
-        addBox(terrain, x0, y0, level.rooms ? -2.9 : -0.9, x1, y0 + 0.14, level.rooms ? 2.9 : 0.9, pal.groundDark, { ny: false });
+        addBox(terrain, x0, y0, (level.rooms || level.open) ? -ZO - 0.05 : -0.9, x1, y0 + 0.14, (level.rooms || level.open) ? ZO + 0.05 : 0.9, pal.groundDark, { ny: false });
         const steel: Vec3 = [0.82, 0.84, 0.88];
         for (let k = 0; k < 3; k++) {
           for (const z of level.rooms ? [-2.5, -1.7, -0.9, -0.1, 0.7, 1.5, 2.3] : [-0.45, 0.35]) {
@@ -156,15 +157,16 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
     }
   }
 
+  const WZ = level.open ? OPEN_Z + 0.3 : 3.2;
   // paredes laterais da fase e abismo
   const wallCol = pal.groundDark;
-  addBox(terrain, -16, -8, -3.3, 0, ROWS + 10, 3.2, wallCol, { px: true, nx: false, py: true, pz: true });
-  addBox(terrain, cols, -8, -3.3, cols + 16, ROWS + 10, 3.2, wallCol, { px: false, nx: true, py: true, pz: true });
-  addBox(terrain, 0, -8, -3.3, cols, 0.0, 3.2, mix3(pal.groundDark, [0, 0, 0], 0.55), { px: false, nx: false, py: true, pz: true });
+  addBox(terrain, -16, -8, -WZ-0.1, 0, ROWS + 10, WZ, wallCol, { px: true, nx: false, py: true, pz: true });
+  addBox(terrain, cols, -8, -WZ-0.1, cols + 16, ROWS + 10, WZ, wallCol, { px: false, nx: true, py: true, pz: true });
+  addBox(terrain, 0, -8, -WZ-0.1, cols, 0.0, WZ, mix3(pal.groundDark, [0, 0, 0], 0.55), { px: false, nx: false, py: true, pz: true });
   // listras verticais nas paredes
   for (let i = 0; i < 5; i++) {
-    addBox(terrain, -16 + i * 3, 0, 3.2, -15 + i * 3, ROWS + 10, 3.24, mix3(wallCol, pal.trim, 0.12), { px: false, nx: false, py: false, ny: false, pz: true });
-    addBox(terrain, cols + 1 + i * 3, 0, 3.2, cols + 2 + i * 3, ROWS + 10, 3.24, mix3(wallCol, pal.trim, 0.12), { px: false, nx: false, py: false, ny: false, pz: true });
+    addBox(terrain, -16 + i * 3, 0, WZ, -15 + i * 3, ROWS + 10, WZ + 0.04, mix3(wallCol, pal.trim, 0.12), { px: false, nx: false, py: false, ny: false, pz: true });
+    addBox(terrain, cols + 1 + i * 3, 0, WZ, cols + 2 + i * 3, ROWS + 10, WZ + 0.04, mix3(wallCol, pal.trim, 0.12), { px: false, nx: false, py: false, ny: false, pz: true });
   }
 
   let roomLights: RoomLight[] = [];
@@ -172,8 +174,8 @@ export function buildLevelParts(level: Level, world: WorldDef): LevelParts {
   // enfeites do chão
   for (let c = 1; c < cols - 1 && !level.rooms; c++) {
     if (!solid(c, GROUND) || solid(c, GROUND - 1)) continue;
-    if (rnd() > 0.2) continue;
-    const z = -0.3 - rnd() * 0.55; // sempre atrás da pista, para nunca esconder o herói
+    if (rnd() > (level.open ? 0.5 : 0.2)) continue;
+    const z = level.open ? -2.4 - rnd() * 3.2 : -0.3 - rnd() * 0.55; // sempre atrás da pista, para nunca esconder o herói
     decor(terrain, glow, world.id, c + 0.2 + rnd() * 0.6, ROWS - GROUND, z, rnd, pal);
   }
 

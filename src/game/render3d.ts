@@ -51,6 +51,7 @@ export type Frame = {
   shake: number;
   t: number;
   playing: boolean;
+  unlocked?: number;
   actors: Paint[];
   shots: ShotPaint[];
   sparks: Spark[];
@@ -310,7 +311,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const L = g.level;
 
     // câmera: mais próxima, presa ao herói, orbita para trás dele (ângulo 3/4) e abre da visão 2D lateral
-    const visH = Math.max(5.0, 8.0 / aspect);
+    const visH = Math.max(3.7, 5.7 / aspect);
     const dist0 = visH / 2 / Math.tan(FOV / 2);
     let cx: number;
     let cy: number;
@@ -345,20 +346,21 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const intro = cam.t >= 99 ? 1 : Math.min(1, cam.t / 3.4);
       const ease = intro * intro * (3 - 2 * intro);
       // chefe por perto: abre o plano para ver chão, cenário e chefe
-      const bossNear = cam.boss && Math.abs(cam.boss.x * S - hx) < 15 ? 1 : 0;
+      const bossNear = cam.boss && Math.abs(cam.boss.x * S - hx) < 11 ? 1 : 0;
       camBossK += (bossNear - camBossK) * (1 - Math.exp(-1.6 * dt));
       const cineOn = cam.cine ? 1 : 0;
       camCineK += (cineOn - camCineK) * (1 - Math.exp(-2.4 * dt));
       // ângulo: atrás do herói, mais forte em movimento
       const yawT = (fo.facing >= 0 ? 1 : -1) * (0.26 + 0.16 * cam.moving) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-1.3 * dt));
-      const rT = (1.5 - 0.92 * ease) * (1 + 0.22 * camBossK) * (1 - 0.18 * camCineK);
+      const rT = (1.5 - 0.98 * ease) * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
       let ay = camPY;
       if (cam.boss && camBossK > 0.01) {
-        ax += (cam.boss.x * S - ax) * 0.34 * camBossK;
-        ay += (ROWS - cam.boss.y * S + 0.3 - ay) * 0.2 * camBossK;
+        // o herói nunca sai do enquadramento: o chefe puxa no máximo 1.6 tile
+        ax += Math.max(-1.6, Math.min(1.6, (cam.boss.x * S - ax) * 0.2)) * camBossK;
+        ay += Math.max(-0.5, Math.min(0.5, (ROWS - cam.boss.y * S + 0.3 - ay) * 0.1)) * camBossK;
       }
       if (cam.cine && camCineK > 0.01) {
         ax += (cam.cine.x * S - ax) * camCineK;
@@ -370,7 +372,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const sh = f.shake * 0.012;
       const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
-      const lift = 1.0 + 0.9 * (1 - camCineK * 0.8);
+      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1);
       at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, camPZ];
       eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), camPZ + Math.cos(yaw) * R];
       camCX = cx;
@@ -428,6 +430,27 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
           m4.compose(tmpBlob, [gx, gb + yy, 0], [0, 0, 0], [gt.w, 0.16, 2.0]);
           e.draw(e.prims.cube, tmpBlob, { color: [0.5, 0.36, 0.14] as Vec3 });
         }
+      }
+    }
+
+    if (L.portals) {
+      const unlocked = f.unlocked ?? 99;
+      for (const pt of L.portals) {
+        if (!near(pt.c)) continue;
+        const open = pt.realm + 1 <= unlocked;
+        const px = pt.c + 0.5;
+        const pb = ROWS - GROUND;
+        const hue: Vec3 = pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
+        const col: Vec3 = open ? hue : [0.35, 0.35, 0.4];
+        const pulse = 0.85 + 0.15 * Math.sin(f.t * 3 + pt.c);
+        for (const sx of [-1.1, 1.1]) {
+          m4.compose(tmpBlob, [px + sx, pb + 1.6, pt.z], [0, 0, 0], [0.5, 3.2, 0.5]);
+          e.draw(e.prims.cube, tmpBlob, { color: [0.28, 0.26, 0.3] as Vec3 });
+        }
+        m4.compose(tmpBlob, [px, pb + 3.35, pt.z], [0, 0, 0], [2.9, 0.5, 0.6]);
+        e.draw(e.prims.cube, tmpBlob, { color: [0.34, 0.3, 0.34] as Vec3 });
+        m4.compose(tmpBlob, [px, pb + 1.6, pt.z], [0, 0, 0], [1.7, 3.0, 0.08]);
+        e.draw(e.prims.cube, tmpBlob, { color: col, emis: open ? [col[0] * pulse, col[1] * pulse, col[2] * pulse] : [0, 0, 0], unlit: open });
       }
     }
 

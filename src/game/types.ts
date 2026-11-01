@@ -32,6 +32,10 @@ export const worldOfLevel = (i: number) => (i >= MAIN_LEVELS ? i - MAIN_LEVELS :
 export const bonusUnlocked = (next: number) => Math.min(10, Math.floor((next - 1) / 2.5));
 export const BONUS_LEVELS = 10;
 export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
+/** índice especial do Mundo Aberto (hub explorável em todas as direções) */
+export const OPEN_INDEX = MAIN_LEVELS + BONUS_LEVELS;
+/** meia-profundidade (em tiles) do Mundo Aberto */
+export const OPEN_Z = 6;
 
 export type ItemSlot = "gem" | "potion" | "weapon" | "offhand" | "helmet" | "necklace" | "ring" | "armor" | "cape" | "gloves" | "pants" | "boots";
 export type Rarity = 0 | 1 | 2 | 3 | 4;
@@ -147,10 +151,16 @@ export type Level = {
   risers?: Riser[];
   /** portões que se abrem quando o guardião do cômodo cai */
   gates?: Gate[];
+  /** mundo aberto: profundidade larga e portais para os reinos */
+  open?: boolean;
+  portals?: Portal[];
   /** mansão: cômodos e decoração; ausente nos mapas antigos */
   rooms?: Room[];
   decor?: Decor[];
 };
+
+/** portal para um reino (índice 0..24); z em tiles */
+export type Portal = { c: number; z: number; realm: number };
 
 /** portão: bloqueia a porta (3 tiles) até o guardião do cômodo `room` ser derrotado */
 export type Gate = { c: number; w: number; f: number; room: number; open: boolean };
