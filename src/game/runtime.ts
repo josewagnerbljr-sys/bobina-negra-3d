@@ -129,6 +129,7 @@ export type Runtime = {
   continueGame: () => void;
   pickHero: (hero: HeroId) => void;
   enterReel: (index0: number) => void;
+  playOpen: () => void;
   advanceDialogue: () => void;
   skipDialogue: () => void;
   openChar: () => void;
@@ -2518,6 +2519,17 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       afterTalk = "first";
       level = null;
       emit();
+    },
+    playOpen() {
+      audio.unlock();
+      audio.ui();
+      const loaded = loadSave();
+      if (loaded) {
+        save = loaded;
+        hasSave = true;
+        selected = save.hero;
+      }
+      api.enterReel(OPEN_INDEX);
     },
     continueGame() {
       audio.unlock();

@@ -343,7 +343,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const cam = f.cam ?? { t: 99, moving: 0, boss: null, cine: null };
       const hx = fo.x * S;
       const hy = ROWS - fo.y * S;
-      const lookX = fo.facing * ((f.cam?.mode ?? 3) === 1 ? 4.4 : 1.8);
+      const lookX = fo.facing * ((f.cam?.mode ?? 3) === 1 ? 3.2 : 1.8);
       const tx = hx + lookX;
       if (!camInit) {
         camPX = tx;
@@ -378,7 +378,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const tightNow = spaceNow > 0 ? Math.max(0, Math.min(1, (22 - spaceNow) / 12)) : 0;
       let yawAbs: number;
       if (cmode === 0) yawAbs = 0.05;
-      else if (cmode === 1) yawAbs = 1.38;
+      else if (cmode === 1) yawAbs = 1.2;
       else if (cmode === 2) yawAbs = 0.08 + camHz * 0.95;
       else if (cmode === 4) yawAbs = 0.3;
       else yawAbs = 0.1 + 0.12 * cam.moving + Math.max(camHz, tightNow * 0.55) * 0.9;
@@ -390,7 +390,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const tightK = spaceT > 0 ? Math.max(0, Math.min(1, (22 - spaceT) / 12)) : 0;
       const wideK = L.open ? 1 : spaceT > 0 ? Math.max(0, Math.min(1, (spaceT - 30) / 20)) : 0;
       camSP += ((1 - 0.16 * tightK + 0.12 * wideK + 0.07 * cam.moving + (fo.grounded ? 0 : 0.05)) - camSP) * (1 - Math.exp(-1.2 * dt));
-      const modeDist = cmode === 0 ? 1.1 : cmode === 1 ? 1.9 : cmode === 4 ? 1.2 : cmode === 2 ? 1.08 - 0.12 * camHz : 1;
+      const modeDist = cmode === 0 ? 1.1 : cmode === 1 ? 1.45 : cmode === 4 ? 1.2 : cmode === 2 ? 1.08 - 0.12 * camHz : 1;
       const rT = (1.5 - 0.92 * ease) * (cmode === 3 ? camSP : 1) * modeDist * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
@@ -410,7 +410,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const sh = f.shake * 0.012;
       const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
-      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1) * (cmode === 4 ? 2.4 : cmode === 1 ? 2.3 : 1);
+      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1) * (cmode === 4 ? 2.4 : cmode === 1 ? 1.8 : 1);
       at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, camPZ];
       eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), camPZ + Math.cos(yaw) * R];
       if (L.open && cam.open) {

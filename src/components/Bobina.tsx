@@ -230,7 +230,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v10.0 · mundo aberto ilimitado {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v10.1 · mundo aberto direto {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -259,6 +259,7 @@ export function Bobina() {
                       <Ghost onClick={() => setConfirmNew(false)}>Voltar</Ghost>
                     </>
                   )}
+                  {!confirmNew && <Primary onClick={() => rtRef.current?.playOpen()}>Mundo Aberto · explorar livre</Primary>}
                   <Ghost onClick={() => rtRef.current?.openHelp(true)}>Como se joga</Ghost>
                   <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Som: mudo" : "Som: ligado"}</Ghost>
                 </div>
