@@ -1,5 +1,7 @@
+import { CH, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
+import { buildChunkMesh } from "../engine/openmesh";
 import { moodFor, tintSky, tintLight, drawAmbientOpaque, drawAmbientBlend, type AmbientCtx } from "./ambient";
-import { Engine, hex, m4, mix3, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
+import { Engine, hex, m4, mix3, type Geo, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
 import { loadCharAsset } from "../engine/skin";
 import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
@@ -35,6 +37,8 @@ export type Paint = {
   dying?: number;
   mini?: boolean;
   gear?: GearLook;
+  /** mundo aberto: direção do corpo (rad, 0 = +z) */
+  yaw?: number;
 };
 
 export type LootPaint = { z?: number; x: number; y: number; color: string; rarity: number; t: number; slot: string; fam: string; acc: string };
@@ -42,6 +46,8 @@ export type LootPaint = { z?: number; x: number; y: number; color: string; rarit
 export type Fx = { z?: number; kind: "wave" | "slash" | "pillar" | "nova" | "blast" | "bolt"; x: number; y: number; t: number; max: number; color: string; r: number; dir: number; el?: string };
 
 export type ShotPaint = { z?: number; x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
+
+export type OpenCam = { yaw: number; pitch: number; dist: number; look: number; offX: number; night: number; jump: number; tele: { x: number; z: number; r: number; k: number; c: string }[] };
 
 export type Frame = {
   level: Level | null;
@@ -63,7 +69,7 @@ export type Frame = {
   flash: number;
   loot: LootPaint[];
   /** câmera dinâmica: tempo de fase, chefe próximo e alvo de cinemática */
-  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null; /** largura do cômodo em tiles (0 = espaço aberto) */ space?: number; mode?: number; hazard?: number };
+  cam?: { t: number; moving: number; boss: { x: number; y: number } | null; cine: { x: number; y: number } | null; /** largura do cômodo em tiles (0 = espaço aberto) */ space?: number; mode?: number; hazard?: number; open?: OpenCam };
 };
 
 const S = 1 / TILE;
@@ -104,6 +110,10 @@ const MOONS: { c: string; p: [number, number]; stars: number }[] = [
   { c: "#fff6c0", p: [0.5, 0.86], stars: 0.7 },
   { c: "#ff6a4a", p: [0.72, 0.7], stars: 0.6 },
 ];
+
+function tinyGeo(): Geo {
+  return { pos: [0, 0, 0, 0, 0.001, 0, 0.001, 0, 0], nor: [0, 1, 0, 0, 1, 0, 0, 1, 0], col: [0, 0, 0, 0, 0, 0, 0, 0, 0], idx: [0, 1, 2] };
+}
 
 function lightingFor(w: WorldDef): Lighting {
   const sky2 = hex(w.sky2);
@@ -164,7 +174,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     let g = gfxCache.get(level);
     if (g) return g;
     const world = !level.open && !level.bonus && level.index < MAIN_LEVELS ? realmWorld(level.index) : themedWorld(level.world, level.index % 5);
-    const parts = buildLevelParts(level, world);
+    const parts: LevelParts = level.open ? { terrain: tinyGeo(), back: tinyGeo(), glow: tinyGeo(), lanterns: [], lights: [] } : buildLevelParts(level, world);
     const base = MOONS[world.id] ?? MOONS[0]!;
     const st = level.index % 5;
     // a lua muda de lugar (e de brilho) a cada fase
@@ -249,6 +259,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       // anda em profundidade: o corpo vira para onde caminha (de frente ou de costas para a câmera)
       target = Math.atan2(p.vx, vzp) - 0.5 * Math.sign(p.vx || 0) * (Math.abs(p.vx) / Math.max(1, spd));
     }
+    if (p.yaw !== undefined) target = p.yaw;
     const cur = yawOf.get(m) ?? target;
     const dAng = ((target - cur + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
     const next = cur + dAng * (1 - Math.exp(-16 * dt));
@@ -269,6 +280,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const formPrev = new WeakMap<object, boolean>();
   const bursts: { x: number; y: number; foot: number; t0: number; c: Vec3; on: boolean }[] = [];
   let camInit = false;
+  let openInit = false;
+  let openJump = 0;
+  let camOX = 0;
+  let camOZ = 0;
+  let camOY = 0;
+  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh }>();
   let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
@@ -326,7 +343,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const cam = f.cam ?? { t: 99, moving: 0, boss: null, cine: null };
       const hx = fo.x * S;
       const hy = ROWS - fo.y * S;
-      const lookX = fo.facing * 1.8;
+      const lookX = fo.facing * ((f.cam?.mode ?? 3) === 1 ? 4.4 : 1.8);
       const tx = hx + lookX;
       if (!camInit) {
         camPX = tx;
@@ -361,11 +378,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const tightNow = spaceNow > 0 ? Math.max(0, Math.min(1, (22 - spaceNow) / 12)) : 0;
       let yawAbs: number;
       if (cmode === 0) yawAbs = 0.05;
-      else if (cmode === 1) yawAbs = 1.0;
+      else if (cmode === 1) yawAbs = 1.38;
       else if (cmode === 2) yawAbs = 0.08 + camHz * 0.95;
       else if (cmode === 4) yawAbs = 0.3;
       else yawAbs = 0.1 + 0.12 * cam.moving + Math.max(camHz, tightNow * 0.55) * 0.9;
-      const yawT = (fo.facing >= 0 ? 1 : -1) * Math.min(1.1, yawAbs) * ease * (1 - 0.5 * camBossK);
+      const yawT = (fo.facing >= 0 ? 1 : -1) * Math.min(cmode === 1 ? 1.45 : 1.1, yawAbs) * ease * (1 - 0.5 * camBossK);
       camYawS += (yawT - camYawS) * (1 - Math.exp(-(cmode === 3 || cmode === 2 ? 2.4 : 1.3) * dt));
       // câmera de seguimento por contexto (estilo Zelda/Uncharted): corrida abre um pouco,
       // espaço apertado (cômodo estreito) aproxima como "cobertura", salão/mundo aberto afasta
@@ -373,7 +390,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const tightK = spaceT > 0 ? Math.max(0, Math.min(1, (22 - spaceT) / 12)) : 0;
       const wideK = L.open ? 1 : spaceT > 0 ? Math.max(0, Math.min(1, (spaceT - 30) / 20)) : 0;
       camSP += ((1 - 0.16 * tightK + 0.12 * wideK + 0.07 * cam.moving + (fo.grounded ? 0 : 0.05)) - camSP) * (1 - Math.exp(-1.2 * dt));
-      const modeDist = cmode === 0 ? 1.1 : cmode === 1 ? 0.95 : cmode === 4 ? 1.2 : cmode === 2 ? 1.08 - 0.12 * camHz : 1;
+      const modeDist = cmode === 0 ? 1.1 : cmode === 1 ? 1.9 : cmode === 4 ? 1.2 : cmode === 2 ? 1.08 - 0.12 * camHz : 1;
       const rT = (1.5 - 0.92 * ease) * (cmode === 3 ? camSP : 1) * modeDist * (1 + 0.07 * camBossK) * (1 - 0.18 * camCineK);
       camRS += (rT - camRS) * (1 - Math.exp(-2.0 * dt));
       let ax = camPX;
@@ -393,9 +410,40 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const sh = f.shake * 0.012;
       const R = dist0 * camRS * qaZoom;
       const yaw = camYawS * (1 - camCineK) + Math.sin(f.t * 0.5) * 0.3 * camCineK;
-      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1) * (cmode === 4 ? 2.4 : cmode === 1 ? 1.25 : 1);
+      const lift = (1.0 + 0.9 * (1 - camCineK * 0.8)) * (L.open ? 1.9 : 1) * (cmode === 4 ? 2.4 : cmode === 1 ? 2.3 : 1);
       at = [cx + (Math.random() - 0.5) * sh * 2, cy - 0.1 + (Math.random() - 0.5) * sh * 2, camPZ];
       eye = [at[0] - Math.sin(yaw) * R, at[1] + lift * (0.6 + 0.4 * camRS / 1.5), camPZ + Math.cos(yaw) * R];
+      if (L.open && cam.open) {
+        // mundo aberto: câmera orbital (yaw/pitch/distância vêm do jogo) com antecipação do que vem à frente
+        const o = cam.open;
+        if (o.jump !== openJump) {
+          openJump = o.jump;
+          camInit = false;
+          openInit = false;
+        }
+        const hzw = (fo.z ?? 0) * S;
+        const fx = Math.sin(o.yaw);
+        const fz = -Math.cos(o.yaw);
+        const tx2 = hx + fx * o.look;
+        const tz2 = hzw + fz * o.look;
+        if (!openInit) {
+          camOX = tx2;
+          camOZ = tz2;
+          camOY = hy;
+          openInit = true;
+        }
+        const kk = 1 - Math.exp(-7 * dt);
+        camOX += (tx2 - camOX) * kk;
+        camOZ += (tz2 - camOZ) * kk;
+        camOY += (hy - camOY) * (1 - Math.exp(-3 * dt));
+        const sh2 = f.shake * 0.01;
+        const rh = o.dist * Math.cos(o.pitch);
+        const rv = o.dist * Math.sin(o.pitch);
+        at = [camOX + (Math.random() - 0.5) * sh2, camOY + 0.9, camOZ + (Math.random() - 0.5) * sh2];
+        eye = [at[0] - fx * rh, at[1] + rv, at[2] - fz * rh];
+        cx = hx;
+        cy = hy;
+      }
       camCX = cx;
       camCY = cy;
     } else {
@@ -410,18 +458,78 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       at = [cx, cy - 0.15, 0];
     }
     const halfW = (Math.max(5.2, 9.0 / aspect) * aspect) / 2 * 1.2 + 6;
-    const near = (xTiles: number) => Math.abs(xTiles - cx) < halfW;
-    e.begin(g.world ? hex(g.world.fog) : [0, 0, 0]);
+    const isOpen = Boolean(L.open && f.playing && f.cam?.open);
+    const near = isOpen ? () => true : (xTiles: number) => Math.abs(xTiles - cx) < halfW;
+    const oc = isOpen ? f.cam!.open! : null;
+    const night = oc ? oc.night : 0;
+    const dk = (c: Vec3, k = 1 - 0.58 * night): Vec3 => [c[0] * k, c[1] * k, c[2] * k * (1 - 0.1 * night + 0.1)];
+    let osky: ReturnType<typeof skyAt> | null = null;
+    let owx = 0;
+    let owz = 0;
+    if (oc) {
+      owx = f.focus!.x - OW_ORIGIN_X + oc.offX;
+      owz = f.focus!.z ?? 0;
+      osky = skyAt(owx, owz);
+    }
+    e.begin(osky ? dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75)) : g.world ? hex(g.world.fog) : [0, 0, 0]);
     e.setCamera(eye, at, FOV, 0.5, 260);
 
     const mood = moodFor(L.index % 5, f.playing ? heroX / Math.max(1, L.cols) : 0.3, f.t);
-    e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
-    e.useLit(tintLight(g.light, mood, moodLight));
+    if (osky) {
+      const skyB = (c: number[]) => dk([Math.min(1, c[0]! * 1.5 + 0.04), Math.min(1, c[1]! * 1.5 + 0.04), Math.min(1, c[2]! * 1.5 + 0.06)] as Vec3);
+      e.drawSky(skyB(osky.top), skyB(osky.mid), skyB(osky.bot), f.t, Math.min(1, 0.15 + night * 0.85), g.sky.moon, [0.7, 0.8], [owx * 0.00004, 0]);
+      const fg = dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75));
+      const base = tintLight(g.light, mood, moodLight);
+      const sk = mix3(dk(osky.bot as Vec3), [1, 1, 1], 0.45);
+      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 24, fogFar: 72 });
+    } else {
+      e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
+      e.useLit(tintLight(g.light, mood, moodLight));
+    }
 
     // estáticos
     e.draw(g.back, null, { cel: false });
     e.draw(g.glow, null, { unlit: true });
     e.draw(g.terrain, null, {});
+    const openGlows: { x: number; y: number; z: number; s: number; c: Vec3; a: number }[] = [];
+    if (oc) {
+      const R = 3;
+      const ci0 = Math.floor(owx / CH);
+      const cj0 = Math.floor(owz / CH);
+      const tr = (OW_ORIGIN_X - oc.offX) / TILE;
+      m4.compose(tmpBlob, [tr, 0, 0], [0, 0, 0], [1, 1, 1]);
+      let built = 0;
+      for (let j = cj0 - R; j <= cj0 + R; j++) {
+        for (let i = ci0 - R; i <= ci0 + R; i++) {
+          const key = `${i},${j}`;
+          let mh = openMeshes.get(key);
+          if (!mh) {
+            if (built >= (openMeshes.size < 8 ? 49 : 3)) continue;
+            built++;
+            const cm = buildChunkMesh(i, j);
+            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow) };
+            openMeshes.set(key, mh);
+          }
+          e.draw(mh.solid, tmpBlob, {});
+          e.draw(mh.glow, tmpBlob, { unlit: true });
+          for (const st of chunkAt(i, j).sites) {
+            if (st.kind === "camp") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 0.7, z: st.z / TILE, s: 3.2, c: [1, 0.55, 0.2], a: 0.5 });
+            else if (st.kind === "shrine") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 1.9, z: st.z / TILE, s: 3.4, c: [0.6, 1, 0.85], a: 0.55 });
+            else if (st.kind === "elite") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 0.4, z: st.z / TILE, s: 3.4, c: [1, 0.2, 0.2], a: 0.3 });
+          }
+        }
+      }
+      if (openMeshes.size > 130) {
+        for (const [k, v] of openMeshes) {
+          const [a, b] = k.split(",").map(Number);
+          if (Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
+            e.free(v.solid);
+            e.free(v.glow);
+            openMeshes.delete(k);
+          }
+        }
+      }
+    }
     if (L.risers) {
       const gc = hex(g.world.ground);
       const tc = g.trim;
@@ -454,7 +562,27 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       }
     }
 
-    if (L.portals) {
+    if (L.portals && oc) {
+      const unlocked = f.unlocked ?? 99;
+      for (const pt of L.portals) {
+        const open = pt.realm + 1 <= unlocked;
+        const px = pt.c + 0.5;
+        const pb = ROWS - GROUND;
+        const hue: Vec3 = pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
+        const col: Vec3 = open ? hue : [0.35, 0.35, 0.4];
+        const pulse = 0.85 + 0.15 * Math.sin(f.t * 3 + pt.c);
+        for (let k = 0; k < 4; k++) {
+          const a = (k / 4) * Math.PI * 2 + 0.4;
+          m4.compose(tmpBlob, [px + Math.cos(a) * 1.5, pb + 1.4, pt.z + Math.sin(a) * 1.5], [0, a, 0], [0.45, 2.8, 0.45]);
+          e.draw(e.prims.cube, tmpBlob, { color: [0.28, 0.26, 0.3] as Vec3 });
+        }
+        m4.compose(tmpBlob, [px, pb + 0.06, pt.z], [-Math.PI / 2, f.t * 0.6, 0], [3.2, 3.2, 0.02]);
+        e.draw(e.prims.ring, tmpBlob, { color: col, emis: [col[0] * pulse, col[1] * pulse, col[2] * pulse], unlit: true });
+        m4.compose(tmpBlob, [px, pb + 4, pt.z], [0, 0, 0], [0.9 * pulse, 8, 0.9 * pulse]);
+        e.draw(e.prims.cyl, tmpBlob, { color: col, unlit: true, soft: true, alpha: open ? 0.3 : 0.12 });
+        openGlows.push({ x: px, y: pb + 1.6, z: pt.z, s: 5.5, c: col, a: open ? 0.45 : 0.15 });
+      }
+    } else if (L.portals) {
       const unlocked = f.unlocked ?? 99;
       for (const pt of L.portals) {
         if (!near(pt.c)) continue;
@@ -478,7 +606,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if (!ambInit) { ambBase = cy; ambInit = true; }
     ambBase += (cy - ambBase) * (1 - Math.exp(-0.35 * dt));
     const ambCtx: AmbientCtx = { base: ambBase, e, wid: g.world ? g.world.id : 0, t: f.t, cx, cy: ROWS - GROUND + 2.6, halfW, mood, dark: [0.04, 0.04, 0.07], accent: g.accent, fog: mood.flash > 0 ? [0.9, 0.93, 1] : tintSky(hex(g.world ? g.world.fog : "#444455"), mood), hero: null, glow: glowSprite, tmp: tmpBlob };
-    drawAmbientOpaque(ambCtx);
+    if (!oc) drawAmbientOpaque(ambCtx);
 
     // lanternas dos checkpoints
     for (const lan of g.parts.lanterns) {
@@ -584,7 +712,19 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       m4.compose(tmpBlob, [sh.x, sh.y + 0.035, 0.1 + sh.z], [-Math.PI / 2, 0, 0], [k * 2.1, k * 1.5, 0.02]);
       e.draw(e.prims.sphere, tmpBlob, { color: [0.0, 0.0, 0.01], unlit: true, soft: true, alpha: a });
     }
-    drawAmbientBlend(ambCtx);
+    if (!oc) drawAmbientBlend(ambCtx);
+    else {
+      for (const gl2 of openGlows) glowSprite(gl2.x, gl2.y, gl2.z, gl2.s * (0.9 + 0.1 * Math.sin(f.t * 8 + gl2.x)), gl2.c, gl2.a);
+      for (const tl of oc.tele) {
+        const tx3 = tl.x * S;
+        const tz3 = tl.z * S;
+        const kr = tl.r * S;
+        m4.compose(tmpBlob, [tx3, ROWS - GROUND + 0.07, tz3], [-Math.PI / 2, 0, 0], [kr * 2, kr * 2, 0.02]);
+        e.draw(e.prims.sphere, tmpBlob, { color: col(tl.c), unlit: true, soft: true, alpha: 0.15 + 0.5 * tl.k });
+        m4.compose(tmpBlob, [tx3, ROWS - GROUND + 0.1, tz3], [-Math.PI / 2, 0, 0], [kr * 2.1 * (1 - tl.k * 0.9), kr * 2.1 * (1 - tl.k * 0.9), 0.02]);
+        e.draw(e.prims.sphere, tmpBlob, { color: [1, 1, 1], unlit: true, soft: true, alpha: 0.35 });
+      }
+    }
     for (const lg of g.parts.lights) {
       if (!near(lg.x)) continue;
       const fl = 0.8 + 0.2 * Math.sin(f.t * (7 + lg.k * 5) + lg.k * 40) + 0.08 * Math.sin(f.t * 23 + lg.k * 9);

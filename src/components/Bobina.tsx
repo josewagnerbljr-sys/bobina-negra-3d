@@ -164,6 +164,23 @@ export function Bobina() {
                 )}
               </div>
             </div>
+            {playing && snap.open && (
+              <div className="pointer-events-none flex items-center gap-3 rounded-md border border-paper/20 bg-panel/80 px-3 py-1.5 text-xs text-paper/90">
+                <span className="relative grid size-9 shrink-0 place-items-center rounded-full border border-brass/60" aria-label="Bússola do próximo portal">
+                  <span className="absolute text-[9px] text-paper/50" style={{ top: 1 }}>N</span>
+                  <span className="block h-0 w-0 border-x-[5px] border-b-[13px] border-x-transparent border-b-brass" style={{ transform: `rotate(${snap.open.rel}rad)`, transformOrigin: "50% 70%" }} />
+                </span>
+                <span className="min-w-0 leading-tight">
+                  <span className="block truncate text-paper">{snap.open.region}</span>
+                  <span className="block text-paper/60">Portal: {snap.open.target} · {snap.open.dist} passos · X {snap.open.wx} Z {snap.open.wz} · {snap.open.night > 0.5 ? "Noite" : snap.open.night > 0.15 ? "Anoitecendo" : "Dia"}</span>
+                  {snap.open.hazard && <span className="block font-bold text-blood">Perigo: {snap.open.hazard}</span>}
+                </span>
+                <span className="pointer-events-auto ml-auto flex gap-1">
+                  <button type="button" aria-label="Girar câmera para a esquerda" onClick={() => rtRef.current?.camRot(-1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟲</button>
+                  <button type="button" aria-label="Girar câmera para a direita" onClick={() => rtRef.current?.camRot(1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟳</button>
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               {Array.from({ length: snap.maxHp }, (_, i) => (
                 <Heart
@@ -213,7 +230,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v9.0 · reinos temáticos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v10.0 · mundo aberto ilimitado {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>

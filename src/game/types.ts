@@ -172,7 +172,10 @@ export type Riser = { c: number; w: number; h: number; mode: number; ph: number;
 
 export type BuffSnap = { kind: BuffKind; left: number };
 
+export type OpenHud = { region: string; wx: number; wz: number; night: number; hazard: string; target: string; dist: number; rel: number };
+
 export type Snap = {
+  open?: OpenHud;
   screen: Screen;
   hasSave: boolean;
   hero: HeroId;

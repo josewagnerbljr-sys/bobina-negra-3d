@@ -31,6 +31,7 @@ import { REALM_THEMES } from "./realms";
 import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
+import { CH, OW_ORIGIN_X, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, poolsNear, styleOf, type Prop, type Spawn } from "./openworld";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
 import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, stepInfo, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
@@ -95,6 +96,10 @@ type Actor = Body & {
   dashT: number;
   slamT: number;
   dyT: number;
+  /** mundo aberto: direção do corpo, id de geração, estado de IA */
+  yaw?: number;
+  oid?: string;
+  ai?: number;
 };
 
 type Loot = Body & { item: Item; age: number; t: number };
@@ -143,6 +148,7 @@ export type Runtime = {
   pause: () => void;
   toggleMute: () => void;
   cycleCam: () => void;
+  camRot: (d: number) => void;
   quitToMap: () => void;
   skipDead: () => void;
   openHelp: (on: boolean) => void;
@@ -286,6 +292,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   /** meia-profundidade andável nas mansões (px) */
   let ZW = 1.8 * TILE;
   let portalT = 0;
+  let spawnWorld: number | null = null;
   const deep = () => Boolean(level?.rooms || level?.open);
   const zd = (a: Body, b: Body) => Math.abs((a.z ?? 0) - (b.z ?? 0));
   let skillCd = [0, 0, 0, 0];
@@ -388,6 +395,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function foesNear(cx: number, cy: number, rx: number, ry: number) {
+    if (level?.open) return actors.filter((a) => !a.dead && !a.ally && !inert(a) && Math.hypot(a.x + a.w / 2 - cx, (a.z ?? 0) - (player.z ?? 0)) < rx && Math.abs(a.y + a.h / 2 - cy) < ry + 80);
     return actors.filter((a) => !a.dead && !a.ally && !inert(a) && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry && zd(a, player) < TILE * 1.15);
   }
 
@@ -399,6 +407,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const d = D();
     skillCd[i] = SKILL_CD[i]! * (1 - d.cdr);
     atkT = 0.3;
+    if (level.open) openAimNow();
     audio.skill(i);
     if (i === 0) {
       // unitário perseguidor
@@ -408,7 +417,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (a.dead || a.ally || inert(a)) continue;
         const dist = Math.hypot(a.x + a.w / 2 - cx, a.y + a.h / 2 - cy);
         const dxf = (a.x + a.w / 2 - cx) * player.facing;
-        const front = dxf > 20 && dxf < 460 && Math.abs(a.y + a.h / 2 - cy) < 110 && zd(a, player) < TILE * 1.6;
+        const front = level?.open ? dist < 560 : dxf > 20 && dxf < 460 && Math.abs(a.y + a.h / 2 - cy) < 110 && zd(a, player) < TILE * 1.6;
         if (front && dist < bd) {
           bd = dist;
           best = a;
@@ -504,7 +513,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     let bd = 1e9;
     for (const a of actors) {
       if ((!a.boss && !a.mini) || a.dead) continue;
-      const d = Math.abs(a.x - player.x);
+      const d = Math.hypot(a.x - player.x, level?.open ? (a.z ?? 0) - (player.z ?? 0) : 0);
       if (d < bd) { bd = d; best = a; }
     }
     return best;
@@ -537,6 +546,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       maxHp: maxHp(),
       reel: level ? level.index + 1 : 0,
       reelName: level?.name ?? "",
+      open: level?.open
+        ? (() => {
+            const k = Math.min(MAIN_LEVELS - 1, Math.max(0, save.next - 1));
+            const pw = PORTALS_W[k]!;
+            const vx = w2g(pw.x) - (player.x + player.w / 2);
+            const vz = pw.z - (player.z ?? 0);
+            const sy = Math.sin(ow.yaw);
+            const cy = Math.cos(ow.yaw);
+            return {
+              region: REEL_NAMES[ow.region] ?? "",
+              wx: Math.round(g2w(player.x) / TILE),
+              wz: Math.round((player.z ?? 0) / TILE),
+              night: ow.night,
+              hazard: ow.hz,
+              target: REEL_NAMES[k] ?? "",
+              dist: Math.round(Math.hypot(vx, vz) / TILE),
+              rel: Math.atan2(vx * cy + vz * sy, vx * sy - vz * cy),
+            };
+          })()
+        : undefined,
       worldName: level ? (level.open ? "Mundo Aberto" : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
       bonus: Boolean(level?.bonus),
       bossAlive: Boolean(boss),
@@ -594,7 +623,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function spawnActor(kind: Kind, c: number, foot: number, ally = false, mini = false, look?: Kind, name?: string): Actor {
-    const world = level?.world ?? 0;
+    const world = spawnWorld ?? level?.world ?? 0;
     const def = entDef(kind, world, mini, save.mode);
     if (mini && look && ENT[look]) {
       // mini-chefe: um monstro do reino em tamanho gigante, com nome próprio
@@ -662,6 +691,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     player.hp = maxHp();
     player.facing = 1;
     respawn = { x: spawnX, y: spawnY };
+    if (level.open) resetOpen();
     camX = Math.max(0, player.x - 80);
     camY = Math.max(0, player.y - 80);
     reelTime = 0;
@@ -750,6 +780,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.dead = true;
     a.hp = 0;
     a.dyT = 0.45;
+    if (a.oid) ow.done.add(a.oid);
     burst(a.x + a.w / 2, a.y + a.h / 2, "#f4e4c8", 12, 160);
     audio.hit();
     shake = a.boss || a.mini ? 10 : 4;
@@ -760,7 +791,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (a.boss) showToast("A saída destrancou. O carimbo rangeu.");
       if (a.mini) showToast("Mini-chefe caiu! Tesouro no chão.");
       const src = a.boss ? "boss" : a.mini ? "mini" : "mob";
-      const drops = rollDrops(src, level?.world ?? 0, D().luck * (MODES[save.mode]?.luck ?? 1), Math.random);
+      const drops = rollDrops(src, level?.open ? REALM_THEMES[a.room ?? 0]!.amb : level?.world ?? 0, D().luck * (MODES[save.mode]?.luck ?? 1), Math.random);
       if (drops.length) dropLoot(drops, a.x + a.w / 2, a.y + a.h / 2, a.z ?? 0);
     }
   }
@@ -769,6 +800,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.dead = true;
     a.dyT = 0.25;
     opened.add(Math.round(a.x));
+    if (a.oid) ow.done.add(a.oid);
     audio.chest();
     shake = 3;
     const items = rollDrops("chest", level?.world ?? 0, D().luck, Math.random);
@@ -824,6 +856,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function fire(owner: "player" | "foe" | "ally", origin: Body, facing: number, speed: number, dmg: number, color: string, vy = 0, pierce = 0) {
+    if (level?.open && owner === "player") {
+      shots.push({ x: origin.x + origin.w / 2 - 7 + aim.x * 20, y: origin.y + origin.h * 0.35, w: 14, h: 8, vx: aim.x * speed, vy, vz: aim.z * speed, life: 0.95, color, dmg, foe: false, pierce, hit: new Set(), z: (origin.z ?? 0) + aim.z * 20, el: ELEMENT[save.hero] });
+      if (shots.length > 70) shots.splice(0, shots.length - 70);
+      return;
+    }
     shots.push({
       x: origin.x + (facing > 0 ? origin.w - 4 : -10),
       y: origin.y + origin.h * 0.35,
@@ -868,26 +905,36 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const cy = player.y + player.h / 2;
     const color = w ? RARITY_COLOR[w.rarity]! : "#f4e4c8";
     const reach = def.reach;
-    fx.push({ kind: "slash", x: cx + player.facing * 10, y: cy, t: 0, max: 0.26, color, r: reach * def.arc, dir: player.facing });
+    const opn = Boolean(level.open);
+    if (opn) openAimNow(220);
+    fx.push({ kind: "slash", x: cx + (opn ? aim.x * 14 : player.facing * 10), y: cy, z: opn ? (player.z ?? 0) + aim.z * 14 : undefined, t: 0, max: 0.26, color, r: reach * def.arc, dir: player.facing });
     audio.skill(1);
     let hit = 0;
     for (const a of actors) {
       if (a.dead || a.ally || inert(a)) continue;
       const ax = a.x + a.w / 2;
+      if (opn) {
+        const ddx = ax - cx;
+        const ddz = (a.z ?? 0) - (player.z ?? 0);
+        const dd = Math.hypot(ddx, ddz) || 1;
+        if (dd - a.w / 2 > reach || (ddx * aim.x + ddz * aim.z) / dd < Math.cos(Math.min(2.5, def.arc * 1.7)) || Math.abs(a.y + a.h / 2 - cy) > 70 + a.h / 2) continue;
+      } else {
       const front = (ax - cx) * player.facing > -14;
       if (!front || Math.abs(ax - cx) - a.w / 2 > reach || Math.abs(a.y + a.h / 2 - cy) > 56 + a.h / 2) continue;
+      }
       if (hit >= def.hits) break;
       hit += 1;
       hurtFoe(a, dmg, color);
       if (!a.boss && !a.mini && a.behavior !== "still") {
-        a.x += player.facing * def.knock * 0.4;
+        a.x += (opn ? aim.x : player.facing) * def.knock * 0.4;
+        if (opn) a.z = (a.z ?? 0) + aim.z * def.knock * 0.4;
         a.vy = Math.min(a.vy, -140);
       }
     }
     for (const sh of shots) {
       if (!sh.foe) continue;
       const sx = sh.x + sh.w / 2;
-      if ((sx - cx) * player.facing > 0 && Math.abs(sx - cx) < reach + 10 && Math.abs(sh.y - cy) < 60) {
+      if ((opn ? Math.hypot(sx - cx, (sh.z ?? 0) - (player.z ?? 0)) < reach + 10 : (sx - cx) * player.facing > 0 && Math.abs(sx - cx) < reach + 10) && Math.abs(sh.y - cy) < 60) {
         sh.life = 0;
         burst(sh.x, sh.y, color, 5, 90);
       }
@@ -897,11 +944,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       hitStop = Math.max(hitStop, 0.04);
     }
     // dá um passinho à frente: o golpe tem peso
-    player.vx += player.facing * 120;
+    if (opn) { player.vx += aim.x * 120; player.vz = (player.vz ?? 0) + aim.z * 120; } else player.vx += player.facing * 120;
   }
 
   function playerAttack() {
     if (shotCd > 0) return;
+    if (level?.open) openAimNow();
     shotCd = attackCd();
     atkT = 0.18;
     const hero = save.hero;
@@ -968,6 +1016,429 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
   }
 
+  /* ===================== MUNDO ABERTO ILIMITADO (v10) ===================== */
+  type Tele = { x: number; z: number; r: number; t: number; max: number; c: string; kind: string };
+  const ow = {
+    offX: 0, yaw: 0, tyaw: 0, pitch: 0.5, dist: 11, look: 4, jump: 0,
+    chunks: new Set<string>(), done: new Set<string>(), tele: [] as Tele[],
+    evT: 14, dotT: 0, clock: 0, night: 0, rwx: 8, rwz: 0, scan: 0, slow: 1, shrines: new Set<string>(),
+    region: 0, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[],
+  };
+  let aim = { x: 0, z: 1 };
+  let padCamX = 0;
+  const w2g = (wx: number) => wx + OW_ORIGIN_X - ow.offX;
+  const g2w = (gx: number) => gx - OW_ORIGIN_X + ow.offX;
+  const angDiff = (a: number, b: number) => ((((b - a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
+
+  function resetOpen() {
+    ow.offX = 0;
+    ow.yaw = 0;
+    ow.tyaw = 0;
+    ow.chunks.clear();
+    ow.done.clear();
+    ow.tele = [];
+    ow.evT = 14;
+    ow.dotT = 0;
+    ow.clock = 0;
+    ow.rwx = 8;
+    ow.rwz = 0;
+    ow.shrines.clear();
+    ow.jump++;
+    aim = { x: 0, z: 1 };
+    actors = [];
+  }
+
+  function openAimNow(range = 560) {
+    let best: Actor | null = null;
+    let bd = range;
+    const cx = player.x + player.w / 2;
+    const cz = player.z ?? 0;
+    for (const a of actors) {
+      if (a.dead || a.ally || inert(a)) continue;
+      const d = Math.hypot(a.x + a.w / 2 - cx, (a.z ?? 0) - cz);
+      if (d < bd) { bd = d; best = a; }
+    }
+    if (best) {
+      const d = bd || 1;
+      aim = { x: (best.x + best.w / 2 - cx) / d, z: ((best.z ?? 0) - cz) / d };
+      if (Math.abs(aim.x) > 0.15) player.facing = aim.x >= 0 ? 1 : -1;
+    }
+  }
+
+  function openMove(hold: ReturnType<typeof readHold>, dt: number, speed: number) {
+    const ix = (hold.right ? 1 : 0) - (hold.left ? 1 : 0);
+    const iy = (hold.up ? 1 : 0) - (hold.down ? 1 : 0);
+    const sy = Math.sin(ow.yaw);
+    const cy = Math.cos(ow.yaw);
+    let dx = cy * ix + sy * iy;
+    let dz = sy * ix - cy * iy;
+    const m = Math.hypot(dx, dz);
+    const moving = m > 0.01;
+    if (moving) {
+      dx /= m;
+      dz /= m;
+      aim = { x: dx, z: dz };
+      if (Math.abs(dx) > 0.2) player.facing = dx >= 0 ? 1 : -1;
+    }
+    ow.moving = moving;
+    ow.relIn = moving ? Math.atan2(ix, iy) : 0;
+    ow.iy = iy;
+    const sp = moving ? speed * ow.slow : 0;
+    const acc = Math.min(1, dt * (wasGround ? 12 : 5));
+    if (dashT > 0) player.vz = aim.z * 1150;
+    else {
+      player.vx += (dx * sp - player.vx) * acc;
+      player.vz = (player.vz ?? 0) + (dz * sp - (player.vz ?? 0)) * acc;
+    }
+    player.z = (player.z ?? 0) + (player.vz ?? 0) * dt;
+  }
+
+  /** câmera orbital: , e . ou direita do analógico giram; cada modo tem seu ângulo, distância e antecipação */
+  function openCamera(dt: number) {
+    const rot = ((keys.has("Period") ? 1 : 0) - (keys.has("Comma") ? 1 : 0)) * 2.1 + padCamX * 2.4;
+    ow.tyaw += rot * dt;
+    const mv = ow.moving && ow.iy >= 0;
+    if (camMode === 0) ow.tyaw += angDiff(ow.tyaw, 0) * Math.min(1, dt * 2.2);
+    else if (camMode === 1 && mv) ow.tyaw += ow.relIn * 1.5 * dt;
+    else if (camMode === 3 && mv) ow.tyaw += ow.relIn * 0.9 * dt;
+    else if (camMode === 2 && mv) ow.tyaw += ow.relIn * 0.5 * dt;
+    ow.yaw += angDiff(ow.yaw, ow.tyaw) * (1 - Math.exp(-5 * dt));
+    let foes = 0;
+    for (const a of actors) if (!a.dead && !a.ally && !inert(a) && Math.hypot(a.x - player.x, (a.z ?? 0) - (player.z ?? 0)) < 520) foes++;
+    const spd = Math.min(1, Math.hypot(player.vx, player.vz ?? 0) / 260);
+    const tp = camMode === 0 ? [0.44, 8.6, 1.6] : camMode === 1 ? [0.42, 9.6, 2.2] : camMode === 2 ? [0.5, 9.4, 1.8] : camMode === 4 ? [1.15, 16, 0.3] : [0.46 + 0.05 * spd, 9 + Math.min(2.5, foes * 0.5) + 0.8 * spd, 1.6 + 1.0 * spd];
+    const k = 1 - Math.exp(-2.4 * dt);
+    ow.pitch += (tp[0]! - ow.pitch) * k;
+    ow.dist += (tp[1]! - ow.dist) * k;
+    ow.look += (tp[2]! - ow.look) * k;
+  }
+
+  function spawnFromSpawn(sp: Spawn) {
+    if (ow.done.has(sp.id) || actors.length > 52) return;
+    spawnWorld = REALM_THEMES[sp.realm]!.amb;
+    const a = spawnActor(sp.kind, 0, GROUND, false, Boolean(sp.mini), sp.look, sp.name);
+    spawnWorld = null;
+    a.x = w2g(sp.x) - a.w / 2;
+    a.z = sp.z;
+    a.y = GROUND * TILE - a.h - (a.behavior === "fly" ? 60 : 0);
+    a.oid = sp.id;
+    a.room = sp.realm;
+    a.vx = 0;
+    a.vz = 0;
+    if (sp.kind !== "chest" && sp.kind !== "candle") {
+      const k = 1 + 0.045 * sp.realm;
+      a.maxHp = Math.round(a.maxHp * k);
+      a.hp = a.maxHp;
+      a.xp = Math.round(a.xp * (1 + 0.06 * sp.realm));
+    }
+    actors.push(a);
+  }
+
+  function streamChunks() {
+    const wx = g2w(player.x + player.w / 2);
+    const wz = player.z ?? 0;
+    const ci0 = Math.floor(wx / CH);
+    const cj0 = Math.floor(wz / CH);
+    const want = new Set<string>();
+    for (let j = cj0 - 2; j <= cj0 + 2; j++) {
+      for (let i = ci0 - 2; i <= ci0 + 2; i++) {
+        const key = `${i},${j}`;
+        want.add(key);
+        if (ow.chunks.has(key)) continue;
+        ow.chunks.add(key);
+        const ch = chunkAt(i, j);
+        for (const sp of ch.spawns) spawnFromSpawn(sp);
+        for (const st of ch.sites) {
+          if (st.kind === "chest") spawnFromSpawn({ id: st.id, kind: "chest", x: st.x, z: st.z, realm: biomeAt(st.x, st.z).a });
+        }
+      }
+    }
+    // longe demais: some da cena (volta ao chegar perto de novo, a não ser que já tenha sido vencido)
+    for (const key of [...ow.chunks]) {
+      const [a, b] = key.split(",").map(Number);
+      if (Math.abs(a! - ci0) > 3 || Math.abs(b! - cj0) > 3) {
+        ow.chunks.delete(key);
+        actors = actors.filter((x) => !(x.oid && x.oid.startsWith(key + ":") && !x.ally));
+      }
+    }
+    void want;
+  }
+
+  function pushOutOf(b: { x: number; w: number; z?: number }, rad: number) {
+    const wx = g2w(b.x + b.w / 2);
+    const wz = b.z ?? 0;
+    let moved = false;
+    let ox = 0;
+    let oz = 0;
+    for (const p of ow.blk) {
+      const dx = wx + ox - p.x;
+      const dz = wz + oz - p.z;
+      const mn = p.r + rad;
+      if (Math.abs(dx) > mn || Math.abs(dz) > mn) continue;
+      const d = Math.hypot(dx, dz);
+      if (d < mn) {
+        const k = d > 0.01 ? (mn - d) / d : 0;
+        ox += d > 0.01 ? dx * k : mn;
+        oz += d > 0.01 ? dz * k : 0;
+        moved = true;
+      }
+    }
+    if (moved) {
+      b.x += ox;
+      b.z = (b.z ?? 0) + oz;
+    }
+  }
+
+  const FOE_COLOR = (a: Actor) => (a.kind === "snowman" ? "#bfe6ff" : a.kind === "cherub" || a.kind === "seraph" ? "#ffe9a0" : a.kind === "devil" || a.kind === "demon" ? "#ff5a2a" : "#e08a3a");
+
+  function fireAt(owner: "foe" | "ally", from: Actor, tx: number, tz: number, speed: number, dmg: number, color: string) {
+    const fx0 = from.x + from.w / 2;
+    const fz0 = from.z ?? 0;
+    const d = Math.hypot(tx - fx0, tz - fz0) || 1;
+    shots.push({ x: fx0 - 7, y: from.y + from.h * 0.4, w: 14, h: 8, vx: ((tx - fx0) / d) * speed, vy: 0, vz: ((tz - fz0) / d) * speed, life: 1.9, color, dmg, foe: owner === "foe", pierce: 0, hit: new Set(), z: fz0 });
+    if (shots.length > 70) shots.splice(0, shots.length - 70);
+  }
+
+  function openAI(a: Actor, dt: number) {
+    if (inert(a)) return;
+    const px = player.x + player.w / 2;
+    const pz = player.z ?? 0;
+    const ax = a.x + a.w / 2;
+    const az = a.z ?? 0;
+    let tx = px - ax;
+    let tz = pz - az;
+    let tgt: Actor | null = null;
+    if (a.ally) {
+      const f = nearestFoe(a);
+      if (f) { tgt = f; tx = f.x + f.w / 2 - ax; tz = (f.z ?? 0) - az; } else { tx -= 50; tz -= 30; }
+    }
+    const d = Math.hypot(tx, tz) || 1;
+    const nx = tx / d;
+    const nz = tz / d;
+    const strong = a.boss || a.mini;
+    const aggro = strong ? 780 : 540 + ow.night * 120;
+    const sp = a.speed * (strong ? 0.85 : 1) * (1 + ow.night * 0.12);
+    const realm = a.room ?? 0;
+    const shooter = !a.ally && (a.behavior === "shoot" || a.behavior === "still" || a.kind === "golem" || a.kind === "cherub" || a.kind === "seraph" || a.kind === "witch");
+    let dirx = nx;
+    let dirz = nz;
+    let want = 0;
+    const calm = !a.ally && d > aggro;
+    if (a.ally) want = d > 70 ? Math.max(90, sp) : 0;
+    else if (calm) {
+      dirx = Math.cos(a.phase * 0.35 + a.seq * 3 + realm);
+      dirz = Math.sin(a.phase * 0.31 + a.seq * 2);
+      want = a.behavior === "still" ? 0 : sp * 0.22;
+    } else if (a.behavior === "still") want = 0;
+    else if (shooter) {
+      if (d < 210) { dirx = -nx; dirz = -nz; want = sp; } else if (d > 330) want = sp; else { dirx = -nz; dirz = nx; want = sp * 0.5; }
+    } else {
+      want = sp;
+      if (a.behavior === "charge" && d < 320 && a.dashT <= 0 && a.cd <= 0) { a.dashT = 0.55; a.cd = 2.4; }
+      if (a.dashT > 0) { a.dashT -= dt; want = sp * 2.7; }
+      if (d < a.w * 0.5 + 18) want = 0;
+    }
+    const dmgBase = 1 + Math.floor(realm / 6);
+    if (!calm && !a.ally && a.cd <= 0) {
+      if (strong && d < 640) {
+        a.cd = 2.8;
+        const n = 8 + Math.min(6, Math.floor(realm / 4));
+        const off = Math.random() * 6.28;
+        for (let k = 0; k < n; k++) {
+          const an = off + (k / n) * Math.PI * 2;
+          fireAt("foe", a, ax + Math.cos(an) * 100, az + Math.sin(an) * 100, 200, dmgBase + 1, "#ff6a3a");
+        }
+        fx.push({ kind: "wave", x: ax, y: a.y + a.h * 0.5, z: az, t: 0, max: 0.4, color: "#ff6a3a", r: 90, dir: 0 });
+      } else if (shooter && d < 470) {
+        a.cd = a.behavior === "still" ? 1.5 : 1.9;
+        fireAt("foe", a, px, pz, 230, dmgBase, FOE_COLOR(a));
+      }
+    }
+    if (a.ally && tgt && a.cd <= 0 && d < 380) {
+      a.cd = 0.8;
+      fireAt("ally", a, tgt.x + tgt.w / 2, tgt.z ?? 0, 430, 1, "#9fd4d8");
+    }
+    const k = Math.min(1, dt * 6);
+    a.vx = (a.vx ?? 0) + (dirx * want - (a.vx ?? 0)) * k;
+    a.vz = (a.vz ?? 0) + (dirz * want - (a.vz ?? 0)) * k;
+    if (a.hurt > 0 && !strong) { a.vx *= 0.5; a.vz *= 0.5; }
+    a.x += a.vx * dt;
+    a.z = az + a.vz * dt;
+    pushOutOf(a, Math.max(10, a.w * 0.32));
+    if (Math.abs(a.vx) > 8) a.facing = a.vx >= 0 ? 1 : -1;
+    const spd = Math.hypot(a.vx, a.vz ?? 0);
+    a.yaw = spd > 14 ? Math.atan2(a.vx, a.vz ?? 0) : Math.atan2(nx, nz);
+    if (a.behavior === "fly") {
+      a.y = GROUND * TILE - a.h - 70 + Math.sin(a.phase * 2) * 14;
+      a.vy = 0;
+    } else {
+      if (a.behavior === "jump") {
+        a.hop -= dt;
+        if (a.y + a.h >= GROUND * TILE - 1 && a.hop <= 0 && !calm) { a.vy = -540; a.hop = 1.2 + Math.random() * 0.5; }
+      }
+      a.vy = Math.min(TERM, a.vy + 3000 * dt);
+      a.y += a.vy * dt;
+      if (a.y + a.h > GROUND * TILE) { a.y = GROUND * TILE - a.h; a.vy = 0; }
+    }
+  }
+
+  function strikeEvent() {
+    const px = player.x + player.w / 2;
+    const pz = player.z ?? 0;
+    const wx = g2w(px);
+    const b = biomeAt(wx, pz);
+    const st = styleOf(b.a);
+    const r = Math.random();
+    if (r < 0.5) {
+      const meteor = st === "cave" || st === "gold" || st === "city";
+      const bolt = st === "cloud" || st === "swamp" || st === "ice";
+      const c = meteor ? "#ff7a2a" : bolt ? "#bcd8ff" : "#c8a070";
+      const kind = meteor ? "meteor" : bolt ? "bolt" : "quake";
+      const n = 3 + Math.floor(Math.random() * 3) + Math.floor(b.a / 8);
+      showToast(meteor ? "Chuva de meteoros!" : bolt ? "Tempestade! Raios caindo." : "O chão treme! Fuja das marcas.");
+      for (let i = 0; i < n; i++) {
+        const an = Math.random() * 6.28;
+        const rr = i === 0 ? 40 + Math.random() * 60 : 90 + Math.random() * 300;
+        ow.tele.push({ x: px + (player.vx ?? 0) * 0.5 + Math.cos(an) * rr, z: pz + (player.vz ?? 0) * 0.5 + Math.sin(an) * rr, r: kind === "bolt" ? 50 : 66, t: -i * 0.18, max: 1.5, c, kind });
+      }
+      audio.skill(2);
+    } else if (r < 0.88) {
+      const pl = REALM_THEMES[b.a]!.pool;
+      const n = 4 + Math.floor(Math.random() * 3) + Math.floor(b.a / 8);
+      showToast("Emboscada! Eles surgiram da escuridão.");
+      for (let i = 0; i < n; i++) {
+        const an = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+        spawnFromSpawn({ id: `amb${Math.floor(ow.clock)}:${i}`, kind: pl[i % pl.length]!, x: wx + Math.cos(an) * 400, z: pz + Math.sin(an) * 400, realm: b.a });
+      }
+      shake = Math.max(shake, 6);
+    } else if (b.a >= 2) {
+      const th = REALM_THEMES[b.a]!;
+      const m = th.minis[Math.floor(Math.random() * th.minis.length)]!;
+      const an = Math.random() * 6.28;
+      showToast(`${m.name} vagueia por perto…`);
+      spawnFromSpawn({ id: `wan${Math.floor(ow.clock)}`, kind: "boss", x: wx + Math.cos(an) * 720, z: pz + Math.sin(an) * 720, mini: true, look: m.look, name: m.name, realm: b.a });
+    }
+  }
+
+  function openStep(dt: number) {
+    if (!level) return;
+    ow.clock += dt;
+    ow.night = Math.max(0, Math.min(1, (Math.sin(ow.clock * 0.015 + 4.0) - 0.1) * 1.4));
+    const px = player.x + player.w / 2;
+    const pz = player.z ?? 0;
+    const wx = g2w(px);
+    // reancora o mundo: o mapa nunca acaba
+    if (Math.abs(player.x - OW_ORIGIN_X) > 3000 * TILE) {
+      const d = player.x - OW_ORIGIN_X;
+      for (const a of actors) a.x -= d;
+      for (const s of shots) s.x -= d;
+      for (const l of loot) l.x -= d;
+      player.x -= d;
+      ow.offX += d;
+      fx = [];
+      sparks = [];
+      ow.jump++;
+    }
+    ow.blk = blockersNear(wx, pz, 1100).slice();
+    pushOutOf(player, 13);
+    // streaming dos blocos
+    ow.scan -= dt;
+    if (ow.scan <= 0) {
+      ow.scan = 0.3;
+      streamChunks();
+      emit();
+    }
+    actors = actors.filter((a) => !a.dead || a.dyT > 0);
+    // perigos do terreno
+    let slow = 1;
+    const airborne = player.y + player.h < GROUND * TILE - 34;
+    ow.hz = "";
+    for (const q of poolsNear(wx, pz, 400)) {
+      if (Math.hypot(wx - q.x, pz - q.z) < q.r) {
+        ow.hz = POOL_NAME[q.kind];
+        if (q.kind === "frost" || q.kind === "sand") slow = 0.55;
+        if (!airborne) {
+          ow.dotT -= dt;
+          if (ow.dotT <= 0) {
+            ow.dotT = 0.9;
+            showToast(`Cuidado: ${POOL_NAME[q.kind]}! Saia ou pule.`);
+            hurtPlayer(px + (q.x > wx ? 20 : -20), 1);
+          }
+        }
+      }
+    }
+    ow.slow = slow;
+    // eventos aleatórios do mapa
+    ow.evT -= dt * (1 + ow.night * 0.6);
+    if (ow.evT <= 0 && screen === "play") {
+      ow.evT = 16 + Math.random() * 18;
+      strikeEvent();
+    }
+    // noite: mais monstros rondando
+    ow.nightT -= dt;
+    if (ow.night > 0.5 && ow.nightT <= 0 && actors.length < 46) {
+      ow.nightT = 7;
+      const b = biomeAt(wx, pz);
+      const pl = REALM_THEMES[b.a]!.pool;
+      const an = Math.random() * 6.28;
+      spawnFromSpawn({ id: `nt${Math.floor(ow.clock)}`, kind: pl[Math.floor(Math.random() * pl.length)]!, x: wx + Math.cos(an) * 620, z: pz + Math.sin(an) * 620, realm: b.a });
+    }
+    // marcações dos ataques do ambiente
+    for (let i = ow.tele.length - 1; i >= 0; i--) {
+      const t = ow.tele[i]!;
+      t.t += dt;
+      if (t.t < t.max) continue;
+      ow.tele.splice(i, 1);
+      const gx = w2g(t.x);
+      const gz = t.z;
+      const col = t.c;
+      fx.push({ kind: t.kind === "bolt" ? "bolt" : "blast", x: gx, y: GROUND * TILE - 10, z: gz, t: 0, max: 0.5, color: col, r: t.r * 1.4, dir: 0, el: t.kind === "bolt" ? "lightning" : "fire" });
+      burst(gx, GROUND * TILE - 14, col, 12, 160);
+      shake = Math.max(shake, 5);
+      if (Math.hypot(px - gx, pz - gz) < t.r + 10 && !airborne) hurtPlayer(gx, 2);
+      for (const a of actors) if (!a.dead && !a.ally && !inert(a) && Math.hypot(a.x + a.w / 2 - gx, (a.z ?? 0) - gz) < t.r + 12) hurtFoe(a, 3, col);
+    }
+    // santuários curam e guardam o ponto de retorno
+    for (const key of ow.chunks) {
+      const [a, b] = key.split(",").map(Number);
+      for (const st of chunkAt(a!, b!).sites) {
+        if (st.kind !== "shrine" || Math.hypot(wx - st.x, pz - st.z) > 80) continue;
+        ow.rwx = st.x;
+        ow.rwz = st.z;
+        if (!ow.shrines.has(st.id) || (player.hp < maxHp() && ow.msgT <= 0)) {
+          ow.shrines.add(st.id);
+          player.hp = maxHp();
+          ow.msgT = 12;
+          showToast("Santuário: vida restaurada. Você volta aqui se cair.");
+          audio.pickup();
+        }
+      }
+    }
+    ow.msgT = Math.max(0, ow.msgT - dt);
+    // portais próximos (até 90 tiles)
+    const near: NonNullable<Level["portals"]> = [];
+    for (let k = 0; k < PORTALS_W.length; k++) {
+      const pw = PORTALS_W[k]!;
+      const gx = w2g(pw.x);
+      if (Math.abs(gx - px) < 90 * TILE && Math.abs(pw.z - pz) < 90 * TILE) near.push({ c: gx / TILE - 0.5, z: pw.z / TILE, realm: k });
+    }
+    level.portals = near;
+    // região atual
+    const rg = biomeAt(wx, pz).a;
+    if (rg !== ow.region) {
+      ow.region = rg;
+      showToast(`Região: ${REEL_NAMES[rg] ?? "?"}`);
+    }
+    // padrão de câmera/controles
+    openCamera(dt);
+    // fx sem profundidade ganham a do dono (ou a do herói)
+    for (const f of fx) {
+      if (f.z !== undefined) continue;
+      const m = actors.find((a) => Math.abs(a.x + a.w / 2 - f.x) < 0.6);
+      f.z = m ? (m.z ?? 0) : pz;
+    }
+  }
+
   function stepPlay(dt: number) {
     if (!level) return;
     if (hitStop > 0) {
@@ -1026,6 +1497,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     let move = (hold.right ? 1 : 0) - (hold.left ? 1 : 0);
     if (hold.left && hold.right) move = 0;
     const speed = 268 * speedMul();
+    if (level.open) openMove(hold, dt, speed);
+    else {
     const accel = (wasGround ? 3200 : 1800) * dt;
     const target = move * speed;
     const delta = target - player.vx;
@@ -1039,20 +1512,22 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       player.z = Math.max(-ZW, Math.min(ZW, (player.z ?? 0) + player.vz * dt));
       if (player.z === ZW || player.z === -ZW) player.vz = 0;
     }
+    }
+    if (level.open) openStep(dt);
     if (dashT > 0) {
       dashT -= dt;
-      player.vx = player.facing * 1150;
+      player.vx = level.open ? aim.x * 1150 : player.facing * 1150;
       const dmgDash = 4.6 * dmgPhys();
       const sd = SKILLS[save.hero][1]!;
       for (const a of actors) {
         if (a.dead || a.ally || inert(a)) continue;
-        if (player.x + player.w + 16 > a.x && player.x - 16 < a.x + a.w && player.y + player.h > a.y && player.y < a.y + a.h) {
+        if (player.x + player.w + 16 > a.x && player.x - 16 < a.x + a.w && player.y + player.h > a.y && player.y < a.y + a.h && (!level.open || zd(a, player) < TILE * 0.9)) {
           hurtFoe(a, dmgDash, sd.color);
           fx.push({ kind: "wave", x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0, max: 0.4, color: sd.color, r: 70, dir: 0 });
           shake = 8;
           hitStop = 0.08;
           dashT = 0;
-          player.vx = player.facing * 200;
+          player.vx = (level.open ? aim.x : player.facing) * 200;
           break;
         }
       }
@@ -1208,7 +1683,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (!cine && screen === "play") {
       for (const a of actors) {
         if ((!a.boss && !a.mini) || a.dead || seenCine.has(a)) continue;
-        if (Math.abs(a.x - player.x) < 560 && Math.abs(a.y - player.y) < 260) {
+        if (Math.abs(a.x - player.x) < 560 && Math.abs(a.y - player.y) < 260 && (!level.open || zd(a, player) < 520)) {
           seenCine.add(a);
           cine = a;
           lines = a.boss ? bossIntro(level.world) : miniIntro(level.world);
@@ -1234,6 +1709,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       a.hurt = Math.max(0, a.hurt - dt);
       a.cd = Math.max(0, a.cd - dt);
       const dx = player.x - a.x;
+      if (level.open) {
+        openAI(a, dt);
+        if (a.kind === "candle" && overlaps(player, a) && zd(a, player) < TILE * 1.4) {
+          a.dead = true;
+          if (player.hp < maxHp()) player.hp = Math.min(maxHp(), player.hp + 1 + bonusBoost());
+          audio.pickup();
+        } else if (a.kind === "chest" && overlaps(player, a) && zd(a, player) < TILE * 1.4) {
+          openChest(a);
+        } else if (!a.ally && a.touch > 0 && iframe <= 0 && overlaps(player, a) && zd(a, player) < TILE * 0.85) {
+          hurtPlayer(a.x + a.w / 2, a.boss || a.mini ? 2 + Math.floor((a.room ?? 0) / 8) : 1 + Math.floor((a.room ?? 0) / 6));
+        }
+        continue;
+      }
       if (deep() && a.behavior !== "still" && a.kind !== "chest" && a.kind !== "candle") {
         const near = Math.abs(dx) < 760 && Math.abs(player.y - a.y) < 420;
         if (near || a.ally) {
@@ -1379,7 +1867,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         const d = Math.hypot(tx, ty) || 1;
         const sp = 520;
         // só corrige a mira enquanto o alvo está à frente; passou do alvo, segue em linha reta
-        if (tx * Math.sign(s.vx || 1) <= 0) s.home = null;
+        if (!level.open && tx * Math.sign(s.vx || 1) <= 0) s.home = null;
         const k = s.home ? 1 - Math.exp(-5 * dt) : 0;
         s.vx += ((tx / d) * sp - s.vx) * k;
         s.vy += ((ty / d) * sp - s.vy) * k;
@@ -1394,7 +1882,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         } else if (s.home && !s.home.dead) {
           s.vz = Math.max(-360, Math.min(360, ((s.home.z ?? 0) - (s.z ?? 0)) * 7));
         }
-        s.z = Math.max(-ZW - 40, Math.min(ZW + 40, (s.z ?? 0) + (s.vz ?? 0) * dt));
+        s.z = level.open ? (s.z ?? 0) + (s.vz ?? 0) * dt : Math.max(-ZW - 40, Math.min(ZW + 40, (s.z ?? 0) + (s.vz ?? 0) * dt));
       }
       s.x += s.vx * dt;
       s.y += s.vy * dt;
@@ -1598,13 +2086,22 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function doRespawn() {
     if (!level) return;
+    if (level.open) {
+      shots = [];
+      player.x = w2g(ow.rwx);
+      player.z = ow.rwz;
+      player.y = GROUND * TILE - player.h;
+      ow.tele = [];
+      actors = actors.filter((a) => !a.oid || Math.hypot(a.x - player.x, (a.z ?? 0) - player.z!) > 500);
+    } else {
     actors = blueprint.filter((a) => !(a.kind === "chest" && opened.has(Math.round(a.x)))).map((a) => ({ ...a }));
-    buffs = [];
-    summon = null;
-    shots = [];
     player.x = respawn.x;
     player.y = respawn.y;
     player.z = 0;
+    }
+    buffs = [];
+    summon = null;
+    shots = [];
     player.vx = 0;
     player.vy = 0;
     player.hp = maxHp();
@@ -1698,6 +2195,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         fly: a.behavior === "fly",
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
+        yaw: level?.open ? a.yaw : undefined,
       });
     }
     if (screen === "play" || screen === "pause" || screen === "char" || screen === "dead" || screen === "clear" || screen === "talk") {
@@ -1722,6 +2220,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         ally: false,
         world: level?.world ?? 0,
         attack: Math.max(0, Math.min(1, atkT / 0.18)),
+        yaw: level?.open ? Math.atan2(aim.x, aim.z) : undefined,
       });
     }
     return list;
@@ -1764,7 +2263,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             })(),
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
             mode: camMode,
-            hazard: hazardAhead(),
+            hazard: level?.open ? 0 : hazardAhead(),
+            open: level?.open ? { yaw: ow.yaw, pitch: ow.pitch, dist: ow.dist, look: ow.look, offX: ow.offX, night: ow.night, jump: ow.jump, tele: ow.tele.filter((t) => t.t > -0.5).map((t) => ({ x: w2g(t.x), z: t.z, r: t.r, k: Math.max(0, Math.min(1, t.t / t.max)), c: t.c })) } : undefined,
             space: level?.rooms && curRoom >= 0 ? level.rooms[curRoom]!.c1 - level.rooms[curRoom]!.c0 : 0,
           }
         : undefined,
@@ -1826,6 +2326,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const anyBtn = cur.some(Boolean) || Math.abs(ax) > dz || Math.abs(ay) > dz;
     if (!padName && anyBtn) { padName = name; showToast(`Controle conectado: ${name}`); audio.unlock(); emit(); }
     if (!padName) return;
+    padCamX = Math.abs(gp.axes[2] ?? 0) > 0.25 ? gp.axes[2]! : 0;
     padHold.left = ax < -dz || cur[14]!;
     padHold.right = ax > dz || cur[15]!;
     padHold.up = ay < -dz || cur[12]!;
@@ -2257,6 +2758,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         emit();
       }
     },
+    camRot(d: number) {
+      ow.tyaw += d * 0.6;
+    },
     cycleCam() {
       camMode = (camMode + 1) % 5;
       try { localStorage.setItem("bn_cam", String(camMode)); } catch { /* sem armazenamento */ }
@@ -2415,6 +2919,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       return !!b;
     },
     setSteer: (_v: number) => {},
+    owInfo: () => ({ x: Math.round(player.x), z: Math.round(player.z ?? 0), off: ow.offX, actors: actors.length, yaw: +ow.yaw.toFixed(2), hp: player.hp, region: ow.region, night: +ow.night.toFixed(2), tele: ow.tele.length, chunks: ow.chunks.size, shots: shots.length, ax: aim.x, az: aim.z, kinds: actors.slice(0, 12).map((a) => a.kind) }),
+    tpWorld: (wx: number, wz: number) => { player.x = w2g(wx); player.z = wz; ow.chunks.clear(); actors = []; },
+    setCam: (m: number) => { camMode = m; },
+    strike: () => strikeEvent(),
+    endTalk: () => { if (screen === "talk") { screen = "play"; cine = null; } },
   };
   (window as unknown as { __controlsTest?: typeof probe }).__controlsTest = probe;
 

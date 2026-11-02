@@ -169,9 +169,18 @@ Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey):
 - **Câmeras** (botão "Cam N" no HUD, tecla V, pausa, R3 no controle; escolha salva): 1 Lateral, 2 Atrás do herói, 3 Dinâmica (lateral; vai para trás do herói ao se aproximar de espinhos, buracos, molas e colinas), 4 Multi-dinâmica (padrão: dinâmica + cômodo apertado aproxima/"cobertura" + salão afasta + chefe), 5 Aérea.
 - **Controles** via Gamepad API (Bluetooth/USB, PC e celular com navegador compatível): Xbox, PlayStation, Switch Pro e genéricos. Mapa: analógico/direcional = andar e profundidade; A pular; X ou RT tiro; B golpe; Y forma; LB/RB/LT poderes 1-3; RT poder 4 (também tiro); L3 poção; R3 trocar câmera; Select personagem; Start pausa.
 
-## v9.0 — Reinos temáticos, mini-chefes únicos, música de rock
+## v10.0 — Reinos temáticos, mini-chefes únicos, música de rock
 
 - **25 ambientes diferentes** (src/game/realms.ts): cada reino tem estilo próprio (mansão, caverna/inferno, pântano, cidade de ferro, gelo, ruínas de mármore, jardim, nuvens, ouro), paleta, céu, partículas, paredes (rocha com estalactites, placas rebitadas, cristais de gelo, colunas e arcadas, nuvens), mobília temática (ossos, braseiros, tumbas, espinhos, gárgulas, árvores, fontes, moedas…) e nomes de cômodos próprios.
 - **Monstros por reino** (5 tipos por reino, mais 2 por sala) e **mini-chefes todos diferentes**: cada um é um monstro gigante com nome próprio (ex.: Escrivão de Minos, Glutão Inchado, Guardião do Cofre…). Cada reino tem seu chefe com nome próprio (Caronte, Minos, Cérbero, Pluto, Flégias, Minotauro, Gerião, Lúcifer, Tisífone, Cronos, Catão, Matelda, Beatriz, Zeus…).
 - **Música:** só instrumentos, estilo hard rock/heavy metal (boogie, galope, riff pesado), com solo de guitarra distorcida (bend + vibrato), 70% mais baixa que antes. Composições originais; não reproduzem músicas de bandas.
 - **Mundo Aberto:** o chão e a decoração mudam por região (cada trecho usa o visual do reino correspondente).
+
+## v10.0 — Mundo aberto ilimitado + câmera "Atrás" corrigida
+
+- **Mapa infinito** (`src/game/openworld.ts`, `src/engine/openmesh.ts`): gerado por blocos de 16x16 tiles a partir de uma semente, sem paredes nem bordas (o mundo se reancora sozinho). 25 biomas = 25 reinos, com fronteiras distorcidas por ruído e cores/céu/neblina que se misturam; quanto mais longe da partida, mais perigoso o reino.
+- **Perigos do próprio mapa** (sem missões): poças de lava/veneno/espinhos/gelo/areia movediça, meteoros, raios e tremores com marcação no chão, emboscadas, chefes errantes, noite com mais monstros.
+- **Pontos de interesse**: acampamentos com bando e baú, santuários (curam e guardam o retorno), ruínas com guardiões, mini-chefes errantes, baús; 25 portais espalhados em espiral, com bússola no HUD.
+- **Controles 360°**: movimento relativo à câmera, mira automática no inimigo mais próximo, tiros/golpes/habilidades em qualquer direção. Câmera orbital: `,` e `.` (ou direita do analógico, ou botões ⟲ ⟳).
+- **Câmera "Atrás"** (todos os mapas): fica realmente atrás do herói, mais alta e afastada, olhando à frente.
+- Inspiração (padrões, sem código de terceiros): mundos abertos procedurais (biomas como dados, Voronoi com bordas ruidosas, dispersão por regras) e câmeras de terceira pessoa com spring-arm/look-ahead.
