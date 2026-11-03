@@ -31,6 +31,10 @@ export type Save = {
   kills: number;
   /** missões dos NPCs: id -> {base, goal, done} */
   qs: Record<string, { base: number; goal: number; done: number }>;
+  /** nível (0 = não aprendida) de cada uma das 13 magias */
+  spells: number[];
+  /** magia equipada em U/I/O/P (-1 = poder do herói) */
+  slot: number[];
 };
 
 export function emptySave(hero: HeroId): Save {
@@ -53,6 +57,8 @@ export function emptySave(hero: HeroId): Save {
     parts: Array.from({ length: 25 }, () => 0),
     kills: 0,
     qs: {},
+    spells: Array.from({ length: 13 }, () => 0),
+    slot: [-1, -1, -1, -1],
   };
 }
 
@@ -122,6 +128,8 @@ function parse(text: string): Save | null {
     parts: Array.from({ length: 25 }, (_, i) => clampInt(data.parts?.[i], 0, 7)),
     kills: Math.max(0, Math.floor(data.kills ?? 0)),
     qs: data.qs && typeof data.qs === "object" ? data.qs : {},
+    spells: Array.from({ length: 13 }, (_, i) => clampInt((data as { spells?: number[] }).spells?.[i], 0, 5)),
+    slot: Array.from({ length: 4 }, (_, i) => clampInt((data as { slot?: number[] }).slot?.[i], -1, 12)),
   };
 }
 

@@ -180,6 +180,32 @@ export const BASES: BaseDef[] = [
   I("gem_all", "Opala do Limiar", "gem", 1, { str: 1, int: 1 }, "#e8e0f0", "gem", "Pedra de encaixe: aumenta FOR e INT.", { acc: "#ffffff", minWorld: 3 }),
 ];
 
+/* ---- variantes por material: cada peça base ganha 6 versões (mais de 650 itens no total) ---- */
+const MATS: { suf: string; mul: number; mw: number; col: string; txt: string }[] = [
+  { suf: "de Cobre", mul: 1.1, mw: 0, col: "#b87333", txt: "Forjado em cobre: simples, mas honesto." },
+  { suf: "de Ferro Frio", mul: 1.25, mw: 1, col: "#8a96a4", txt: "Ferro de mina fria; pesa o necessário." },
+  { suf: "de Prata Lunar", mul: 1.45, mw: 2, col: "#dfe6f2", txt: "Prata que brilha mesmo sem lua." },
+  { suf: "de Obsidiana", mul: 1.7, mw: 4, col: "#2b2438", txt: "Vidro vulcânico: corta e não perdoa." },
+  { suf: "de Sangue Seco", mul: 1.95, mw: 6, col: "#8d1420", txt: "Temperado em tinta velha e rancor." },
+  { suf: "de Ouro Infernal", mul: 2.3, mw: 8, col: "#e8a020", txt: "Ouro que esquenta na mão e cobra juros." },
+];
+const mixHex = (a: string, b: string, t: number) => {
+  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const A = p(a.length === 7 ? a : "#888888");
+  const B = p(b);
+  return "#" + A.map((v, i) => Math.round(v + (B[i]! - v) * t).toString(16).padStart(2, "0")).join("");
+};
+(() => {
+  const base = BASES.filter((b) => b.slot !== "potion" && b.slot !== "gem" && b.boss === undefined);
+  for (const b of base) {
+    MATS.forEach((m, mi) => {
+      const w: Partial<Stats> = {};
+      for (const k of STAT_KEYS) if (b.w[k]) w[k] = Math.max(1, Math.round(b.w[k]! * m.mul));
+      BASES.push({ ...b, id: `${b.id}~${mi}`, name: `${b.name} ${m.suf}`, w, color: mixHex(b.color, m.col, 0.55), set: undefined, special: undefined, look: b.look ?? b.id, minWorld: Math.min(9, (b.minWorld ?? 0) + m.mw), text: `${b.text} ${m.txt}` });
+    });
+  }
+})();
+
 /** conjuntos: bônus extras por número de peças equipadas */
 export const SETS: Record<string, { name: string; bonus: { n: number; mods: Partial<Stats>; text: string }[] }> = {
   rivet: { name: "Rebite de Ferro", bonus: [{ n: 2, mods: { rec: 2 }, text: "+2 REC" }, { n: 3, mods: { rec: 2, str: 2 }, text: "+2 REC e +2 FOR" }, { n: 5, mods: { rec: 4, str: 3 }, text: "+4 REC e +3 FOR" }] },
@@ -207,6 +233,7 @@ export function setBonus(eq: Equip): { set: string; name: string; count: number;
   return out;
 }
 
+export const ITEM_COUNT = BASES.length;
 export const BASE_BY_ID: Record<string, BaseDef> = Object.fromEntries(BASES.map((b) => [b.id, b]));
 
 export const RARITY_NAME = ["Normal", "Raro", "Épico", "Lendário", "Divino/Infernal"];

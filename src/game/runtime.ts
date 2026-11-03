@@ -27,6 +27,7 @@ import {
   WORLDS,
 } from "./content";
 import { buildLevel } from "./maps";
+import { COMBOS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
 import { REALM_THEMES } from "./realms";
 import type { BaseDef } from "./items";
 import { BASES } from "./items";
@@ -140,6 +141,8 @@ export type Runtime = {
   playOpen: () => void;
   interact: () => void;
   npcBuy: (i: number) => void;
+  spellBuy: (id: number) => void;
+  spellEquip: (id: number, slot: number) => void;
   npcSell: (uid: number) => void;
   npcQuest: () => void;
   npcClose: () => void;
@@ -260,6 +263,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     melee: false,
   };
   let meleeCd = 0;
+  let comboN = 0;
+  let comboT = 0;
   let meleeMax = 0.4;
   let wantMelee = false;
   let prevMelee = false;
@@ -413,8 +418,112 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     return actors.filter((a) => !a.dead && !a.ally && !inert(a) && Math.abs(a.x + a.w / 2 - cx) < rx && Math.abs(a.y + a.h / 2 - cy) < ry && zd(a, player) < TILE * 1.15);
   }
 
+  /** magia equipada no slot i (ou null: poder do herói) */
+  function slotSpell(i: number) {
+    const id = save.slot?.[i] ?? -1;
+    if (id < 0 || (save.spells?.[id] ?? 0) <= 0) return null;
+    return SPELLS[id]!;
+  }
+  function castSpell(sp: SpellDef, lv: number, i: number) {
+    const d = D();
+    const cx = player.x + player.w / 2;
+    const cy = player.y + player.h / 2;
+    const pw = sp.power * (1 + 0.28 * (lv - 1)) * dmgMagic();
+    skillCd[i] = sp.cd * (1 - d.cdr);
+    atkT = 0.3;
+    if (level?.open) openAimNow();
+    audio.skill(i);
+    const R = (sp.kind === "quake" ? 230 : sp.kind === "drain" ? 190 : 175) * d.radius;
+    const foes = () => foesNear(cx, cy, 560 * d.radius, 380 * d.radius);
+    const nearestFirst = (list: Actor[]) => list.sort((a, b) => Math.hypot(a.x - cx, (a.z ?? 0) - (player.z ?? 0)) - Math.hypot(b.x - cx, (b.z ?? 0) - (player.z ?? 0)));
+    switch (sp.kind) {
+      case "homing": {
+        const t = nearestFirst(foesNear(cx, cy, 600, 300))[0] ?? null;
+        shots.push({ x: cx - 9 + player.facing * 14, y: cy - 9, w: 18, h: 18, vx: player.facing * 420, vy: -90, life: 1.8, color: sp.color, dmg: pw, foe: false, pierce: sp.id === 4 ? 2 : 0, hit: new Set(), home: t, z: player.z, el: sp.id === 4 ? "fire" : ELEMENT[save.hero] });
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.35, color: sp.color, r: 40, dir: player.facing });
+        break;
+      }
+      case "fan":
+        for (const vy of [-150, -75, 0, 75, 150]) fire("player", player, player.facing, 560, pw * 0.5, sp.color, vy, 1);
+        fx.push({ kind: "slash", x: cx, y: cy, t: 0, max: 0.3, color: sp.color, r: 120, dir: player.facing });
+        break;
+      case "chain": {
+        const list = nearestFirst(foesNear(cx, cy, 520, 300)).slice(0, 5);
+        list.forEach((a, k) => {
+          fx.push({ kind: "bolt", x: a.x + a.w / 2, y: a.y + a.h, t: -k * 0.09, max: 0.4, color: sp.color, r: 0, dir: 0, el: "lightning" });
+          hurtFoe(a, pw * (1 - k * 0.08), sp.color);
+        });
+        shake = 4;
+        break;
+      }
+      case "ice":
+      case "quake":
+      case "drain": {
+        const el = sp.kind === "ice" ? "water" : sp.kind === "quake" ? "stone" : ELEMENT[save.hero];
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: sp.color, r: R, dir: 0, el });
+        if (sp.kind === "quake") fx.push({ kind: "blast", x: cx, y: cy, t: 0, max: 0.75, color: sp.color, r: R, dir: 0, el: "stone" });
+        let n = 0;
+        for (const a of foesNear(cx, cy, R, R * 0.8)) {
+          if (n++ < 6) fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -n * 0.05, max: 0.6, color: sp.color, r: 0, dir: 0, el });
+          hurtFoe(a, pw, sp.color);
+          if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * (sp.kind === "quake" ? 70 : 34);
+        }
+        if (sp.kind === "drain" && n > 0) player.hp = Math.min(maxHp(), player.hp + Math.min(3, 0.5 * n));
+        for (const sh of shots) if (sh.foe && Math.hypot(sh.x - cx, sh.y - cy) < R) sh.life = 0;
+        shake = sp.kind === "quake" ? 10 : 5;
+        break;
+      }
+      case "dash": {
+        dashT = 0.17;
+        iframe = Math.max(iframe, 0.35);
+        fx.push({ kind: "slash", x: cx, y: cy, t: 0, max: 0.3, color: sp.color, r: 150, dir: player.facing });
+        const t = nearestFirst(foesNear(cx, cy, 200, 120))[0];
+        if (t) hurtFoe(t, pw, sp.color);
+        break;
+      }
+      case "heal":
+        player.hp = Math.min(maxHp(), player.hp + sp.power + 0.6 * lv);
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.7, color: sp.color, r: 70, dir: 0 });
+        burst(cx, cy, sp.color, 14, 120);
+        break;
+      case "ward":
+        iframe = Math.max(iframe, sp.power + 0.7 * lv);
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.7, color: sp.color, r: 80, dir: 0 });
+        break;
+      case "haste":
+        buffs.push({ kind: "haste", left: sp.power + 2.5 * lv });
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.5, color: sp.color, r: 60, dir: 0 });
+        break;
+      case "meteor": {
+        const list = nearestFirst(foes()).slice(0, 5);
+        list.forEach((a, k) => {
+          fx.push({ kind: "blast", x: a.x + a.w / 2, y: a.y + a.h, t: -k * 0.12, max: 0.7, color: sp.color, r: 120, dir: 0, el: "fire" });
+          hurtFoe(a, pw, sp.color);
+        });
+        shake = 9;
+        break;
+      }
+      case "screen": {
+        const hit = foes();
+        fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: sp.color, r: 640 * d.radius, dir: 0, el: ELEMENT[save.hero] });
+        for (const a of hit) {
+          fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: sp.color, r: 0, dir: 0, el: ELEMENT[save.hero] });
+          hurtFoe(a, pw, sp.color);
+        }
+        for (const sh of shots) if (sh.foe) sh.life = 0;
+        shake = 16;
+        hitStop = 0.14;
+        flashT = 1;
+        iframe = Math.max(iframe, 0.6);
+        break;
+      }
+    }
+  }
+
   function useSkill(i: number) {
     if (!level || screen !== "play" || !skillUnlocked(i) || skillCd[i]! > 0) return;
+    const spx = slotSpell(i);
+    if (spx) { castSpell(spx, save.spells[spx.id]!, i); return; }
     const def = SKILLS[save.hero][i]!;
     const cx = player.x + player.w / 2;
     const cy = player.y + player.h / 2;
@@ -627,7 +736,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       best: level ? (save.best[level.index] ?? 0) : 0,
       hint: hint && screen === "play" && reelTime < 9,
       progress: level ? Math.max(0, Math.min(1, (player.x + player.w) / (level.cols * TILE))) : 0,
-      skills: SKILLS[save.hero].map((sd, i) => ({ name: sd.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]! * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) })),
+      skills: SKILLS[save.hero].map((sd, i) => { const sp = slotSpell(i); return sp ? { name: sp.name, kind: sp.tag, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: sp.cd * (1 - d.cdr), lv: save.spells[sp.id]!, unlocked: true } : { name: sd.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]! * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) }; }),
       bag: save.bag,
       equip: save.equip,
       bagUsed: bagUsed(save.bag),
@@ -958,7 +1067,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (!level || screen !== "play" || meleeCd > 0) return;
     const w = save.equip.weapon;
     const id = w ? baseOf(w).id : "none";
-    const def = MELEE[id] ?? MELEE.none!;
+    const base = MELEE[id] ?? MELEE.none!;
+    // combos: golpes em sequência rápida avançam pela lista (13 no total, liberados por nível)
+    const known = combosKnown(save.level);
+    comboN = comboT > 0 ? (comboN + 1) % known : 0;
+    const cb = COMBOS[comboN]!;
+    const def = { ...base, dmg: base.dmg * cb.dmg, reach: base.reach * cb.reach, hits: base.hits + cb.hits, knock: base.knock * cb.knock };
+    comboT = base.cd + 0.75;
+    if (comboN > 0) showToast(`Combo ${comboN + 1}: ${cb.name}`);
     const tierK = w ? (1 + 0.14 * (w.tier - 1)) * (1 + 0.28 * w.rarity) : 1;
     const dmg = def.dmg * tierK * dmgPhys();
     meleeMax = def.cd * (hasBuff("haste") ? 0.8 : 1) * Math.max(0.6, D().atkCd / 0.36);
@@ -1613,6 +1729,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     wantPotion = false;
     prevPotion = hold.potion;
     meleeCd = Math.max(0, meleeCd - dt);
+    comboT = Math.max(0, comboT - dt);
     if (wantMelee || (hold.melee && !prevMelee)) meleeAttack();
     wantMelee = false;
     prevMelee = hold.melee;
@@ -2336,6 +2453,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       stock: stockOf(n).map((it, i) => ({ i, label: itemName(it), price: priceOf(it), color: RARITY_COLOR[it.rarity]!, info: modText(it) })),
       sell: save.bag.map((it) => ({ uid: it.uid, label: itemName(it), price: Math.max(1, Math.floor(priceOf(it) * 0.4)), color: RARITY_COLOR[it.rarity]! })),
     };
+    if (role === "witch") {
+      hud.spells = SPELLS.map((sp) => { const lv = save.spells[sp.id] ?? 0; return { id: sp.id, name: sp.name, text: sp.text, tag: sp.tag, lv, price: lv === 0 ? sp.price : lv >= SPELL_MAX_LV ? 0 : spellUpCost(sp, lv), slot: save.slot.indexOf(sp.id) }; });
+    }
     if (role === "quest") {
       const q = save.qs[n.npc.id];
       const done = q?.done ?? 0;
@@ -2803,6 +2923,27 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     interact() {
       if (screen !== "play" || !ow.talk) return;
+      // alguns aldeões estão possuídos: viram monstro ao serem abordados
+      const t0 = ow.talk;
+      if (t0.npc?.role === "villager" && LV.realm >= 1 && Math.random() < 0.1) {
+        const pool = REALM_THEMES[LV.realm]!.pool;
+        const m = spawnActor(pool[Math.floor(Math.random() * pool.length)]!, 0, GROUND, false, false);
+        m.x = t0.x;
+        m.z = t0.z;
+        m.el = t0.el;
+        m.y = GROUND * TILE - m.h - (t0.el ?? 0);
+        m.oid = `${t0.oid}:mon`;
+        const kk = 1 + 0.045 * LV.realm;
+        m.maxHp = m.hp = Math.round(m.maxHp * kk * 1.3);
+        actors.push(m);
+        actors.splice(actors.indexOf(t0), 1);
+        ow.talk = null;
+        showToast(`${t0.npc.name} estava possuído!`);
+        audio.hurt?.();
+        shake = 8;
+        emit();
+        return;
+      }
       ow.npc = ow.talk;
       screen = "npc";
       audio.ui();
@@ -2827,6 +2968,31 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       save.bag.push(it);
       st.splice(i, 1);
       audio.pickup();
+      persist();
+      emit();
+    },
+    spellBuy(id: number) {
+      const n = ow.npc;
+      const sp = SPELLS[id];
+      if (!sp || !n?.npc || n.npc.role !== "witch" || screen !== "npc") return;
+      const lv = save.spells[id] ?? 0;
+      if (lv >= SPELL_MAX_LV) { showToast("Grimório já no máximo."); emit(); return; }
+      const price = lv === 0 ? sp.price : spellUpCost(sp, lv);
+      if (save.gold < price) { showToast("Moedas insuficientes."); emit(); return; }
+      save.gold -= price;
+      save.spells[id] = lv + 1;
+      if (lv === 0) { const free = save.slot.indexOf(-1); if (free >= 0) save.slot[free] = id; }
+      showToast(lv === 0 ? `Magia aprendida: ${sp.name}!` : `${sp.name} subiu para o nível ${lv + 1}.`);
+      audio.fanfare();
+      persist();
+      emit();
+    },
+    spellEquip(id: number, slot: number) {
+      if (screen !== "npc" || (save.spells[id] ?? 0) <= 0 || slot < -1 || slot > 3) return;
+      const cur = save.slot.indexOf(id);
+      if (cur >= 0) save.slot[cur] = -1;
+      if (slot >= 0) save.slot[slot] = id;
+      audio.ui();
       persist();
       emit();
     },

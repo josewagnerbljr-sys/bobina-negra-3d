@@ -240,7 +240,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Vinte e cinco reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v11.1 · vilas vivas {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v11.2 · magias e grimórios {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -1133,7 +1133,7 @@ function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: (
 }
 
 function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | null }) {
-  const [tab, setTab] = useState<"buy" | "sell">("buy");
+  const [tab, setTab] = useState<"buy" | "sell" | "spell">(npc.role === "witch" ? "spell" : "buy");
   const title: Record<string, string> = { merchant: "Mercador", smith: "Ferreiro", witch: "Bruxa", quest: "Mensageiro", villager: "Aldeão", guard: "Guarda" };
   const shop = npc.role === "merchant" || npc.role === "smith" || npc.role === "witch";
   return (
@@ -1161,10 +1161,27 @@ function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | nu
         {shop && (
           <>
             <div className="mt-3 flex gap-2">
+              {npc.spells && <button type="button" onClick={() => setTab("spell")} className={`rounded-md border px-3 py-1 text-sm ${tab === "spell" ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>Grimórios</button>}
               <button type="button" onClick={() => setTab("buy")} className={`rounded-md border px-3 py-1 text-sm ${tab === "buy" ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>Comprar</button>
               <button type="button" onClick={() => setTab("sell")} className={`rounded-md border px-3 py-1 text-sm ${tab === "sell" ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>Vender</button>
             </div>
             <ul className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+              {tab === "spell" && npc.spells?.map((sp) => (
+                <li key={sp.id} className="rounded-md border border-paper/15 bg-ink/50 px-2 py-1.5 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0"><span className="block truncate font-bold text-brass">{sp.name} <span className="text-xs text-paper/60">· {sp.tag} · nível {sp.lv}/5</span></span><span className="block truncate text-xs text-paper/60">{sp.text}</span></span>
+                    <button type="button" disabled={sp.lv >= 5 || npc.gold < sp.price} onClick={() => rt?.spellBuy(sp.id)} className="shrink-0 rounded-md border border-brass px-2 py-1 text-xs text-brass disabled:opacity-40">{sp.lv === 0 ? `Aprender ${sp.price}` : sp.lv >= 5 ? "Máximo" : `Aprimorar ${sp.price}`}</button>
+                  </div>
+                  {sp.lv > 0 && (
+                    <div className="mt-1 flex items-center gap-1 text-xs text-paper/70">
+                      Equipar em:
+                      {["U", "I", "O", "P"].map((k, s) => (
+                        <button key={k} type="button" onClick={() => rt?.spellEquip(sp.id, sp.slot === s ? -1 : s)} className={`h-7 w-7 rounded border ${sp.slot === s ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>{k}</button>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
               {tab === "buy" && npc.stock.length === 0 && <li className="text-sm text-paper/60">Estoque esgotado.</li>}
               {tab === "buy" && npc.stock.map((it) => (
                 <li key={it.i} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink/50 px-2 py-1.5 text-sm">

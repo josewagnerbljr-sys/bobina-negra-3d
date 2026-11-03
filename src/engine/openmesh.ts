@@ -189,6 +189,20 @@ function propGeo(g: Geo, glow: Geo, p: Prop, style: string, realm: number) {
       addSphere(glow, x, y + 1.38 * s, z, 0.16 * s, 6, 4, mix(pal.t, [1, 0.9, 0.6], 0.5));
       break;
     }
+    case "flame": {
+      addCone(g, x, y, z, 0.3 * s, 0.22 * s, 0.35 * s, 6, [0.16, 0.13, 0.13]);
+      addCone(glow, x, y + 0.3 * s, z, 0.26 * s, 0.02, 1.2 * s, 6, [1, 0.45, 0.08]);
+      addCone(glow, x, y + 0.32 * s, z, 0.14 * s, 0.02, 0.8 * s, 5, [1, 0.85, 0.35]);
+      break;
+    }
+    case "fissure": {
+      const L = (0.9 + v) * s;
+      addBox(g, x - L, y + 0.005, z - 0.12 * s, x + L, y + 0.02, z + 0.12 * s, [0.06, 0.04, 0.05]);
+      addBox(glow, x - L * 0.9, y + 0.02, z - 0.045 * s, x + L * 0.9, y + 0.035, z + 0.045 * s, [1, 0.4, 0.08]);
+      addBox(g, x - 0.12 * s, y + 0.005, z - L * 0.7, x + 0.12 * s, y + 0.02, z + L * 0.7, [0.06, 0.04, 0.05]);
+      addBox(glow, x - 0.04 * s, y + 0.02, z - L * 0.6, x + 0.04 * s, y + 0.035, z + L * 0.6, [1, 0.5, 0.1]);
+      break;
+    }
     case "mush": {
       addCone(g, x, y, z, 0.07 * s, 0.06 * s, 0.4 * s, 5, [0.85, 0.82, 0.7]);
       addCone(g, x, y + 0.36 * s, z, 0.34 * s, 0.05 * s, 0.22 * s, 7, mix(pal.a, [0.6, 0.2, 0.3], 0.5), pal.a);

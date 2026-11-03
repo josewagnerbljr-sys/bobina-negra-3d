@@ -215,7 +215,7 @@ export function skyAt(wx: number, wz: number) {
 }
 
 /* ---------------------------------------------------------- objetos do chão */
-export type PropKind = "tree" | "pine" | "dead" | "rock" | "pillar" | "crystal" | "spire" | "bones" | "wall" | "bush" | "flower" | "puff" | "tomb" | "lamp" | "mush" | "arch" | "pebble" | "grass";
+export type PropKind = "tree" | "pine" | "dead" | "rock" | "pillar" | "crystal" | "spire" | "bones" | "wall" | "bush" | "flower" | "puff" | "tomb" | "lamp" | "mush" | "arch" | "pebble" | "grass" | "flame" | "fissure";
 export type Prop = { k: PropKind; x: number; z: number; r: number; s: number; v: number; block: boolean };
 
 const STYLE_PROPS: Record<RealmStyle, PropKind[]> = {
@@ -230,7 +230,7 @@ const STYLE_PROPS: Record<RealmStyle, PropKind[]> = {
   gold: ["pillar", "arch", "crystal", "wall", "lamp", "rock", "pillar"],
 };
 const DENSITY: Record<RealmStyle, number> = { mansion: 0.5, cave: 0.55, swamp: 0.55, city: 0.42, ice: 0.5, ruin: 0.46, garden: 0.62, cloud: 0.4, gold: 0.42 };
-const BLOCKING: Partial<Record<PropKind, number>> = { tree: 20, pine: 18, dead: 14, rock: 24, pillar: 18, crystal: 16, spire: 20, wall: 34, tomb: 20, arch: 0, lamp: 8 };
+const BLOCKING: Partial<Record<PropKind, number>> = { tree: 20, pine: 18, dead: 14, rock: 24, pillar: 18, crystal: 16, spire: 20, wall: 34, tomb: 20, arch: 0, lamp: 8, flame: 10 };
 
 /* ----------------------------------------------------------------- perigos */
 export type PoolKind = "lava" | "poison" | "thorn" | "frost" | "sand" | "storm";
@@ -331,6 +331,12 @@ function genChunk(ci: number, cj: number): Chunk {
       if (st === "cave" || st === "cloud" || st === "gold" || hh(gx, gz, SEED + 53) > 0.55) continue;
       if (nearPlace(px, pz, -60) || roadDist(lay, px, pz) < 40) continue;
       const q = hh(gx, gz, SEED + 54);
+      // infernos: chamas e fendas incandescentes espalhadas pelo chão
+      if (POOL_STYLE[st] === "lava" || st === "ruin") {
+        const hv = hh(gx, gz, SEED + 57);
+        if (hv < 0.2) { props.push({ k: "flame", x: px, z: pz, r: 10, s: 0.8 + q, v: hv * 5, block: true }); continue; }
+        if (hv < 0.4) { props.push({ k: "fissure", x: px, z: pz, r: 0, s: 0.9 + q * 1.2, v: hv * 2.5, block: false }); continue; }
+      }
       props.push({ k: q < 0.5 ? "grass" : q < 0.8 ? "flower" : "mush", x: px, z: pz, r: 0, s: 0.7 + hh(gx, gz, SEED + 55) * 0.7, v: hh(gx, gz, SEED + 56), block: false });
     }
     // beira de estrada: seixos, capim, postes de luz e cercas junto às vilas
