@@ -8,7 +8,7 @@
  */
 import { TILE, MAIN_LEVELS, type Kind } from "./types";
 import { REALM_THEMES, type RealmStyle } from "./realms";
-import { layoutOf, roadDist, type Layout, type NpcSpawn, type Piece, type Rect, type Surf } from "./village";
+import { layoutOf, roadDist, roadPt, type Layout, type NpcSpawn, type Piece, type Rect, type Surf } from "./village";
 
 export const OW_COLS = 24000;
 export const OW_ORIGIN_C = 12000;
@@ -215,7 +215,7 @@ export function skyAt(wx: number, wz: number) {
 }
 
 /* ---------------------------------------------------------- objetos do chão */
-export type PropKind = "tree" | "pine" | "dead" | "rock" | "pillar" | "crystal" | "spire" | "bones" | "wall" | "bush" | "flower" | "puff" | "tomb" | "lamp" | "mush" | "arch";
+export type PropKind = "tree" | "pine" | "dead" | "rock" | "pillar" | "crystal" | "spire" | "bones" | "wall" | "bush" | "flower" | "puff" | "tomb" | "lamp" | "mush" | "arch" | "pebble" | "grass";
 export type Prop = { k: PropKind; x: number; z: number; r: number; s: number; v: number; block: boolean };
 
 const STYLE_PROPS: Record<RealmStyle, PropKind[]> = {
@@ -287,7 +287,7 @@ function genChunk(ci: number, cj: number): Chunk {
   const inChunk = (x: number, z: number) => x >= x0 && x < x0 + CH && z >= z0 && z < z0 + CH;
   const nearPlace = (x: number, z: number, extra = 0) => { if (!lay) return false; for (const pl of lay.places) if (Math.hypot(x - pl.x, z - pl.z) < pl.r + extra) return true; return false; };
   // espalhamento por sub-células 4x4 (distância mínima garantida pela grade)
-  const NS = LV.on ? 6 : 4;
+  const NS = LV.on ? 8 : 4;
   const SUB = CH / NS;
   for (let j = 0; j < NS; j++) {
     for (let i = 0; i < NS; i++) {
@@ -301,11 +301,11 @@ function genChunk(ci: number, cj: number): Chunk {
       const clear = fbm(px / 500, pz / 500, SEED + 33);
       // fases: florestas densas, campinas abertas e encostas rochosas
       const forest = LV.on ? fbm(px / 1100, pz / 1100, SEED + 210) : 0.5;
-      const dens = LV.on ? (forest > 0.52 ? 1.5 + (forest - 0.52) * 3 : forest < 0.36 ? 0.4 : 0.9) : 1;
+      const dens = LV.on ? (forest > 0.46 ? 2.4 + (forest - 0.46) * 4 : forest < 0.3 ? 0.55 : 1.2) : 1;
       if (hh(sx, sz, SEED + 34) > DENSITY[st] * (0.35 + clear * 1.1) * dens * (LV.on ? 0.9 : 1)) continue;
       if (near0 && Math.hypot(px, pz) < 300) continue;
       if (lay) {
-        if (nearPlace(px, pz, 30) || roadDist(lay, px, pz) < 60 || Math.hypot(px - lay.portal.x, pz - lay.portal.z) < 200) continue;
+        if (nearPlace(px, pz, 30) || roadDist(lay, px, pz) < 70 || Math.hypot(px - lay.portal.x, pz - lay.portal.z) < 200) continue;
       }
       const list = STYLE_PROPS[st];
       let k = list[Math.floor(hh(sx, sz, SEED + 35) * list.length)]!;
@@ -313,7 +313,7 @@ function genChunk(ci: number, cj: number): Chunk {
         const hv = terrainH(px, pz);
         const q = hh(sx, sz, SEED + 211);
         if (hv > 2.2) k = q < 0.55 ? "rock" : q < 0.8 ? "pine" : "dead";
-        else if (forest > 0.52) k = q < 0.58 ? (st === "ice" || st === "ruin" ? "pine" : "tree") : q < 0.78 ? "pine" : q < 0.9 ? "bush" : q < 0.96 ? "mush" : "rock";
+        else if (forest > 0.46) k = q < 0.58 ? (st === "ice" || st === "ruin" ? "pine" : "tree") : q < 0.78 ? "pine" : q < 0.9 ? "bush" : q < 0.96 ? "mush" : "rock";
         else if (forest < 0.36) k = q < 0.6 ? "flower" : q < 0.8 ? "bush" : q < 0.92 ? "rock" : "tree";
       }
       const s = 0.55 + hh(sx, sz, SEED + 36) * 0.75;
@@ -322,6 +322,39 @@ function genChunk(ci: number, cj: number): Chunk {
     }
   }
   if (lay) {
+    // cobertura de solo: tufos de capim, trevos e flores (sem colisão)
+    for (let j = 0; j < 7; j++) for (let i = 0; i < 7; i++) {
+      const gx = ci * 7 + i; const gz = cj * 7 + j;
+      const px = x0 + (i + 0.1 + 0.8 * hh(gx, gz, SEED + 51)) * (CH / 7);
+      const pz = z0 + (j + 0.1 + 0.8 * hh(gx, gz, SEED + 52)) * (CH / 7);
+      const st = styleOf(biomeAt(px, pz).a);
+      if (st === "cave" || st === "cloud" || st === "gold" || hh(gx, gz, SEED + 53) > 0.55) continue;
+      if (nearPlace(px, pz, -60) || roadDist(lay, px, pz) < 40) continue;
+      const q = hh(gx, gz, SEED + 54);
+      props.push({ k: q < 0.5 ? "grass" : q < 0.8 ? "flower" : "mush", x: px, z: pz, r: 0, s: 0.7 + hh(gx, gz, SEED + 55) * 0.7, v: hh(gx, gz, SEED + 56), block: false });
+    }
+    // beira de estrada: seixos, capim, postes de luz e cercas junto às vilas
+    for (let ri = 0; ri < lay.roads.length; ri++) {
+      const r = lay.roads[ri]!;
+      if (Math.max(r.x0, r.x1) < x0 - 80 || Math.min(r.x0, r.x1) > x0 + CH + 80 || Math.max(r.z0, r.z1) < z0 - 400 || Math.min(r.z0, r.z1) > z0 + CH + 400) continue;
+      const len = Math.hypot(r.x1 - r.x0, r.z1 - r.z0);
+      const n = Math.max(8, Math.floor(len / 70));
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const a = roadPt(r, t);
+        const b = roadPt(r, Math.min(1, t + 0.01));
+        const ex = b.x - a.x; const ez = b.z - a.z; const el = Math.hypot(ex, ez) || 1;
+        for (const sd of [-1, 1]) {
+          const hv = hh(ri * 997 + i, sd + 3, SEED + 60);
+          const ox = a.x + (-ez / el) * sd * (46 + hv * 22);
+          const oz = a.z + (ex / el) * sd * (46 + hv * 22);
+          if (!inChunk(ox, oz) || nearPlace(ox, oz, -80)) continue;
+          if (i % 6 === 3 && sd === 1) props.push({ k: "lamp", x: ox, z: oz, r: 8, s: 1, v: 0.5, block: true });
+          else if (hv < 0.5) props.push({ k: "pebble", x: ox, z: oz, r: 0, s: 0.8 + hv, v: hv * 2, block: false });
+          else if (hv < 0.8) props.push({ k: "grass", x: ox, z: oz, r: 0, s: 0.8 + hv * 0.5, v: hv, block: false });
+        }
+      }
+    }
     // muralha natural: borda do mapa com pedras e árvores secas bem densas
     for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
       const px = x0 + (i + 0.5) * SUB; const pz = z0 + (j + 0.5) * SUB;

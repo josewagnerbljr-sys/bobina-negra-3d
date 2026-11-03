@@ -77,6 +77,7 @@ const STEP = 1 / 60;
 type Actor = Body & {
   el?: number;
   npc?: { id: string; role: string; name: string };
+  garb?: number;
   vz?: number;
   room?: number;
   look?: Kind;
@@ -1216,7 +1217,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   const NPC_KIND: Record<string, Kind> = { merchant: "clerk", smith: "knight", witch: "witch", quest: "clerk", guard: "knight", villager: "clerk" };
-  function spawnNpc(n: { id: string; role: string; name: string; x: number; z: number }, key: string) {
+  function spawnNpc(n: { id: string; role: string; name: string; x: number; z: number; garb?: number }, key: string) {
     const oid = `${key}:npc:${n.id}`;
     if (actors.some((x) => x.oid === oid)) return;
     const a = spawnActor(NPC_KIND[n.role] ?? "clerk", 0, GROUND, false, false, undefined, n.name);
@@ -1226,6 +1227,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.y = GROUND * TILE - a.h - a.el;
     a.oid = oid;
     a.npc = { id: n.id, role: n.role, name: n.name };
+    a.garb = n.garb ?? (n.id.length * 7 + n.id.charCodeAt(n.id.length - 1)) % 12;
+    a.facing = (n.x + n.z) % 2 > 1 ? 1 : -1;
     a.behavior = "still";
     a.touch = 0;
     a.speed = 0;
@@ -2429,6 +2432,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         fly: a.behavior === "fly",
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
+        garb: a.npc ? a.garb : undefined,
         yaw: level?.open ? a.yaw : undefined,
       });
     }
@@ -2869,8 +2873,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       save = loaded;
       hasSave = true;
       selected = save.hero;
-      screen = "map";
-      emit();
+      api.enterReel(Math.max(0, Math.min(MAIN_LEVELS - 1, save.next - 1)));
     },
     pickHero(hero: HeroId) {
       selected = hero;

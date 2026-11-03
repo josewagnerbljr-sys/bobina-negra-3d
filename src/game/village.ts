@@ -23,7 +23,7 @@ export type Rect = { x0: number; z0: number; x1: number; z1: number; y0?: number
 /** superfície caminhável: piso (axis null) ou rampa/escada (h varia de h0 em x0/z0 até h1 em x1/z1) */
 export type Surf = { x0: number; z0: number; x1: number; z1: number; h0: number; h1: number; axis: "x" | "z" | null; vis: "slab" | "stair"; fl: number; house: string };
 export type NpcRole = "merchant" | "smith" | "witch" | "quest" | "guard" | "villager";
-export type NpcSpawn = { id: string; role: NpcRole; name: string; x: number; z: number };
+export type NpcSpawn = { id: string; role: NpcRole; name: string; x: number; z: number; garb?: number };
 export type ChestSpot = { id: string; x: number; z: number; h: number };
 export type PlaceKind = "start" | "village" | "hamlet" | "mansion" | "castle";
 export type Place = {
@@ -194,6 +194,11 @@ function placeOK(list: { x: number; z: number; r: number }[], x: number, z: numb
   return true;
 }
 
+const VILLAGERS: [string, NpcRole][] = [
+  ["Aldeão", "villager"], ["Camponesa", "villager"], ["Lenhador", "villager"], ["Pescador", "villager"], ["Criança", "villager"],
+  ["Bardo", "villager"], ["Padre", "villager"], ["Caçadora", "villager"], ["Padeiro", "merchant"], ["Boticário", "merchant"],
+  ["Nobre", "villager"], ["Vigia", "guard"], ["Costureira", "villager"], ["Viajante", "quest"], ["Pedinte", "villager"],
+];
 const fenceRing = (pl: Place, x: number, z: number, rad: number, n: number, skip: number) => {
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
@@ -203,7 +208,7 @@ const fenceRing = (pl: Place, x: number, z: number, rad: number, n: number, skip
 };
 
 function addHouse(pl: Place, taken: { x: number; z: number; r: number }[], arch: Arch, hx: number, hz: number, tx: number, tz: number, idx: number, seed: number, cnt: number) {
-  const rad = (Math.max(arch.nw, arch.nd) * MOD) / 2 + 30;
+  const rad = (Math.max(arch.nw, arch.nd) * MOD) / 2 + 74;
   if (!placeOK(taken, hx, hz, rad)) return false;
   const dx = tx - hx;
   const dz = tz - hz;
@@ -224,17 +229,47 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
   const id = `v${idx}`;
   const big = kind !== "hamlet";
   const name = kind === "start" ? "Vila de Partida" : kind === "hamlet" ? `${HNAMES[Math.floor(hh(idx, realm, seed + 90) * HNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}` : `${VNAMES[Math.floor(hh(idx, realm, seed + 90) * VNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}`;
-  const pl: Place = { id, kind, name, x, z, r: big ? 470 : 300, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
-  const taken: { x: number; z: number; r: number }[] = [{ x, z, r: big ? 95 : 40 }];
-  const nh = kind === "start" ? 8 : big ? 8 + Math.floor(hh(idx, realm, seed + 92) * 4) : 3 + Math.floor(hh(idx, realm, seed + 92) * 3);
-  const pool: ArchKey[] = big ? ["casa", "casao", "sobrado", "sobrado2", "casebre", "cabana", "sobrado", "estalagem", "torre3", "casa", "celeiro"] : ["cabana", "casebre", "cabana", "casa", "celeiro", "casebre"];
+  const pl: Place = { id, kind, name, x, z, r: big ? 1050 : 560, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
+  const taken: { x: number; z: number; r: number }[] = [{ x, z, r: big ? 190 : 60 }];
+  const nh = kind === "start" ? 30 : big ? 26 + Math.floor(hh(idx, realm, seed + 92) * 10) : 9 + Math.floor(hh(idx, realm, seed + 92) * 5);
+  const pool: ArchKey[] = big ? ["casa", "casao", "sobrado", "sobrado2", "casebre", "cabana", "sobrado", "estalagem", "torre3", "casa", "celeiro", "sobrado2", "casebre", "torre", "solar"] : ["cabana", "casebre", "cabana", "casa", "celeiro", "casebre", "sobrado"];
   let tries = 0;
   let cnt = 0;
-  while (cnt < nh && tries++ < 160) {
+  while (cnt < nh && tries++ < 900) {
     const ang = hh(idx * 17 + tries, realm, seed + 93) * Math.PI * 2;
-    const dist = (big ? 140 : 80) + hh(idx * 19 + tries, realm, seed + 94) * (big ? 290 : 160);
+    const dist = (big ? 190 : 100) + hh(idx * 19 + tries, realm, seed + 94) * (big ? 800 : 400);
     const arch = ARCH[pool[Math.floor(hh(idx * 23 + tries, realm, seed + 95) * pool.length)]!]!;
-    if (addHouse(pl, taken, arch, x + Math.cos(ang) * dist, z + Math.sin(ang) * dist, x, z, idx, seed, cnt)) cnt++;
+    if (addHouse(pl, taken, arch, x + Math.cos(ang) * dist, z + Math.sin(ang) * dist, x, z, idx, seed, cnt)) {
+      const h = pl.houses[pl.houses.length - 1]!;
+      const hx = (h.rect.x0 + h.rect.x1) / 2;
+      const hz = (h.rect.z0 + h.rect.z1) / 2;
+      const d = Math.hypot(x - hx, z - hz) || 1;
+      const reach = Math.max(h.rect.x1 - h.rect.x0, h.rect.z1 - h.rect.z0) / 2 + 26;
+      // morador na porta (cada casa grande tem alguém por perto; aldeias, metade das casas)
+      if (big || cnt % 2 === 0) {
+        const k = Math.floor(hh(idx * 31 + cnt, realm, seed + 110) * VILLAGERS.length);
+        const [title, role] = VILLAGERS[k]!;
+        const nm = NPC_NAMES[Math.floor(hh(idx * 7 + cnt, realm, seed + 111) * NPC_NAMES.length)]!;
+        pl.npcs.push({ id: `${id}r${cnt}`, role, name: `${title} ${nm}`, x: hx + ((x - hx) / d) * reach + (hz - z) * 0.05, z: hz + ((z - hz) / d) * reach, garb: Math.floor(hh(idx * 13 + cnt, realm, seed + 112) * 12) });
+      }
+      cnt++;
+    }
+  }
+  // árvores, arbustos e canteiros entre as casas
+  const TREES = ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "Pine_2", "TwistedTree_2"];
+  const SMALL = ["Plant_1", "Plant_7", "Fern_1", "Clover_1", "Grass_Common_Tall", "Rock_Medium_1"];
+  for (let t = 0, put = 0; t < 300 && put < (big ? 70 : 30); t++) {
+    const ang = hh(idx * 41 + t, realm, seed + 120) * Math.PI * 2;
+    const dd = (big ? 200 : 90) + hh(idx * 43 + t, realm, seed + 121) * (big ? 840 : 400);
+    const tx = x + Math.cos(ang) * dd;
+    const tz = z + Math.sin(ang) * dd;
+    if (!placeOK(taken, tx, tz, 26)) continue;
+    const tree = put % 3 !== 2;
+    const v = hh(t, idx, seed + 122);
+    pl.pieces.push({ m: "nat", k: tree ? TREES[Math.floor(v * TREES.length)]! : SMALL[Math.floor(v * SMALL.length)]!, x: tx, z: tz, yaw: v * 6.28, s: (tree ? 0.4 : 0.5) * (0.8 + v * 0.5) });
+    if (tree) pl.walls.push({ x0: tx - 7, z0: tz - 7, x1: tx + 7, z1: tz + 7, y0: -5, y1: 3 });
+    taken.push({ x: tx, z: tz, r: 22 });
+    put++;
   }
   if (big) {
     const stalls: [string, number, number, NpcRole, string][] = [
@@ -252,7 +287,13 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
     pl.npcs.push({ id: `${id}g`, role: "villager", name: "Aldeão", x: x - 44, z: z - 40 });
     pl.npcs.push({ id: `${id}g2`, role: "guard", name: "Guarda", x: x + 90, z: z + 90 });
     pl.lamps.push({ x: x - 36, z: z - 34 }, { x: x + 36, z: z + 66 }, { x: x - 76, z: z - 8 }, { x: x + 80, z: z - 20 });
-    fenceRing(pl, x, z, 128, 12, 4);
+    // praça calçada com tijolos do pacote medieval, poço e bancos
+    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if (Math.abs(i) + Math.abs(j) <= 5) pl.pieces.push({ m: "med", k: i + j & 1 ? "Floor_UnevenBrick" : "Floor_Brick", x: x + i * 48, z: z + j * 48, y: 0.02, yaw: 0, s: MS });
+    pl.pieces.push({ m: "prop", k: "Bench", x: x - 110, z: z - 60, yaw: 1.57, s: MS }, { m: "prop", k: "Bench", x: x + 118, z: z + 66, yaw: -1.57, s: MS }, { m: "prop", k: "Banner_1", x: x + 150, z: z - 20, yaw: 0, s: MS }, { m: "prop", k: "Banner_2", x: x - 150, z: z + 30, yaw: 0, s: MS });
+    for (let i = 0; i < 6; i++) pl.npcs.push({ id: `${id}p${i}`, role: i === 5 ? "merchant" : "villager", name: ["Aldeã", "Menino", "Andarilho", "Mulher do Poço", "Velho Sábio", "Mascate"][i]! + " " + NPC_NAMES[(i * 5 + idx) % NPC_NAMES.length]!, x: x + Math.cos(i * 1.05 + idx) * (70 + (i % 3) * 22), z: z + Math.sin(i * 1.05 + idx) * (70 + (i % 3) * 22), garb: (i * 3 + idx) % 12 });
+    fenceRing(pl, x, z, 210, 22, 4);
+    // ruas: postes de luz em cruz saindo da praça
+    for (let k = 1; k <= 6; k++) for (const [ux, uz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) pl.lamps.push({ x: x + ux * (200 + k * 110) + uz * 40, z: z + uz * (200 + k * 110) + ux * 40 });
   } else {
     // aldeia: poço de caldeirão, feno e cercado
     pl.pieces.push({ m: "prop", k: "Cauldron", x: x, z: z, yaw: 0, s: MS }, { m: "prop", k: "Barrel_Apples", x: x + 30, z: z + 12, yaw: 0.4, s: MS }, { m: "prop", k: "FarmCrate_Carrot", x: x - 30, z: z + 18, yaw: 0, s: MS });
@@ -345,13 +386,13 @@ export function layoutOf(realm: number, seed: number): Layout {
   const R = 10800;
   const places: Place[] = [];
   places.push(village(realm, seed, 0, 0, 0, "start"));
-  const nv = 3 + (realm % 2);
+  const nv = 5 + (realm % 3);
   const base = hh(realm, 1, seed + 70) * Math.PI * 2;
   const pos: { x: number; z: number }[] = [];
-  const total = nv + 4;
+  const total = nv + 7;
   for (let i = 0; i < total; i++) {
     const ang = base + (i / total) * Math.PI * 2 + (hh(i, realm, seed + 71) - 0.5) * 0.35;
-    const dist = 3300 + hh(i, realm, seed + 72) * 4300 + (i % 2) * 700;
+    const dist = 2600 + hh(i, realm, seed + 72) * 5200 + (i % 2) * 700;
     pos.push({ x: Math.cos(ang) * dist, z: Math.sin(ang) * dist });
   }
   for (let i = 0; i < nv; i++) places.push(village(realm, seed, i + 1, pos[i]!.x, pos[i]!.z, "village"));
@@ -361,6 +402,7 @@ export function layoutOf(realm: number, seed: number): Layout {
   places.push(castle(realm, seed, nv + 2, cp.x, cp.z));
   places.push(village(realm, seed, nv + 3, pos[nv + 2]!.x, pos[nv + 2]!.z, "hamlet"));
   places.push(village(realm, seed, nv + 4, pos[nv + 3]!.x, pos[nv + 3]!.z, "hamlet"));
+  for (let i = 4; i < 7; i++) places.push(village(realm, seed, nv + 1 + i, pos[nv + i]!.x, pos[nv + i]!.z, "hamlet"));
   // portal oposto à mansão
   const pa = Math.atan2(mp.z, mp.x) + Math.PI;
   const portal = { x: Math.cos(pa) * (R - 1300), z: Math.sin(pa) * (R - 1300) };
@@ -389,7 +431,7 @@ export function layoutOf(realm: number, seed: number): Layout {
 }
 
 /** posição de um ponto da estrada (curva suave) para o segmento r no parâmetro t */
-function roadPt(r: Rect, t: number) {
+export function roadPt(r: Rect, t: number) {
   const dx = r.x1 - r.x0;
   const dz = r.z1 - r.z0;
   const len = Math.hypot(dx, dz) || 1;

@@ -71,6 +71,9 @@ function natProp(g: Geo, p: Prop, style: string): boolean {
     case "rock": addNat(g, "Rock_Medium", p.v, x, GY, z, 0.55 * s, t); return true;
     case "bush": addNat(g, p.v < 0.5 ? "Fern" : "Plant", p.v, x, GY, z, 0.45 * s, t); return true;
     case "flower": addNat(g, p.v < 0.4 ? "Petal" : p.v < 0.7 ? "Clover" : "Grass_Wispy_Short", p.v, x, GY, z, 0.8 * s, t); return true;
+    case "pebble": addNat(g, p.v < 0.5 ? "Pebble_Round" : "Pebble_Square", p.v, x, GY, z, 1.1 * s, t); return true;
+    case "grass": addNat(g, p.v < 0.5 ? "Grass_Wispy_Short" : "Grass_Common_Short", p.v, x, GY, z, 0.8 * s, t); return true;
+    case "mush": addNat(g, "Mushroom_Common", p.v, x, GY, z, 0.9 * s, t); return true;
     default: return false;
   }
 }

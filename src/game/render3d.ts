@@ -11,6 +11,7 @@ import { GROUND, MAIN_LEVELS, ROWS, TILE, Tile, type HeroId, type Kind, type Lev
 
 export type Spark = { z?: number; x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
 
+const GARB: [number, number, number][] = [[1.25, 0.85, 0.7], [0.75, 1.1, 0.8], [0.8, 0.9, 1.3], [1.3, 1.15, 0.7], [1.15, 0.8, 1.2], [0.7, 0.75, 0.8], [1.3, 0.7, 0.7], [0.9, 1.2, 1.2], [1.1, 1.0, 0.8], [0.85, 0.7, 0.55], [1.4, 1.3, 1.1], [0.6, 0.85, 0.65]];
 export type Paint = {
   ref: object;
   z?: number;
@@ -36,6 +37,8 @@ export type Paint = {
   /** 0..1 animação de morte */
   dying?: number;
   mini?: boolean;
+  /** roupa do NPC (índice na paleta) */
+  garb?: number;
   gear?: GearLook;
   /** mundo aberto: direção do corpo (rad, 0 = +z) */
   yaw?: number;
@@ -636,6 +639,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const drawActor = (p: Paint, m: Model, mat: Float32Array) => {
       const st: DrawState = { ...tmpDraw };
       st.flash = p.kind !== "hero" && p.hurt ? 0.75 : 0;
+      if (p.garb !== undefined) st.tint = GARB[p.garb % GARB.length]!;
       if (p.ally) {
         st.tint = [0.65, 0.95, 1.1];
         st.emis = [0.05, 0.25, 0.3];
