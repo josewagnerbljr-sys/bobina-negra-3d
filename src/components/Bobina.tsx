@@ -104,6 +104,12 @@ export function Bobina() {
   };
   const line = snap.lines[snap.lineIndex];
   const playing = snap.screen === "play";
+  const [showMap, setShowMap] = useState(false);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.code === "KeyM" && !e.repeat) setShowMap((v) => !v); if (e.code === "Escape") setShowMap(false); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   function hold(action: Action, down: boolean) {
     rtRef.current?.setHold(action, down);
@@ -173,9 +179,13 @@ export function Bobina() {
                 <span className="min-w-0 leading-tight">
                   <span className="block truncate text-paper">{snap.open.region}</span>
                   <span className="block text-paper/60">Portal: {snap.open.target} · {snap.open.dist} passos · X {snap.open.wx} Z {snap.open.wz} · {snap.open.night > 0.5 ? "Noite" : snap.open.night > 0.15 ? "Anoitecendo" : "Dia"}</span>
+                  {snap.open.map && <span className="block text-brass">Moedas {snap.open.gold} · Peças do enigma {snap.open.parts}/3</span>}
+                  {snap.open.talk && <span className="block text-paper">Perto: {snap.open.talk}</span>}
                   {snap.open.hazard && <span className="block font-bold text-blood">Perigo: {snap.open.hazard}</span>}
                 </span>
                 <span className="pointer-events-auto ml-auto flex gap-1">
+                  {snap.open.talk && <button type="button" onClick={() => rtRef.current?.interact()} className="hud-ico min-h-9 rounded-md border border-brass bg-brass px-3 text-xs font-bold text-ink">Falar [E]</button>}
+                  {snap.open.map && <button type="button" aria-label="Abrir mapa da fase" onClick={() => setShowMap((v) => !v)} className="hud-ico min-h-9 rounded-md border border-paper/30 bg-panel px-2 text-xs text-paper">Mapa</button>}
                   <button type="button" aria-label="Girar câmera para a esquerda" onClick={() => rtRef.current?.camRot(-1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟲</button>
                   <button type="button" aria-label="Girar câmera para a direita" onClick={() => rtRef.current?.camRot(1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟳</button>
                 </span>
@@ -224,13 +234,13 @@ export function Bobina() {
         <div className="pointer-events-auto min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {snap.screen === "title" && (
             <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
-              <div className="rounded-lg border border-brass/50 bg-panel/95 p-5 shadow-lg">
+              <div className="rounded-lg border border-brass/50 bg-ink/60 p-5 shadow-lg backdrop-blur-sm">
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
-                  Vinte e cinco reinos abertos, dez bis de tesouro, chefes de sobra. Oito amaldiçoados. Um contrato que ninguém leu até a cláusula final.
+                  Vinte e cinco reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v10.1 · mundo aberto direto {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v11.0 · reinos abertos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -267,6 +277,8 @@ export function Bobina() {
             </section>
           )}
 
+          {showMap && playing && snap.open?.map && <LevelMap hud={snap.open} onClose={() => setShowMap(false)} />}
+          {snap.screen === "npc" && snap.npc && <NpcPanel npc={snap.npc} rt={rtRef.current} />}
           {snap.screen === "help" && (
             <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
               <div className="rounded-lg border border-brass/50 bg-panel/95 p-5">
@@ -1084,3 +1096,94 @@ function Pad({
   );
 }
 
+
+function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: () => void }) {
+  const m = hud.map!;
+  const S = 320;
+  const sc = S / 2 / (m.R * 1.05);
+  const X = (x: number) => S / 2 + x * sc;
+  return (
+    <section className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-ink/80 p-3" onClick={onClose}>
+      <div className="rounded-lg border border-brass/60 bg-panel/95 p-3" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between gap-4 text-sm text-paper">
+          <span className="font-display text-lg">Mapa da fase</span>
+          <button type="button" onClick={onClose} className="rounded-md border border-paper/30 px-3 py-1">Fechar [M]</button>
+        </div>
+        <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} className="max-h-[70vh] max-w-full rounded-md bg-ink">
+          <circle cx={S / 2} cy={S / 2} r={m.R * sc} fill="#1d2a1c" stroke="#8a6b2a" strokeWidth={2} />
+          {m.places.slice(1).map((p, i) => <line key={`l${i}`} x1={X(m.places[0]!.x)} y1={X(m.places[0]!.z)} x2={X(p.x)} y2={X(p.z)} stroke="#6b5a3a" strokeWidth={2} strokeDasharray="4 3" />)}
+          {m.places.map((p, i) => (
+            <g key={i}>
+              <rect x={X(p.x) - 5} y={X(p.z) - 5} width={10} height={10} fill={p.k === "mansion" ? "#a5324a" : "#d9b36a"} />
+              <text x={X(p.x) + 8} y={X(p.z) + 3} fontSize={8} fill="#e8dcc0">{p.k === "start" ? "Início" : p.k === "mansion" ? "Mansão" : p.n}</text>
+            </g>
+          ))}
+          {m.marks.map((k, i) => (
+            <g key={`k${i}`}>
+              <circle cx={X(k.x)} cy={X(k.z)} r={6} fill={k.got ? "#4a7a3a" : "#ffcc33"} stroke="#000" />
+              <text x={X(k.x) - 3} y={X(k.z) + 3} fontSize={8} fill="#000">{i + 1}</text>
+            </g>
+          ))}
+          <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={8} fill="none" stroke={m.portal.open ? "#7affc4" : "#7a5aff"} strokeWidth={3} />
+          <circle cx={X(hud.wx * 48)} cy={X(hud.wz * 48)} r={4} fill="#ff4d4d" stroke="#fff" />
+        </svg>
+        <p className="mt-2 max-w-[320px] text-xs text-paper/70">Quadrado dourado: vilarejo. Vermelho: mansão. Círculo numerado: peça do enigma (amarelo = falta, verde = conquistada). Anel roxo/verde: portal. Ponto vermelho: você.</p>
+      </div>
+    </section>
+  );
+}
+
+function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | null }) {
+  const [tab, setTab] = useState<"buy" | "sell">("buy");
+  const title: Record<string, string> = { merchant: "Mercador", smith: "Ferreiro", witch: "Bruxa", quest: "Mensageiro", villager: "Aldeão", guard: "Guarda" };
+  const shop = npc.role === "merchant" || npc.role === "smith" || npc.role === "witch";
+  return (
+    <section className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-ink/70 p-3">
+      <div className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-lg border border-brass/60 bg-panel/95 p-4 text-paper">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-2xl">{npc.name}</h2>
+            <p className="text-xs text-brass">{title[npc.role] ?? ""} · Moedas: {npc.gold}</p>
+          </div>
+          <button type="button" onClick={() => rt?.npcClose()} className="rounded-md border border-paper/30 px-3 py-1 text-sm">Sair [E]</button>
+        </div>
+        <p className="mt-2 text-sm italic text-paper/80">“{npc.text}”</p>
+        {npc.quest && (
+          <div className="mt-3 rounded-md border border-brass/40 bg-ink/60 p-3 text-sm">
+            <p className="font-bold">{npc.quest.title}</p>
+            <p className="text-paper/70">Recompensa: {npc.quest.reward}</p>
+            {npc.quest.active && <p className="text-brass">Progresso: {npc.quest.prog}/{npc.quest.goal}</p>}
+            <div className="mt-2">
+              {!npc.quest.active && <Primary onClick={() => rt?.npcQuest()}>Aceitar missão</Primary>}
+              {npc.quest.active && <Primary onClick={() => rt?.npcQuest()} disabled={!npc.quest.ready}>{npc.quest.ready ? "Entregar missão" : "Ainda não terminou"}</Primary>}
+            </div>
+          </div>
+        )}
+        {shop && (
+          <>
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => setTab("buy")} className={`rounded-md border px-3 py-1 text-sm ${tab === "buy" ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>Comprar</button>
+              <button type="button" onClick={() => setTab("sell")} className={`rounded-md border px-3 py-1 text-sm ${tab === "sell" ? "border-brass bg-brass text-ink" : "border-paper/30"}`}>Vender</button>
+            </div>
+            <ul className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+              {tab === "buy" && npc.stock.length === 0 && <li className="text-sm text-paper/60">Estoque esgotado.</li>}
+              {tab === "buy" && npc.stock.map((it) => (
+                <li key={it.i} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink/50 px-2 py-1.5 text-sm">
+                  <span className="min-w-0"><span className="block truncate font-bold" style={{ color: it.color }}>{it.label}</span><span className="block truncate text-xs text-paper/60">{it.info}</span></span>
+                  <button type="button" disabled={npc.gold < it.price} onClick={() => rt?.npcBuy(it.i)} className="shrink-0 rounded-md border border-brass px-2 py-1 text-xs text-brass disabled:opacity-40">{it.price} moedas</button>
+                </li>
+              ))}
+              {tab === "sell" && npc.sell.length === 0 && <li className="text-sm text-paper/60">A mochila está vazia.</li>}
+              {tab === "sell" && npc.sell.map((it) => (
+                <li key={it.uid} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink/50 px-2 py-1.5 text-sm">
+                  <span className="min-w-0 truncate font-bold" style={{ color: it.color }}>{it.label}</span>
+                  <button type="button" onClick={() => rt?.npcSell(it.uid)} className="shrink-0 rounded-md border border-brass px-2 py-1 text-xs text-brass">+{it.price}</button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}

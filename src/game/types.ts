@@ -123,6 +123,7 @@ export type Screen =
   | "mode"
   | "dead"
   | "clear"
+  | "npc"
   | "ending";
 
 export type Line = { who: string; text: string };
@@ -172,10 +173,25 @@ export type Riser = { c: number; w: number; h: number; mode: number; ph: number;
 
 export type BuffSnap = { kind: BuffKind; left: number };
 
-export type OpenHud = { region: string; wx: number; wz: number; night: number; hazard: string; target: string; dist: number; rel: number };
+export type OpenHud = {
+  region: string; wx: number; wz: number; night: number; hazard: string; target: string; dist: number; rel: number;
+  /** pode falar com um NPC aqui */
+  talk?: string;
+  gold: number;
+  parts: number;
+  /** mapa da fase: lugares, marcas do enigma e portal (px de mundo) */
+  map?: { R: number; places: { x: number; z: number; k: string; n: string }[]; marks: { x: number; z: number; n: string; got: boolean }[]; portal: { x: number; z: number; open: boolean } };
+};
+export type NpcHud = {
+  name: string; role: string; text: string; gold: number;
+  stock: { i: number; label: string; price: number; color: string; info: string }[];
+  sell: { uid: number; label: string; price: number; color: string }[];
+  quest?: { title: string; prog: number; goal: number; ready: boolean; reward: string; active: boolean };
+};
 
 export type Snap = {
   open?: OpenHud;
+  npc?: NpcHud;
   screen: Screen;
   hasSave: boolean;
   hero: HeroId;

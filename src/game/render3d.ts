@@ -1,5 +1,5 @@
-import { CH, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
-import { buildChunkMesh } from "../engine/openmesh";
+import { CH, LV, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
+import { buildChunkMesh, loadNature, natureReady } from "../engine/openmesh";
 import { moodFor, tintSky, tintLight, drawAmbientOpaque, drawAmbientBlend, type AmbientCtx } from "./ambient";
 import { Engine, hex, m4, mix3, type Geo, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
 import { loadCharAsset } from "../engine/skin";
@@ -47,7 +47,7 @@ export type Fx = { z?: number; kind: "wave" | "slash" | "pillar" | "nova" | "bla
 
 export type ShotPaint = { z?: number; x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
 
-export type OpenCam = { yaw: number; pitch: number; dist: number; look: number; offX: number; night: number; jump: number; tele: { x: number; z: number; r: number; k: number; c: string }[] };
+export type OpenCam = { el: number; yaw: number; pitch: number; dist: number; look: number; offX: number; night: number; jump: number; tele: { x: number; z: number; r: number; k: number; c: string }[] };
 
 export type Frame = {
   level: Level | null;
@@ -169,6 +169,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       .catch(() => undefined);
   }
   startSkinLoad();
+  void loadNature(new URL("./models/", document.baseURI).href, typeof __BUILD__ === "string" ? "?v=" + __BUILD__ : "");
 
   function gfxFor(level: Level): Gfx {
     let g = gfxCache.get(level);
@@ -285,7 +286,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camOX = 0;
   let camOZ = 0;
   let camOY = 0;
-  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh }>();
+  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; groups: { rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
   let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
@@ -481,7 +482,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const fg = dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75));
       const base = tintLight(g.light, mood, moodLight);
       const sk = mix3(dk(osky.bot as Vec3), [1, 1, 1], 0.45);
-      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 24, fogFar: 72 });
+      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 14, fogFar: 40 });
     } else {
       e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
       e.useLit(tintLight(g.light, mood, moodLight));
@@ -493,7 +494,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     e.draw(g.terrain, null, {});
     const openGlows: { x: number; y: number; z: number; s: number; c: Vec3; a: number }[] = [];
     if (oc) {
-      const R = 3;
+      const R = 2;
       const ci0 = Math.floor(owx / CH);
       const cj0 = Math.floor(owz / CH);
       const tr = (OW_ORIGIN_X - oc.offX) / TILE;
@@ -501,17 +502,24 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       let built = 0;
       for (let j = cj0 - R; j <= cj0 + R; j++) {
         for (let i = ci0 - R; i <= ci0 + R; i++) {
-          const key = `${i},${j}`;
+          const key = `${LV.on ? LV.realm : -1}|${i},${j}`;
           let mh = openMeshes.get(key);
           if (!mh) {
-            if (built >= (openMeshes.size < 8 ? 49 : 3)) continue;
+            if (!natureReady() || built >= (openMeshes.size < 8 ? 25 : 2)) continue;
             built++;
             const cm = buildChunkMesh(i, j);
-            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow) };
+            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), groups: cm.groups.map((gp) => ({ rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
             openMeshes.set(key, mh);
           }
           e.draw(mh.solid, tmpBlob, {});
           e.draw(mh.glow, tmpBlob, { unlit: true });
+          for (const gp of mh.groups) {
+            const inside = owx > gp.rect.x0 && owx < gp.rect.x1 && owz > gp.rect.z0 && owz < gp.rect.z1;
+            const lim = inside ? Math.max(0, Math.round(oc.el / 1.56 - 0.2)) : 99;
+            for (let q = 0; q < gp.floors.length && q <= lim; q++) e.draw(gp.floors[q]!, tmpBlob, {});
+            const near = owx > gp.rect.x0 - 150 && owx < gp.rect.x1 + 150 && owz > gp.rect.z0 - 150 && owz < gp.rect.z1 + 150;
+            if (gp.roof && !near) e.draw(gp.roof, tmpBlob, {});
+          }
           for (const st of chunkAt(i, j).sites) {
             if (st.kind === "camp") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 0.7, z: st.z / TILE, s: 3.2, c: [1, 0.55, 0.2], a: 0.5 });
             else if (st.kind === "shrine") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 1.9, z: st.z / TILE, s: 3.4, c: [0.6, 1, 0.85], a: 0.55 });
@@ -521,10 +529,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       }
       if (openMeshes.size > 130) {
         for (const [k, v] of openMeshes) {
-          const [a, b] = k.split(",").map(Number);
-          if (Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
+          const [tg, ij] = k.split("|");
+          const [a, b] = ij!.split(",").map(Number);
+          if (tg !== String(LV.on ? LV.realm : -1) || Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
             e.free(v.solid);
             e.free(v.glow);
+            for (const gp of v.groups) { for (const fm of gp.floors) e.free(fm); if (gp.roof) e.free(gp.roof); }
             openMeshes.delete(k);
           }
         }

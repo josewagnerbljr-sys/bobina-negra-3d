@@ -23,6 +23,14 @@ export type Save = {
   equip: Equip;
   uid: number;
   mode: number;
+  /** moedas */
+  gold: number;
+  /** peças do enigma por reino (bits 0..2) */
+  parts: number[];
+  /** monstros derrotados (total) */
+  kills: number;
+  /** missões dos NPCs: id -> {base, goal, done} */
+  qs: Record<string, { base: number; goal: number; done: number }>;
 };
 
 export function emptySave(hero: HeroId): Save {
@@ -41,6 +49,10 @@ export function emptySave(hero: HeroId): Save {
     equip: emptyEquip(),
     uid: 1,
     mode: 0,
+    gold: 40,
+    parts: Array.from({ length: 25 }, () => 0),
+    kills: 0,
+    qs: {},
   };
 }
 
@@ -106,6 +118,10 @@ function parse(text: string): Save | null {
     equip: eq,
     uid,
     mode: clampInt(data.mode, 0, 4),
+    gold: Math.max(0, Math.floor(data.gold ?? 40)),
+    parts: Array.from({ length: 25 }, (_, i) => clampInt(data.parts?.[i], 0, 7)),
+    kills: Math.max(0, Math.floor(data.kills ?? 0)),
+    qs: data.qs && typeof data.qs === "object" ? data.qs : {},
   };
 }
 

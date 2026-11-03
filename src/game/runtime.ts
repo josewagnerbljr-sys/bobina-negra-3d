@@ -28,10 +28,12 @@ import {
 } from "./content";
 import { buildLevel } from "./maps";
 import { REALM_THEMES } from "./realms";
+import type { BaseDef } from "./items";
+import { BASES } from "./items";
 import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
-import { CH, OW_ORIGIN_X, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, poolsNear, styleOf, type Prop, type Spawn } from "./openworld";
+import { CH, LV, OW_ORIGIN_X, floorElev, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, levelPortal, poolsNear, setLevel, styleOf, wallsNear, type Prop, type Spawn } from "./openworld";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
 import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, stepInfo, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
@@ -64,12 +66,17 @@ import {
   type Level,
   type Screen,
   type Snap,
+  type OpenHud,
+  type NpcHud,
+  type Rarity,
   type StatKey,
 } from "./types";
 
 const STEP = 1 / 60;
 
 type Actor = Body & {
+  el?: number;
+  npc?: { id: string; role: string; name: string };
   vz?: number;
   room?: number;
   look?: Kind;
@@ -102,7 +109,7 @@ type Actor = Body & {
   ai?: number;
 };
 
-type Loot = Body & { item: Item; age: number; t: number };
+type Loot = Body & { item: Item; age: number; t: number; el?: number };
 
 type Shot = Body & {
   life: number;
@@ -130,6 +137,11 @@ export type Runtime = {
   pickHero: (hero: HeroId) => void;
   enterReel: (index0: number) => void;
   playOpen: () => void;
+  interact: () => void;
+  npcBuy: (i: number) => void;
+  npcSell: (uid: number) => void;
+  npcQuest: () => void;
+  npcClose: () => void;
   advanceDialogue: () => void;
   skipDialogue: () => void;
   openChar: () => void;
@@ -355,7 +367,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     return Math.random() < D().crit ? d * 1.8 : d;
   }
 
-  const inert = (a: Actor) => a.kind === "candle" || a.kind === "chest";
+  const inert = (a: Actor) => a.kind === "candle" || a.kind === "chest" || Boolean(a.npc);
 
   function hurtFoe(a: Actor, dmg: number, color: string) {
     if (a.dead || a.ally || inert(a)) return;
@@ -547,10 +559,33 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       maxHp: maxHp(),
       reel: level ? level.index + 1 : 0,
       reelName: level?.name ?? "",
+      npc: screen === "npc" ? npcHud() : undefined,
       open: level?.open
         ? (() => {
             const k = Math.min(MAIN_LEVELS - 1, Math.max(0, save.next - 1));
-            const pw = PORTALS_W[k]!;
+            let pw: { x: number; z: number } = PORTALS_W[k]!;
+            let tname = REEL_NAMES[k] ?? "";
+            const lay = LV.on ? LV.lay : null;
+            let map: OpenHud["map"];
+            if (lay) {
+              const got = save.parts[LV.realm] ?? 0;
+              const wxp = g2w(player.x + player.w / 2);
+              const wzp = player.z ?? 0;
+              let best = 1e12;
+              pw = lay.portal;
+              tname = got === 7 ? "Portal do próximo reino" : "";
+              lay.parts.forEach((m, i) => {
+                if (got & (1 << i)) return;
+                const d = Math.hypot(m.x - wxp, m.z - wzp);
+                if (d < best) { best = d; pw = m; tname = m.name; }
+              });
+              map = {
+                R: lay.R,
+                places: lay.places.map((pl) => ({ x: pl.x, z: pl.z, k: pl.kind, n: pl.name })),
+                marks: lay.parts.map((m, i) => ({ x: m.x, z: m.z, n: m.name, got: Boolean(got & (1 << i)) })),
+                portal: { x: lay.portal.x, z: lay.portal.z, open: got === 7 },
+              };
+            }
             const vx = w2g(pw.x) - (player.x + player.w / 2);
             const vz = pw.z - (player.z ?? 0);
             const sy = Math.sin(ow.yaw);
@@ -561,13 +596,17 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
               wz: Math.round((player.z ?? 0) / TILE),
               night: ow.night,
               hazard: ow.hz,
-              target: REEL_NAMES[k] ?? "",
+              target: tname,
+              talk: ow.talk?.npc ? `${ow.talk.npc.name}` : undefined,
+              gold: save.gold,
+              parts: LV.on ? partsGot(LV.realm) : 0,
+              map,
               dist: Math.round(Math.hypot(vx, vz) / TILE),
               rel: Math.atan2(vx * cy + vz * sy, vx * sy - vz * cy),
             };
           })()
         : undefined,
-      worldName: level ? (level.open ? "Mundo Aberto" : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
+      worldName: level ? (level.open ? (LV.on ? `Reino ${LV.realm + 1}: ${REEL_NAMES[LV.realm] ?? ""}` : "Mundo Aberto") : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
       bonus: Boolean(level?.bonus),
       bossAlive: Boolean(boss),
       bossName: nb && boss ? (nb.boss ? (level && level.index < MAIN_LEVELS ? REALM_THEMES[level.index]!.boss : world.boss) : (nb.name ?? MINI_NAMES[level?.world ?? 0] ?? "Mini-chefe")) : "",
@@ -771,7 +810,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function dropLoot(items: Item[], x: number, y: number, z = 0) {
     items.forEach((item, i) => {
-      loot.push({ x: x - 10, y: y - 10, w: 20, h: 20, vx: (i - (items.length - 1) / 2) * 90 + (Math.random() - 0.5) * 30, vy: -380 - Math.random() * 120, item, age: 0, t: Math.random() * 6, z });
+      loot.push({ el: level?.open ? elT(g2w(x), z, 0) : 0, x: x - 10, y: y - 10, w: 20, h: 20, vx: (i - (items.length - 1) / 2) * 90 + (Math.random() - 0.5) * 30, vy: -380 - Math.random() * 120, item, age: 0, t: Math.random() * 6, z });
     });
     if (loot.length > 40) loot.splice(0, loot.length - 40);
   }
@@ -781,13 +820,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.dead = true;
     a.hp = 0;
     a.dyT = 0.45;
-    if (a.oid) ow.done.add(a.oid);
+    if (a.oid) markDone(a.oid);
     burst(a.x + a.w / 2, a.y + a.h / 2, "#f4e4c8", 12, 160);
     audio.hit();
     shake = a.boss || a.mini ? 10 : 4;
     if (!a.ally && !inert(a)) {
       lastKill = a.kind === "boss" ? lastKill : a.kind;
       gainXp(a.xp);
+      save.kills++;
+      addGold((1 + (a.room ?? 0) * 0.5 + Math.random() * 3) * (a.boss ? 20 : a.mini ? 8 : 1));
+      if (a.oid === "castle:boss") grantPart(2, "guardião do castelo derrotado");
       showToast(`+${Math.round(a.xp * D().xp)} XP`);
       if (a.boss) showToast("A saída destrancou. O carimbo rangeu.");
       if (a.mini) showToast("Mini-chefe caiu! Tesouro no chão.");
@@ -797,11 +839,30 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
   }
 
+  const RESPAWN = 180;
+  const markDone = (id: string) => { ow.done.set(id, ow.clock); };
+  const isDone = (id: string) => { if (ow.opened.has(id)) return true; const t = ow.done.get(id); return t !== undefined && ow.clock - t < RESPAWN; };
+  const partsGot = (realm: number) => { const m = save.parts[realm] ?? 0; return (m & 1) + ((m >> 1) & 1) + ((m >> 2) & 1); };
+  function grantPart(i: number, why: string) {
+    if (!LV.on) return;
+    const m = save.parts[LV.realm] ?? 0;
+    if (m & (1 << i)) return;
+    save.parts[LV.realm] = m | (1 << i);
+    persist();
+    audio.fanfare();
+    shake = 6;
+    showToast(`Peça ${i + 1} do enigma conquistada (${why})! ${partsGot(LV.realm)}/3` + (partsGot(LV.realm) === 3 ? " O portal pode ser aberto." : ""));
+  }
+  function addGold(n: number) {
+    if (n <= 0) return;
+    save.gold += Math.round(n);
+  }
   function openChest(a: Actor) {
     a.dead = true;
     a.dyT = 0.25;
     opened.add(Math.round(a.x));
-    if (a.oid) ow.done.add(a.oid);
+    if (a.oid) { ow.opened.add(a.oid); if (/^m\d+c2$/.test(a.oid)) grantPart(1, "baú no alto da mansão"); }
+    addGold(18 + (LV.on ? LV.realm * 6 : 0) + Math.random() * 20);
     audio.chest();
     shake = 3;
     const items = rollDrops("chest", level?.world ?? 0, D().luck, Math.random);
@@ -1021,10 +1082,24 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   type Tele = { x: number; z: number; r: number; t: number; max: number; c: string; kind: string };
   const ow = {
     offX: 0, yaw: 0, tyaw: 0, pitch: 0.5, dist: 11, look: 4, jump: 0,
-    chunks: new Set<string>(), done: new Set<string>(), tele: [] as Tele[],
+    chunks: new Set<string>(), done: new Map<string, number>(), opened: new Set<string>(), stock: new Map<string, Item[]>(), npc: null as Actor | null, talk: null as Actor | null, tele: [] as Tele[],
     evT: 14, dotT: 0, clock: 0, night: 0, rwx: 8, rwz: 0, scan: 0, slow: 1, shrines: new Set<string>(),
-    region: 0, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[],
+    region: 0, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[], walls: [] as { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number }[],
   };
+  /** elevação do piso sob o herói (px): colinas, pisos e escadas */
+  let pEl = 0;
+  const elT = (wx: number, wz: number, cur: number) => floorElev(wx, wz, cur / TILE) * TILE;
+  function snapElev() {
+    pEl = elT(g2w(player.x + player.w / 2), player.z ?? 0, 0);
+    player.y = GROUND * TILE - player.h - pEl;
+  }
+  function actorElev(a: Actor, dt: number) {
+    const cur = a.el ?? 0;
+    const tgt = elT(g2w(a.x + a.w / 2), a.z ?? 0, cur);
+    const d = Math.max(-800 * dt, Math.min(800 * dt, tgt - cur));
+    a.y -= d;
+    a.el = cur + d;
+  }
   let aim = { x: 0, z: 1 };
   let padCamX = 0;
   const w2g = (wx: number) => wx + OW_ORIGIN_X - ow.offX;
@@ -1037,6 +1112,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     ow.tyaw = 0;
     ow.chunks.clear();
     ow.done.clear();
+    ow.opened.clear();
+    ow.npc = null;
+    ow.talk = null;
     ow.tele = [];
     ow.evT = 14;
     ow.dotT = 0;
@@ -1108,6 +1186,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     for (const a of actors) if (!a.dead && !a.ally && !inert(a) && Math.hypot(a.x - player.x, (a.z ?? 0) - (player.z ?? 0)) < 520) foes++;
     const spd = Math.min(1, Math.hypot(player.vx, player.vz ?? 0) / 260);
     const tp = camMode === 0 ? [0.44, 8.6, 1.6] : camMode === 1 ? [0.42, 9.6, 2.2] : camMode === 2 ? [0.5, 9.4, 1.8] : camMode === 4 ? [1.15, 16, 0.3] : [0.46 + 0.05 * spd, 9 + Math.min(2.5, foes * 0.5) + 0.8 * spd, 1.6 + 1.0 * spd];
+    if (LV.on && camMode !== 4) { tp[0]! += 0.2; tp[1]! *= 1.3; tp[2]! += 0.3; }
     const k = 1 - Math.exp(-2.4 * dt);
     ow.pitch += (tp[0]! - ow.pitch) * k;
     ow.dist += (tp[1]! - ow.dist) * k;
@@ -1115,13 +1194,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   function spawnFromSpawn(sp: Spawn) {
-    if (ow.done.has(sp.id) || actors.length > 52) return;
+    if (isDone(sp.id) || actors.length > 52 || actors.some((x) => x.oid === sp.id)) return;
     spawnWorld = REALM_THEMES[sp.realm]!.amb;
     const a = spawnActor(sp.kind, 0, GROUND, false, Boolean(sp.mini), sp.look, sp.name);
     spawnWorld = null;
     a.x = w2g(sp.x) - a.w / 2;
     a.z = sp.z;
-    a.y = GROUND * TILE - a.h - (a.behavior === "fly" ? 60 : 0);
+    a.el = sp.h !== undefined ? sp.h * TILE : elT(sp.x, sp.z, 0);
+    a.y = GROUND * TILE - a.h - a.el - (a.behavior === "fly" ? 60 : 0);
     a.oid = sp.id;
     a.room = sp.realm;
     a.vx = 0;
@@ -1132,6 +1212,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       a.hp = a.maxHp;
       a.xp = Math.round(a.xp * (1 + 0.06 * sp.realm));
     }
+    actors.push(a);
+  }
+
+  const NPC_KIND: Record<string, Kind> = { merchant: "clerk", smith: "knight", witch: "witch", quest: "clerk", guard: "knight", villager: "clerk" };
+  function spawnNpc(n: { id: string; role: string; name: string; x: number; z: number }, key: string) {
+    const oid = `${key}:npc:${n.id}`;
+    if (actors.some((x) => x.oid === oid)) return;
+    const a = spawnActor(NPC_KIND[n.role] ?? "clerk", 0, GROUND, false, false, undefined, n.name);
+    a.x = w2g(n.x) - a.w / 2;
+    a.z = n.z;
+    a.el = elT(n.x, n.z, 0);
+    a.y = GROUND * TILE - a.h - a.el;
+    a.oid = oid;
+    a.npc = { id: n.id, role: n.role, name: n.name };
+    a.behavior = "still";
+    a.touch = 0;
+    a.speed = 0;
+    a.hp = a.maxHp = 9999;
+    a.vx = 0;
+    a.vz = 0;
     actors.push(a);
   }
 
@@ -1149,8 +1249,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         ow.chunks.add(key);
         const ch = chunkAt(i, j);
         for (const sp of ch.spawns) spawnFromSpawn(sp);
+        for (const n of ch.npcs) spawnNpc(n, key);
         for (const st of ch.sites) {
-          if (st.kind === "chest") spawnFromSpawn({ id: st.id, kind: "chest", x: st.x, z: st.z, realm: biomeAt(st.x, st.z).a });
+          if (st.kind === "chest") spawnFromSpawn({ id: st.id, kind: "chest", x: st.x, z: st.z, realm: biomeAt(st.x, st.z).a, h: st.h });
         }
       }
     }
@@ -1163,9 +1264,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
     }
     void want;
+    // respawn: monstros derrotados voltam depois de 3 minutos
+    for (const key of ow.chunks) {
+      const [a, b] = key.split(",").map(Number);
+      for (const sp of chunkAt(a!, b!).spawns) if (ow.done.has(sp.id)) spawnFromSpawn(sp);
+    }
   }
 
-  function pushOutOf(b: { x: number; w: number; z?: number }, rad: number) {
+  function pushOutOf(b: { x: number; w: number; z?: number }, rad: number, elT = 0) {
     const wx = g2w(b.x + b.w / 2);
     const wz = b.z ?? 0;
     let moved = false;
@@ -1181,6 +1287,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         const k = d > 0.01 ? (mn - d) / d : 0;
         ox += d > 0.01 ? dx * k : mn;
         oz += d > 0.01 ? dz * k : 0;
+        moved = true;
+      }
+    }
+    // paredes das casas (retângulos finos)
+    for (const w of ow.walls) {
+      if (w.y0 !== undefined && (elT < w.y0 || elT >= w.y1!)) continue;
+      const cx = Math.max(w.x0, Math.min(wx + ox, w.x1));
+      const cz = Math.max(w.z0, Math.min(wz + oz, w.z1));
+      const dx = wx + ox - cx;
+      const dz = wz + oz - cz;
+      const d = Math.hypot(dx, dz);
+      if (d < rad) {
+        if (d > 0.01) { ox += (dx / d) * (rad - d); oz += (dz / d) * (rad - d); }
+        else { const px = Math.min(wx + ox - w.x0, w.x1 - wx - ox); const pz = Math.min(wz + oz - w.z0, w.z1 - wz - oz); if (px < pz) ox += (wx + ox < (w.x0 + w.x1) / 2 ? -1 : 1) * (px + rad); else oz += (wz + oz < (w.z0 + w.z1) / 2 ? -1 : 1) * (pz + rad); }
         moved = true;
       }
     }
@@ -1265,21 +1385,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (a.hurt > 0 && !strong) { a.vx *= 0.5; a.vz *= 0.5; }
     a.x += a.vx * dt;
     a.z = az + a.vz * dt;
-    pushOutOf(a, Math.max(10, a.w * 0.32));
+    pushOutOf(a, Math.max(10, a.w * 0.32), (a.el ?? 0) / TILE);
     if (Math.abs(a.vx) > 8) a.facing = a.vx >= 0 ? 1 : -1;
     const spd = Math.hypot(a.vx, a.vz ?? 0);
     a.yaw = spd > 14 ? Math.atan2(a.vx, a.vz ?? 0) : Math.atan2(nx, nz);
     if (a.behavior === "fly") {
-      a.y = GROUND * TILE - a.h - 70 + Math.sin(a.phase * 2) * 14;
+      a.y = (GROUND * TILE - (a.el ?? 0)) - a.h - 70 + Math.sin(a.phase * 2) * 14;
       a.vy = 0;
     } else {
       if (a.behavior === "jump") {
         a.hop -= dt;
-        if (a.y + a.h >= GROUND * TILE - 1 && a.hop <= 0 && !calm) { a.vy = -540; a.hop = 1.2 + Math.random() * 0.5; }
+        if (a.y + a.h >= (GROUND * TILE - (a.el ?? 0)) - 1 && a.hop <= 0 && !calm) { a.vy = -540; a.hop = 1.2 + Math.random() * 0.5; }
       }
       a.vy = Math.min(TERM, a.vy + 3000 * dt);
       a.y += a.vy * dt;
-      if (a.y + a.h > GROUND * TILE) { a.y = GROUND * TILE - a.h; a.vy = 0; }
+      if (a.y + a.h > (GROUND * TILE - (a.el ?? 0))) { a.y = (GROUND * TILE - (a.el ?? 0)) - a.h; a.vy = 0; }
     }
   }
 
@@ -1341,7 +1461,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       ow.jump++;
     }
     ow.blk = blockersNear(wx, pz, 1100).slice();
-    pushOutOf(player, 13);
+    ow.walls = wallsNear(wx, pz, 900).slice();
+    pushOutOf(player, 13, pEl / TILE);
+    if (LV.on && LV.lay) {
+      // borda do mapa: montanhas intransponíveis
+      const dd = Math.hypot(wx, pz);
+      const lim = LV.lay.R - 120;
+      if (dd > lim) { const k = lim / dd; player.x = w2g(wx * k) - player.w / 2; player.z = pz * k; }
+    }
     // streaming dos blocos
     ow.scan -= dt;
     if (ow.scan <= 0) {
@@ -1352,7 +1479,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     actors = actors.filter((a) => !a.dead || a.dyT > 0);
     // perigos do terreno
     let slow = 1;
-    const airborne = player.y + player.h < GROUND * TILE - 34;
+    const airborne = player.y + player.h + pEl < GROUND * TILE - 34;
     ow.hz = "";
     for (const q of poolsNear(wx, pz, 400)) {
       if (Math.hypot(wx - q.x, pz - q.z) < q.r) {
@@ -1418,7 +1545,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     ow.msgT = Math.max(0, ow.msgT - dt);
     // portais próximos (até 90 tiles)
     const near: NonNullable<Level["portals"]> = [];
-    for (let k = 0; k < PORTALS_W.length; k++) {
+    if (LV.on) {
+      const lp = levelPortal();
+      if (lp && LV.realm + 1 < MAIN_LEVELS) {
+        const gx = w2g(lp.x);
+        if (Math.abs(gx - px) < 90 * TILE && Math.abs(lp.z - pz) < 90 * TILE) near.push({ c: gx / TILE - 0.5, z: lp.z / TILE, realm: LV.realm + 1 });
+      }
+    } else for (let k = 0; k < PORTALS_W.length; k++) {
       const pw = PORTALS_W[k]!;
       const gx = w2g(pw.x);
       if (Math.abs(gx - px) < 90 * TILE && Math.abs(pw.z - pz) < 90 * TILE) near.push({ c: gx / TILE - 0.5, z: pw.z / TILE, realm: k });
@@ -1429,6 +1562,17 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (rg !== ow.region) {
       ow.region = rg;
       showToast(`Região: ${REEL_NAMES[rg] ?? "?"}`);
+    }
+    // NPC por perto: botão Falar
+    ow.talk = null;
+    if (screen === "play") {
+      let bd = 95;
+      for (const a of actors) {
+        if (!a.npc || a.dead) continue;
+        const d = Math.hypot(a.x + a.w / 2 - px, (a.z ?? 0) - pz);
+        if (d < bd) { bd = d; ow.talk = a; }
+        if (d < 160) a.facing = px >= a.x + a.w / 2 ? 1 : -1;
+      }
     }
     // padrão de câmera/controles
     openCamera(dt);
@@ -1596,10 +1740,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
     stepVis *= Math.exp(-14 * dt);
     if (stepVis < 0.3) stepVis = 0;
+    if (level.open) player.y += pEl;
     const hit = moveBody(player, level, dt, dropT, wasGround && player.vy >= 0 && Math.abs(player.vx) > 20);
+    if (level.open) {
+      const tg = elT(g2w(player.x + player.w / 2), player.z ?? 0, pEl);
+      pEl += Math.max(-1100 * dt, Math.min(1100 * dt, tg - pEl));
+      player.y -= pEl;
+    }
     if (stepInfo.lift > 0) stepVis += stepInfo.lift;
     // teto de altura: o herói nunca sai da tela em super-pulos/voos
-    const ceilY = level.rooms ? -400 : (GROUND - 7) * TILE;
+    const ceilY = level.rooms ? -400 : (GROUND - 7) * TILE - (level.open ? pEl : 0);
     if (player.y < ceilY) {
       player.y = ceilY;
       if (player.vy < 0) player.vy = 0;
@@ -1657,9 +1807,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       const pcx = player.x + player.w / 2;
       let near: (typeof level.portals)[number] | undefined;
       for (const pt of level.portals) {
-        if (Math.abs(pt.c * TILE + TILE / 2 - pcx) < TILE * 1.3 && Math.abs((player.z ?? 0) - pt.z * TILE) < TILE * 1.6 && player.y + player.h > (GROUND - 3) * TILE) near = pt;
+        if (Math.abs(pt.c * TILE + TILE / 2 - pcx) < TILE * 1.3 && Math.abs((player.z ?? 0) - pt.z * TILE) < TILE * 1.6 && player.y + player.h + pEl > (GROUND - 3) * TILE) near = pt;
       }
-      if (near) {
+      if (near && LV.on) {
+        const got = partsGot(LV.realm);
+        if (got < 3) {
+          if (portalT === 0) { showToast(`Portal selado: reúna as 3 peças do enigma (${got}/3).`); portalT = 3; }
+        } else {
+          if (portalT === 0) showToast(`O portal se abre: ${REEL_NAMES[near.realm] ?? "próximo reino"}. Fique para entrar.`);
+          portalT = Math.min(portalT, 0) - dt - 0.0001;
+          if (portalT < -0.9) { portalT = 0; save.next = Math.max(save.next, near.realm + 1); persist(); api.enterReel(near.realm); return; }
+        }
+      } else if (near) {
         if (near.realm + 1 > save.next) {
           if (portalT === 0) { showToast(`Selado: conclua o reino ${near.realm} para abrir este portal.`); portalT = 2.5; }
         } else {
@@ -1711,6 +1870,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       a.cd = Math.max(0, a.cd - dt);
       const dx = player.x - a.x;
       if (level.open) {
+        actorElev(a, dt);
         openAI(a, dt);
         if (a.kind === "candle" && overlaps(player, a) && zd(a, player) < TILE * 1.4) {
           a.dead = true;
@@ -1831,7 +1991,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       const lt = loot[i]!;
       lt.age += dt;
       lt.vy = Math.min(TERM, lt.vy + 1500 * dt);
+      if (level.open) lt.y += lt.el ?? 0;
       const lh = moveBody(lt, level, dt, 0);
+      if (level.open) { lt.el = elT(g2w(lt.x + 10), lt.z ?? 0, lt.el ?? 0); lt.y -= lt.el; }
       if (lh.grounded) lt.vx *= 0.8;
       if (lt.y > level.rows * TILE) {
         loot.splice(i, 1);
@@ -2092,6 +2254,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       player.x = w2g(ow.rwx);
       player.z = ow.rwz;
       player.y = GROUND * TILE - player.h;
+      snapElev();
       ow.tele = [];
       actors = actors.filter((a) => !a.oid || Math.hypot(a.x - player.x, (a.z ?? 0) - player.z!) > 500);
     } else {
@@ -2111,6 +2274,76 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     formCd = 0;
     screen = "play";
     emit();
+  }
+
+  /* ---------- NPCs: comércio, ferreiro, bruxa e missões ---------- */
+  const priceOf = (it: Item) => {
+    const b = baseOf(it);
+    return b.slot === "potion" ? 6 + 3 * it.tier : Math.round((8 + 6 * it.tier) * [1, 2.6, 6, 16, 40][it.rarity]!);
+  };
+  function stockOf(n: Actor): Item[] {
+    const id = n.npc!.id;
+    let st = ow.stock.get(id);
+    if (st) return st;
+    let seed = 0;
+    for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) | 0;
+    seed ^= (LV.realm + 1) * 7919;
+    const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const tier = Math.min(10, Math.floor(LV.realm / 2.5) + 1);
+    const by = (slots: string[]) => BASES.filter((b) => slots.includes(b.slot));
+    const take = (list: BaseDef[], rar: Rarity, count: number) => {
+      for (let i = 0; i < count && list.length; i++) out.push(makeItem(list[Math.floor(rnd() * list.length)]!.id, rar, tier, rnd));
+    };
+    const out: Item[] = [];
+    const role = n.npc!.role;
+    if (role === "merchant") {
+      take(by(["potion"]).filter((b) => b.heal), 0, 3);
+      take(by(["helmet", "pants", "gloves", "boots", "necklace", "ring"]), 0, 3);
+      take(by(["weapon", "armor", "offhand"]), 1, 1);
+    } else if (role === "smith") {
+      take(by(["weapon"]), 0, 2);
+      take(by(["weapon"]), 1, 1);
+      take(by(["armor", "helmet"]), 1, 2);
+      take(by(["offhand", "gloves", "boots"]), 2, 1);
+    } else if (role === "witch") {
+      take(by(["potion"]).filter((b) => !b.heal), 0, 5);
+      take(by(["ring", "necklace", "offhand", "gem"]), 2, 2);
+    }
+    ow.stock.set(id, out);
+    return out;
+  }
+  const NPC_TEXT: Record<string, string[]> = {
+    merchant: ["Poções, armaduras, tudo com preço justo (para mim).", "Mais fundo no reino, mais caro. Compre agora.", "Leve o que precisar, viajante."],
+    smith: ["Aço bom não se compra com conversa.", "Traga ouro e eu lhe dou fio na lâmina.", "Armas e armaduras forjadas aqui duram."],
+    witch: ["Pergaminhos, elixires e coisas que não explico.", "O que a névoa esconde, eu vendo.", "Hihihi… quer um elixir?"],
+    quest: ["Preciso de alguém corajoso. Aceita um trabalho?", "Há monstros demais por aqui.", "Pagamento garantido."],
+    villager: ["Cuidado com a mansão ao longe. Ninguém volta de lá.", "A estrada leva às outras vilas. Fique nela à noite.", "Dizem que o portal só abre com três peças."],
+    guard: ["Circulando.", "Tudo calmo por aqui.", "Sem confusão."],
+  };
+  function npcHud(): NpcHud | undefined {
+    const n = ow.npc;
+    if (!n || !n.npc) return undefined;
+    const role = n.npc.role;
+    const lines = NPC_TEXT[role] ?? NPC_TEXT.villager!;
+    const hud: NpcHud = {
+      name: n.npc.name,
+      role,
+      text: lines[Math.abs(n.npc.id.length + (n.npc.id.charCodeAt(n.npc.id.length - 1) || 0)) % lines.length]!,
+      gold: save.gold,
+      stock: stockOf(n).map((it, i) => ({ i, label: itemName(it), price: priceOf(it), color: RARITY_COLOR[it.rarity]!, info: modText(it) })),
+      sell: save.bag.map((it) => ({ uid: it.uid, label: itemName(it), price: Math.max(1, Math.floor(priceOf(it) * 0.4)), color: RARITY_COLOR[it.rarity]! })),
+    };
+    if (role === "quest") {
+      const q = save.qs[n.npc.id];
+      const done = q?.done ?? 0;
+      const active = Boolean(q && q.base >= 0);
+      const goal = active ? q!.goal : 6 + 3 * done + Math.floor(LV.realm / 3);
+      const prog = active ? Math.min(goal, save.kills - q!.base) : 0;
+      const gold = 40 + LV.realm * 12 + done * 20;
+      const xp = 60 + LV.realm * 25;
+      hud.quest = { title: `Derrote ${goal} monstros`, prog, goal, ready: active && prog >= goal, reward: `${gold} moedas, ${xp} XP` + (n.npc.id === "v1q" && done === 0 ? " e a Peça 1 do enigma" : ""), active };
+    }
+    return hud;
   }
 
   function readHold() {
@@ -2199,7 +2432,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         yaw: level?.open ? a.yaw : undefined,
       });
     }
-    if (screen === "play" || screen === "pause" || screen === "char" || screen === "dead" || screen === "clear" || screen === "talk") {
+    if (screen === "play" || screen === "pause" || screen === "char" || screen === "dead" || screen === "clear" || screen === "talk" || screen === "npc" || screen === "title") {
       list.push({
         ref: player,
         x: player.x,
@@ -2234,6 +2467,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       screen === "char" ||
       screen === "dead" ||
       screen === "clear" ||
+      screen === "npc" ||
+      (screen === "title" && titleScene && level !== null) ||
       (screen === "talk" && level !== null);
     const door = exitRect();
     const open = !actors.some((a) => a.boss && !a.dead);
@@ -2265,7 +2500,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
             mode: camMode,
             hazard: level?.open ? 0 : hazardAhead(),
-            open: level?.open ? { yaw: ow.yaw, pitch: ow.pitch, dist: ow.dist, look: ow.look, offX: ow.offX, night: ow.night, jump: ow.jump, tele: ow.tele.filter((t) => t.t > -0.5).map((t) => ({ x: w2g(t.x), z: t.z, r: t.r, k: Math.max(0, Math.min(1, t.t / t.max)), c: t.c })) } : undefined,
+            open: level?.open ? { el: pEl / TILE, yaw: ow.yaw, pitch: ow.pitch, dist: ow.dist, look: ow.look, offX: ow.offX, night: ow.night, jump: ow.jump, tele: ow.tele.filter((t) => t.t > -0.5).map((t) => ({ x: w2g(t.x), z: t.z, r: t.r, k: Math.max(0, Math.min(1, t.t / t.max)), c: t.c })) } : undefined,
             space: level?.rooms && curRoom >= 0 ? level.rooms[curRoom]!.c1 - level.rooms[curRoom]!.c0 : 0,
           }
         : undefined,
@@ -2366,6 +2601,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     padPrev = cur;
   }
 
+  let titleScene = false;
+  function prepTitle() {
+    setLevel(0);
+    loadLevel(OPEN_INDEX);
+    if (level) level.world = REALM_THEMES[0]!.amb;
+    player.x = OW_ORIGIN_X + 0;
+    player.z = 150;
+    snapElev();
+    ow.yaw = ow.tyaw = 0.5;
+    ow.pitch = 0.5;
+    ow.dist = 15;
+    ow.look = 2.4;
+    titleScene = true;
+  }
+
   function frame(now: number) {
     if (!alive) return;
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -2391,6 +2641,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (screen !== "dead") for (const k of Object.keys(touch) as Action[]) touch[k] = false;
     }
 
+    if (screen !== "title") titleScene = false;
+    if (screen === "title" && !titleScene) prepTitle();
+    if (screen === "title" && titleScene && level?.open) {
+      // abertura: câmera passeia em volta do vilarejo ao entardecer
+      ow.clock += dt;
+      ow.night = 0.12 + 0.1 * Math.sin(ow.clock * 0.1);
+      ow.tyaw += dt * 0.11;
+      ow.yaw += angDiff(ow.yaw, ow.tyaw) * (1 - Math.exp(-5 * dt));
+      ow.pitch = 0.44 + 0.08 * Math.sin(ow.clock * 0.13);
+      ow.dist = 13 + 2.5 * Math.sin(ow.clock * 0.07);
+      ow.scan -= dt;
+      if (ow.scan <= 0) { ow.scan = 0.6; streamChunks(); }
+      for (const a of actors) a.phase += dt;
+    }
     if (screen === "play") {
       acc += dt;
       let steps = 0;
@@ -2437,7 +2701,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (e.code === "Space") wantJump = true;
         if (e.code === "KeyK" || e.code === "KeyL" || e.code === "ShiftLeft") wantForm = true;
       }
-      if (e.code === "KeyV" && !e.repeat && (screen === "play" || screen === "pause")) api.cycleCam();
+  if (e.code === "KeyV" && !e.repeat && (screen === "play" || screen === "pause")) api.cycleCam();
+      if (e.code === "KeyE" && !e.repeat) { if (screen === "play") api.interact(); else if (screen === "npc") api.npcClose(); }
+      if (e.code === "Escape" && screen === "npc") api.npcClose();
       if (e.code === "Escape" && screen === "play") {
         screen = "pause";
         emit();
@@ -2531,6 +2797,70 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       api.enterReel(OPEN_INDEX);
     },
+    interact() {
+      if (screen !== "play" || !ow.talk) return;
+      ow.npc = ow.talk;
+      screen = "npc";
+      audio.ui();
+      emit();
+    },
+    npcClose() {
+      if (screen !== "npc") return;
+      screen = "play";
+      ow.npc = null;
+      emit();
+    },
+    npcBuy(i: number) {
+      const n = ow.npc;
+      if (!n || screen !== "npc") return;
+      const st = stockOf(n);
+      const it = st[i];
+      if (!it) return;
+      const price = priceOf(it);
+      if (save.gold < price) { showToast("Moedas insuficientes."); emit(); return; }
+      if (!canFit(save.bag, it)) { showToast("Mochila cheia."); emit(); return; }
+      save.gold -= price;
+      save.bag.push(it);
+      st.splice(i, 1);
+      audio.pickup();
+      persist();
+      emit();
+    },
+    npcSell(uid: number) {
+      if (screen !== "npc") return;
+      const k = save.bag.findIndex((x) => x.uid === uid);
+      if (k < 0) return;
+      const it = save.bag[k]!;
+      save.gold += Math.max(1, Math.floor(priceOf(it) * 0.4));
+      save.bag.splice(k, 1);
+      audio.pickup();
+      persist();
+      emit();
+    },
+    npcQuest() {
+      const n = ow.npc;
+      if (!n || !n.npc || screen !== "npc" || n.npc.role !== "quest") return;
+      const id = n.npc.id;
+      const q = save.qs[id] ?? { base: -1, goal: 0, done: 0 };
+      if (q.base < 0) {
+        q.goal = 6 + 3 * q.done + Math.floor(LV.realm / 3);
+        q.base = save.kills;
+        save.qs[id] = q;
+        showToast(`Missão aceita: derrote ${q.goal} monstros.`);
+      } else if (save.kills - q.base >= q.goal) {
+        const gold = 40 + LV.realm * 12 + q.done * 20;
+        addGold(gold);
+        gainXp(60 + LV.realm * 25);
+        q.done++;
+        q.base = -1;
+        save.qs[id] = q;
+        showToast(`Missão cumprida! +${gold} moedas.`);
+        if (id === "v1q" && q.done === 1) grantPart(0, "missão do vilarejo");
+      }
+      audio.ui();
+      persist();
+      emit();
+    },
     continueGame() {
       audio.unlock();
       audio.ui();
@@ -2557,7 +2887,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (index0 + 1 > save.next) return;
       } else if (bonusUnlocked(save.next) < index0 - MAIN_LEVELS + 1) return;
       afterTalk = "play";
-      loadLevel(index0);
+      if (index0 < MAIN_LEVELS) {
+        setLevel(index0);
+        loadLevel(OPEN_INDEX);
+        if (level) level.world = REALM_THEMES[index0]!.amb;
+        player.z = 140;
+        snapElev();
+        ow.rwx = 0;
+        ow.rwz = 140;
+        audio.setWorld(REALM_THEMES[index0]!.music, index0 % 5, false);
+      } else {
+        setLevel(null);
+        loadLevel(index0);
+      }
       const world = level?.world ?? 0;
       const fresh: Snap["lines"] = [];
       if (index0 < MAIN_LEVELS && (save.realms & (1 << index0)) === 0) {
@@ -2932,9 +3274,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     },
     setSteer: (_v: number) => {},
     owInfo: () => ({ x: Math.round(player.x), z: Math.round(player.z ?? 0), off: ow.offX, actors: actors.length, yaw: +ow.yaw.toFixed(2), hp: player.hp, region: ow.region, night: +ow.night.toFixed(2), tele: ow.tele.length, chunks: ow.chunks.size, shots: shots.length, ax: aim.x, az: aim.z, kinds: actors.slice(0, 12).map((a) => a.kind) }),
-    tpWorld: (wx: number, wz: number) => { player.x = w2g(wx); player.z = wz; ow.chunks.clear(); actors = []; },
+    tpWorld: (wx: number, wz: number) => { player.x = w2g(wx); player.z = wz; snapElev(); ow.chunks.clear(); actors = []; },
     setCam: (m: number) => { camMode = m; },
     strike: () => strikeEvent(),
+    enterRealm: (k: number) => { save.next = Math.max(save.next, k + 1); api.enterReel(k); if (screen === "talk") screen = "play"; },
+    th: (x: number, z: number) => floorElev(x, z, 0),
+    nudge: (wx: number, wz: number) => { player.x = w2g(wx) - player.w / 2; player.z = wz; },
+    lvl: () => (LV.on ? LV.realm : -1),
+    lay: () => (LV.lay ? { portal: LV.lay.portal, places: LV.lay.places.map((p) => ({ k: p.kind, x: p.x, z: p.z, n: p.houses.length, w: p.walls.length, hs: p.houses.map((h) => ({ id: h.id, f: h.floors, r: h.rect })), st: p.surfs.filter((q) => q.vis === "stair").map((q) => ({ x0: q.x0, z0: q.z0, x1: q.x1, z1: q.z1, h0: q.h0, h1: q.h1, ax: q.axis, hid: q.house, fl: q.fl })) })), parts: LV.lay.parts, R: LV.lay.R } : null),
+    wallTest: () => { const r = wallsNear(g2w(player.x), player.z ?? 0, 300); return r.length; },
+    pos: () => ({ el: pEl / TILE, x: g2w(player.x + player.w / 2), z: player.z, screen, portals: level?.portals?.length ?? -1, portalT, parts: LV.on ? partsGot(LV.realm) : -1, next: save.next }),
+    giveParts: () => { if (LV.on) save.parts[LV.realm] = 7; },
+    npcNear: () => (ow.talk ? ow.talk.npc : null),
+    openNpc: () => api.interact(),
+    gold: (n: number) => { save.gold += n; },
     endTalk: () => { if (screen === "talk") { screen = "play"; cine = null; } },
   };
   (window as unknown as { __controlsTest?: typeof probe }).__controlsTest = probe;

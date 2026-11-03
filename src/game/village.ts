@@ -1,0 +1,420 @@
+/**
+ * Fase em mundo aberto (v11): layout determinístico de uma fase — vilarejo inicial, vilarejos, aldeias,
+ * mansão, castelo, estradas, portal de saída e as 3 peças do enigma. Tudo em px de mundo (origem = partida).
+ * Construções com os módulos do Quaternius Medieval Village MegaKit (CC0), 1 m = 0.5 tile.
+ * Prédios de 1 a 5 andares: pisos (superfícies) e escadas internas caminháveis.
+ */
+import { TILE } from "./types";
+
+export const MS = 0.5; // tiles por metro do modelo
+export const MOD = 2 * MS * TILE; // largura de um módulo de parede (px) = 48
+export const FH = 3.12 * MS; // altura de um andar (tiles)
+
+function hh(a: number, b: number, s: number): number {
+  let h = (Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(s | 0, 2147483647)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+export type Piece = { m: "med" | "prop" | "nat"; k: string; x: number; z: number; y?: number; yaw: number; s?: number; roof?: string; fl?: number; hid?: string };
+/** retângulo em px; y0/y1 = faixa de elevação (tiles) em que bloqueia */
+export type Rect = { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number };
+/** superfície caminhável: piso (axis null) ou rampa/escada (h varia de h0 em x0/z0 até h1 em x1/z1) */
+export type Surf = { x0: number; z0: number; x1: number; z1: number; h0: number; h1: number; axis: "x" | "z" | null; vis: "slab" | "stair"; fl: number; house: string };
+export type NpcRole = "merchant" | "smith" | "witch" | "quest" | "guard" | "villager";
+export type NpcSpawn = { id: string; role: NpcRole; name: string; x: number; z: number };
+export type ChestSpot = { id: string; x: number; z: number; h: number };
+export type PlaceKind = "start" | "village" | "hamlet" | "mansion" | "castle";
+export type Place = {
+  id: string; kind: PlaceKind; name: string; x: number; z: number; r: number;
+  pieces: Piece[]; walls: Rect[]; surfs: Surf[]; houses: { id: string; rect: Rect; floors: number }[]; npcs: NpcSpawn[]; chests: ChestSpot[];
+  lamps: { x: number; z: number }[];
+};
+export type Marker = { id: string; x: number; z: number; name: string; how: string };
+export type Layout = {
+  realm: number; seed: number; R: number; places: Place[]; portal: { x: number; z: number };
+  parts: Marker[]; roads: Rect[];
+};
+
+type Arch = { name: string; nw: number; nd: number; floors: number; stone: boolean; wood: boolean; tower?: boolean };
+const ARCH = {
+  cabana: { name: "cabana", nw: 2, nd: 2, floors: 1, stone: false, wood: true },
+  casebre: { name: "casebre", nw: 2, nd: 3, floors: 1, stone: false, wood: false },
+  casa: { name: "casa", nw: 3, nd: 3, floors: 1, stone: false, wood: false },
+  casao: { name: "casa", nw: 3, nd: 4, floors: 1, stone: false, wood: true },
+  sobrado: { name: "sobrado", nw: 3, nd: 3, floors: 2, stone: false, wood: false },
+  sobrado2: { name: "sobrado", nw: 3, nd: 4, floors: 2, stone: false, wood: true },
+  estalagem: { name: "estalagem", nw: 4, nd: 5, floors: 2, stone: false, wood: false },
+  celeiro: { name: "celeiro", nw: 3, nd: 6, floors: 1, stone: false, wood: true },
+  torre: { name: "torre", nw: 2, nd: 2, floors: 4, stone: true, wood: false, tower: true },
+  torre3: { name: "torre", nw: 2, nd: 2, floors: 3, stone: true, wood: false, tower: true },
+  torre5: { name: "torre", nw: 2, nd: 2, floors: 5, stone: true, wood: false, tower: true },
+  solar: { name: "solar", nw: 4, nd: 4, floors: 3, stone: true, wood: false },
+  mansao: { name: "mansão", nw: 4, nd: 6, floors: 3, stone: true, wood: false },
+  keep: { name: "torre de menagem", nw: 4, nd: 5, floors: 4, stone: true, wood: false },
+} satisfies Record<string, Arch>;
+type ArchKey = keyof typeof ARCH;
+
+const VNAMES = ["Vila", "Povoado", "Arraial", "Aldeia", "Feira", "Entreposto"];
+const HNAMES = ["Casario", "Sítio", "Pouso", "Rancho"];
+const SUFFIX = ["da Cinza", "do Corvo", "da Névoa", "do Moinho", "da Ponte", "do Sino", "do Cais", "das Brasas"];
+const NPC_NAMES = ["Orlan", "Maren", "Tavish", "Hilda", "Bram", "Isolde", "Corvin", "Edda", "Rurik", "Selma", "Garrick", "Nessa"];
+const ROOF_OK: Record<string, boolean> = { "2x2": true, "2x3": true, "2x4": true, "3x2": true, "3x3": true, "3x4": true, "3x5": true, "3x6": true, "3x7": true, "4x4": true, "4x5": true, "4x6": true, "4x7": true };
+
+/** subtrai um retângulo de outro (retorna até 4 pedaços) */
+function subRect(a: { x0: number; z0: number; x1: number; z1: number }, b: { x0: number; z0: number; x1: number; z1: number }) {
+  const out: { x0: number; z0: number; x1: number; z1: number }[] = [];
+  if (b.x1 <= a.x0 || b.x0 >= a.x1 || b.z1 <= a.z0 || b.z0 >= a.z1) return [a];
+  if (b.z0 > a.z0) out.push({ x0: a.x0, z0: a.z0, x1: a.x1, z1: b.z0 });
+  if (b.z1 < a.z1) out.push({ x0: a.x0, z0: b.z1, x1: a.x1, z1: a.z1 });
+  const zz0 = Math.max(a.z0, b.z0);
+  const zz1 = Math.min(a.z1, b.z1);
+  if (b.x0 > a.x0) out.push({ x0: a.x0, z0: zz0, x1: b.x0, z1: zz1 });
+  if (b.x1 < a.x1) out.push({ x0: b.x1, z0: zz0, x1: a.x1, z1: zz1 });
+  return out;
+}
+
+export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: number, furnish: number, seed: number) {
+  const { nw, nd, floors, stone, wood } = ar;
+  const pieces: Piece[] = [];
+  const walls: Rect[] = [];
+  const surfs: Surf[] = [];
+  const hw = (nw * MOD) / 2;
+  const hd = (nd * MOD) / 2;
+  const yaw0 = (face * Math.PI) / 2;
+  const ca = Math.cos(yaw0);
+  const sa = Math.sin(yaw0);
+  const L = (lx: number, lz: number) => ({ x: cx + lx * ca + lz * sa, z: cz - lx * sa + lz * ca });
+  const RW = (lx0: number, lz0: number, lx1: number, lz1: number) => {
+    const a = L(lx0, lz0);
+    const b = L(lx1, lz1);
+    return { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z) };
+  };
+  const sides = [
+    { n: nw, len: hd, ox: 0, oz: 1 },
+    { n: nw, len: -hd, ox: 0, oz: -1 },
+    { n: nd, len: hw, ox: 1, oz: 0 },
+    { n: nd, len: -hw, ox: -1, oz: 0 },
+  ];
+  const mid = Math.floor(nw / 2);
+  const pickWall = (f: number, si: number, i: number) => {
+    const w = hh(f * 53 + si * 31 + i, Math.round(cx + cz), seed + 7);
+    if (stone) return w < 0.4 ? "Wall_UnevenBrick_Window_Wide_Round" : w < 0.55 ? "Wall_UnevenBrick_Window_Wide_Flat" : "Wall_UnevenBrick_Straight";
+    if (wood) return w < 0.3 ? "Wall_Plaster_Window_Wide_Round" : w < 0.5 ? "Wall_Plaster_Window_Wide_Flat" : "Wall_Plaster_WoodGrid";
+    return w < 0.45 ? "Wall_Plaster_Window_Wide_Round" : w < 0.6 ? "Wall_Plaster_Window_Wide_Flat" : "Wall_Plaster_Straight";
+  };
+  for (let f = 0; f < floors; f++) {
+    sides.forEach((sd, si) => {
+      for (let i = 0; i < sd.n; i++) {
+        const off = (i - (sd.n - 1) / 2) * MOD;
+        const lx = sd.ox === 0 ? off : sd.len;
+        const lz = sd.ox === 0 ? sd.len : off;
+        const p = L(lx, lz);
+        const wox = sd.ox * ca + sd.oz * sa;
+        const woz = -sd.ox * sa + sd.oz * ca;
+        const a = Math.atan2(-wox, -woz);
+        const isDoor = f === 0 && si === 0 && i === mid;
+        const k = isDoor ? (stone ? "Wall_UnevenBrick_Door_Round" : "Wall_Plaster_Door_Round") : pickWall(f, si, i);
+        pieces.push({ m: "med", k, x: p.x, z: p.z, y: f * FH, yaw: a, s: MS, fl: f, hid: id });
+        if (!isDoor) {
+          const th = 7;
+          const hx = MOD / 2;
+          const axisX = Math.abs(wox) < 0.5;
+          walls.push({ ...(axisX ? { x0: p.x - hx, z0: p.z - th, x1: p.x + hx, z1: p.z + th } : { x0: p.x - th, z0: p.z - hx, x1: p.x + th, z1: p.z + hx }), y0: f * FH - 0.1, y1: (f + 1) * FH });
+        }
+      }
+    });
+  }
+  // pisos e escadas (zigue-zague: esquerda sobe para +z, direita sobe para -z)
+  const SW = 38;
+  const ix = hw - 9;
+  const iz = hd - 9;
+  const RUN = Math.max(MOD * 1.2, (nd - 1) * MOD);
+  const ramps: { r: { x0: number; z0: number; x1: number; z1: number }; f: number; lo: number; hi: number; axis: "x" | "z"; swap: boolean }[] = [];
+  for (let f = 0; f < floors - 1; f++) {
+    const left = f % 2 === 0;
+    const lx0 = left ? -ix : ix - SW;
+    const lx1 = left ? -ix + SW : ix;
+    const zs = left ? -iz : iz;
+    const ze = left ? -iz + RUN : iz - RUN;
+    const r = RW(lx0, Math.min(zs, ze), lx1, Math.max(zs, ze));
+    // eixo e sentido em mundo: início (baixo) -> fim (alto)
+    const S = L((lx0 + lx1) / 2, zs);
+    const E = L((lx0 + lx1) / 2, ze);
+    const axis: "x" | "z" = Math.abs(E.x - S.x) > Math.abs(E.z - S.z) ? "x" : "z";
+    const startLow = axis === "x" ? S.x < E.x : S.z < E.z;
+    surfs.push({ ...r, h0: startLow ? f * FH : (f + 1) * FH, h1: startLow ? (f + 1) * FH : f * FH, axis, vis: "stair", fl: f, house: id });
+    ramps.push({ r, f, lo: f * FH, hi: (f + 1) * FH, axis, swap: !startLow });
+    const railX = left ? -ix + SW : ix - SW;
+    walls.push({ ...RW(railX - 3, Math.min(zs, ze), railX + 3, Math.max(zs, ze)), y0: f * FH - 0.1, y1: (f + 1) * FH - 0.04 });
+  }
+  for (let f = 1; f < floors; f++) {
+    const base = RW(-ix, -iz, ix, iz);
+    const hole = ramps[f - 1]!.r;
+    for (const piece of subRect(base, hole)) surfs.push({ ...piece, h0: f * FH, h1: f * FH, axis: null, vis: "slab", fl: f, house: id });
+  }
+  // piso térreo em volta (retângulo da casa)
+  const fl0 = L(0, 0);
+  const w2 = Math.abs(ca) > 0.5 ? nw : nd;
+  const d2 = Math.abs(ca) > 0.5 ? nd : nw;
+  const rect: Rect = { x0: fl0.x - (w2 * MOD) / 2 - 8, z0: fl0.z - (d2 * MOD) / 2 - 8, x1: fl0.x + (w2 * MOD) / 2 + 8, z1: fl0.z + (d2 * MOD) / 2 + 8 };
+  // telhado + empenas
+  const roofY = floors * FH;
+  const rk = ar.tower && nw === 2 && nd === 2 ? "Roof_Tower_RoundTiles" : ROOF_OK[`${nw}x${nd}`] ? `Roof_RoundTiles_${nw * 2}x${nd * 2}` : "Roof_RoundTiles_6x6";
+  pieces.push({ m: "med", k: rk, x: fl0.x, z: fl0.z, y: roofY, yaw: yaw0, s: MS, roof: id, fl: floors, hid: id });
+  if (rk !== "Roof_Tower_RoundTiles") {
+    for (const sgn of [1, -1]) {
+      const e = L(0, sgn * hd);
+      pieces.push({ m: "med", k: `Roof_Front_Brick${nw * 2}`, x: e.x, z: e.z, y: roofY, yaw: Math.atan2(-(sgn * sa), -(sgn * ca)), s: MS, roof: id, fl: floors, hid: id });
+    }
+  }
+  // mobília por andar (zona central, longe das escadas)
+  const prop = (k: string, lx: number, lz: number, r: number, f: number) => {
+    const p = L(lx, lz);
+    pieces.push({ m: "prop", k, x: p.x, z: p.z, y: f * FH + 0.03, yaw: yaw0 + r, s: MS, fl: f, hid: id });
+  };
+  const cz0 = nd >= 4 ? hd - 38 : hd - 30;
+  const chests: ChestSpot[] = [];
+  for (let f = 0; f < floors; f++) {
+    const kit = (furnish + f) % 4;
+    const c = hw > 60 ? 0 : 0;
+    if (kit === 0) { prop("Table_Large", c, 0, 0, f); prop("Stool", c - 24, 18, 0, f); prop("Candle_1", c, 0, 0, f); prop("Barrel", c + 20, -cz0 + 14, 0, f); }
+    else if (kit === 1) { prop("Workbench", c, -cz0 + 8, 3.1416, f); prop("Crate_Wooden", c + 22, cz0 - 12, 0.5, f); prop("Bag", c - 18, cz0 - 18, 0, f); }
+    else if (kit === 2) { prop("Bed_Twin1", c, -cz0 + 24, 1.5708, f); prop("Nightstand_Shelf", c + 22, cz0 - 14, 0, f); prop("CandleStick", c + 22, cz0 - 14, 0, f); }
+    else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); prop("Cauldron", c - 18, cz0 - 20, 0, f); prop("Potion_1", c + 20, cz0 - 20, 0, f); }
+    const cp = L(0, cz0 - 34);
+    if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.5 : 0.8)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
+  }
+  return { pieces, walls, surfs, rect, chests, floors };
+}
+
+function placeOK(list: { x: number; z: number; r: number }[], x: number, z: number, r: number) {
+  for (const q of list) if (Math.hypot(q.x - x, q.z - z) < q.r + r) return false;
+  return true;
+}
+
+const fenceRing = (pl: Place, x: number, z: number, rad: number, n: number, skip: number) => {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    if (i % skip === 0) continue;
+    pl.pieces.push({ m: "med", k: "Prop_WoodenFence_Single", x: x + Math.cos(a) * rad, z: z + Math.sin(a) * rad, yaw: -a + Math.PI / 2, s: MS });
+  }
+};
+
+function addHouse(pl: Place, taken: { x: number; z: number; r: number }[], arch: Arch, hx: number, hz: number, tx: number, tz: number, idx: number, seed: number, cnt: number) {
+  const rad = (Math.max(arch.nw, arch.nd) * MOD) / 2 + 30;
+  if (!placeOK(taken, hx, hz, rad)) return false;
+  const dx = tx - hx;
+  const dz = tz - hz;
+  const face = Math.abs(dz) >= Math.abs(dx) ? (dz > 0 ? 0 : 2) : dx > 0 ? 1 : 3;
+  const hid = `${pl.id}h${cnt}`;
+  const hs = buildHouse(hid, hx, hz, arch, face, idx + cnt, seed);
+  pl.pieces.push(...hs.pieces);
+  pl.walls.push(...hs.walls);
+  pl.surfs.push(...hs.surfs);
+  pl.houses.push({ id: hid, rect: hs.rect, floors: hs.floors });
+  pl.chests.push(...hs.chests);
+  taken.push({ x: hx, z: hz, r: rad });
+  pl.lamps.push({ x: hx + (tx - hx) * 0.45 + (hz - tz) * 0.12, z: hz + (tz - hz) * 0.45 });
+  return true;
+}
+
+function village(realm: number, seed: number, idx: number, x: number, z: number, kind: "start" | "village" | "hamlet"): Place {
+  const id = `v${idx}`;
+  const big = kind !== "hamlet";
+  const name = kind === "start" ? "Vila de Partida" : kind === "hamlet" ? `${HNAMES[Math.floor(hh(idx, realm, seed + 90) * HNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}` : `${VNAMES[Math.floor(hh(idx, realm, seed + 90) * VNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}`;
+  const pl: Place = { id, kind, name, x, z, r: big ? 470 : 300, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
+  const taken: { x: number; z: number; r: number }[] = [{ x, z, r: big ? 95 : 40 }];
+  const nh = kind === "start" ? 8 : big ? 8 + Math.floor(hh(idx, realm, seed + 92) * 4) : 3 + Math.floor(hh(idx, realm, seed + 92) * 3);
+  const pool: ArchKey[] = big ? ["casa", "casao", "sobrado", "sobrado2", "casebre", "cabana", "sobrado", "estalagem", "torre3", "casa", "celeiro"] : ["cabana", "casebre", "cabana", "casa", "celeiro", "casebre"];
+  let tries = 0;
+  let cnt = 0;
+  while (cnt < nh && tries++ < 160) {
+    const ang = hh(idx * 17 + tries, realm, seed + 93) * Math.PI * 2;
+    const dist = (big ? 140 : 80) + hh(idx * 19 + tries, realm, seed + 94) * (big ? 290 : 160);
+    const arch = ARCH[pool[Math.floor(hh(idx * 23 + tries, realm, seed + 95) * pool.length)]!]!;
+    if (addHouse(pl, taken, arch, x + Math.cos(ang) * dist, z + Math.sin(ang) * dist, x, z, idx, seed, cnt)) cnt++;
+  }
+  if (big) {
+    const stalls: [string, number, number, NpcRole, string][] = [
+      ["Stall_Empty", -62, -10, "merchant", "Mercador"],
+      ["Stall_Cart_Empty", 62, -10, "smith", "Ferreiro"],
+      ["Stall_Empty", 0, 66, "witch", "Bruxa"],
+    ];
+    stalls.forEach(([k, dx, dz, role, title], i) => {
+      pl.pieces.push({ m: "prop", k, x: x + dx, z: z + dz, yaw: Math.PI * (i === 2 ? 1 : 0), s: MS });
+      pl.npcs.push({ id: `${id}n${i}`, role, name: `${title} ${NPC_NAMES[Math.floor(hh(idx + i, realm, seed + 97) * NPC_NAMES.length)]}`, x: x + dx, z: z + dz + (i === 2 ? -28 : 28) });
+      pl.walls.push({ x0: x + dx - 22, z0: z + dz - 10, x1: x + dx + 22, z1: z + dz + 10, y0: -5, y1: 1.4 });
+    });
+    pl.pieces.push({ m: "prop", k: "Anvil", x: x + 62, z: z - 38, yaw: 0.4, s: MS }, { m: "prop", k: "Cauldron", x: x - 24, z: z + 84, yaw: 0, s: MS }, { m: "prop", k: "Barrel", x: x - 90, z: z + 18, yaw: 0, s: MS }, { m: "prop", k: "Crate_Wooden", x: x + 92, z: z + 34, yaw: 0.3, s: MS }, { m: "prop", k: "Prop_Wagon", x: x - 40, z: z - 80, yaw: 0.6, s: MS });
+    pl.npcs.push({ id: `${id}q`, role: "quest", name: `Mensageiro ${NPC_NAMES[Math.floor(hh(idx, realm, seed + 98) * NPC_NAMES.length)]}`, x: x + 28, z: z + 22 });
+    pl.npcs.push({ id: `${id}g`, role: "villager", name: "Aldeão", x: x - 44, z: z - 40 });
+    pl.npcs.push({ id: `${id}g2`, role: "guard", name: "Guarda", x: x + 90, z: z + 90 });
+    pl.lamps.push({ x: x - 36, z: z - 34 }, { x: x + 36, z: z + 66 }, { x: x - 76, z: z - 8 }, { x: x + 80, z: z - 20 });
+    fenceRing(pl, x, z, 128, 12, 4);
+  } else {
+    // aldeia: poço de caldeirão, feno e cercado
+    pl.pieces.push({ m: "prop", k: "Cauldron", x: x, z: z, yaw: 0, s: MS }, { m: "prop", k: "Barrel_Apples", x: x + 30, z: z + 12, yaw: 0.4, s: MS }, { m: "prop", k: "FarmCrate_Carrot", x: x - 30, z: z + 18, yaw: 0, s: MS });
+    pl.npcs.push({ id: `${id}g`, role: "villager", name: "Camponês", x: x + 12, z: z + 28 });
+    if (hh(idx, realm, seed + 99) < 0.5) pl.npcs.push({ id: `${id}m`, role: "merchant", name: `Mascate ${NPC_NAMES[Math.floor(hh(idx, realm, seed + 100) * NPC_NAMES.length)]}`, x: x - 14, z: z - 30 });
+    fenceRing(pl, x, z, 110, 14, 5);
+  }
+  return pl;
+}
+
+function mansion(realm: number, seed: number, idx: number, x: number, z: number): Place {
+  const id = `m${idx}`;
+  const pl: Place = { id, kind: "mansion", name: "Mansão Assombrada", x, z, r: 400, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
+  const hs = buildHouse(`${id}h`, x, z, ARCH.mansao, 0, 2, seed);
+  pl.pieces.push(...hs.pieces);
+  pl.walls.push(...hs.walls);
+  pl.surfs.push(...hs.surfs);
+  pl.houses.push({ id: `${id}h`, rect: hs.rect, floors: hs.floors });
+  // 1 baú por andar com ids estáveis (o do último andar guarda a peça)
+  for (let f = 0; f < 3; f++) {
+    const c = hs.chests.find((q) => q.id === `${id}hc${f}`);
+    pl.chests.push({ id: `${id}c${f}`, x: c ? c.x : x, z: c ? c.z : z, h: f * FH });
+  }
+  const d = 6 * MOD;
+  for (let i = 0; i < 9; i++) pl.pieces.push({ m: "med", k: "Prop_MetalFence_Ornament", x: x - 170 + i * 43, z: z + d / 2 + 90, yaw: 0, s: MS });
+  pl.pieces.push({ m: "med", k: "Prop_Wagon", x: x + 150, z: z + 40, yaw: 1.2, s: MS });
+  pl.lamps.push({ x: x - 110, z: z + d / 2 + 50 }, { x: x + 110, z: z + d / 2 + 50 }, { x: x - 130, z: z - 60 }, { x: x + 130, z: z - 60 });
+  // torres laterais
+  const tw = buildHouse(`${id}t`, x - 210, z - 30, ARCH.torre3, 0, 1, seed);
+  pl.pieces.push(...tw.pieces);
+  pl.walls.push(...tw.walls);
+  pl.surfs.push(...tw.surfs);
+  pl.houses.push({ id: `${id}t`, rect: tw.rect, floors: tw.floors });
+  return pl;
+}
+
+function castle(realm: number, seed: number, idx: number, x: number, z: number): Place {
+  const id = `k${idx}`;
+  const pl: Place = { id, kind: "castle", name: "Castelo do Guardião", x, z, r: 520, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
+  const keep = buildHouse(`${id}h`, x, z - 60, ARCH.keep, 0, 3, seed);
+  pl.pieces.push(...keep.pieces);
+  pl.walls.push(...keep.walls);
+  pl.surfs.push(...keep.surfs);
+  pl.houses.push({ id: `${id}h`, rect: keep.rect, floors: keep.floors });
+  for (const c of keep.chests) pl.chests.push(c);
+  // muralha quadrada com portão ao sul (+z)
+  const S = 7 * MOD * 1.0; // meia-largura
+  const nW = 14;
+  for (let side = 0; side < 4; side++) {
+    for (let i = 0; i < nW; i++) {
+      const t = (i - (nW - 1) / 2) * MOD;
+      let px = x;
+      let pz = z;
+      let ox = 0;
+      let oz = 0;
+      if (side === 0) { px = x + t; pz = z + S; oz = 1; }
+      else if (side === 1) { px = x + t; pz = z - S; oz = -1; }
+      else if (side === 2) { px = x + S; pz = z + t; ox = 1; }
+      else { px = x - S; pz = z + t; ox = -1; }
+      const gate = side === 0 && (i === 6 || i === 7);
+      const k = gate ? "Wall_Arch" : "Wall_UnevenBrick_Straight";
+      pl.pieces.push({ m: "med", k, x: px, z: pz, yaw: Math.atan2(-ox, -oz), s: MS, fl: 0 });
+      if (!gate) {
+        const th = 8;
+        const hx = MOD / 2;
+        pl.walls.push(oz !== 0 ? { x0: px - hx, z0: pz - th, x1: px + hx, z1: pz + th, y0: -5, y1: FH } : { x0: px - th, z0: pz - hx, x1: px + th, z1: pz + hx, y0: -5, y1: FH });
+      }
+    }
+  }
+  // torres de canto
+  const corners: [number, number][] = [[S, S], [-S, S], [S, -S], [-S, -S]];
+  corners.forEach(([cx, cz], i) => {
+    const tw = buildHouse(`${id}t${i}`, x + cx, z + cz, i % 2 ? ARCH.torre5 : ARCH.torre, i < 2 ? 2 : 0, i, seed);
+    pl.pieces.push(...tw.pieces);
+    pl.walls.push(...tw.walls);
+    pl.surfs.push(...tw.surfs);
+    pl.houses.push({ id: `${id}t${i}`, rect: tw.rect, floors: tw.floors });
+    pl.chests.push(...tw.chests.filter((c) => c.h > 0).slice(0, 1));
+  });
+  pl.lamps.push({ x: x - 60, z: z + S + 50 }, { x: x + 60, z: z + S + 50 }, { x: x - 120, z: z + 140 }, { x: x + 120, z: z + 140 });
+  pl.pieces.push({ m: "prop", k: "WeaponStand", x: x - 90, z: z + 120, yaw: 0, s: MS }, { m: "prop", k: "Dummy", x: x + 90, z: z + 120, yaw: 0.3, s: MS });
+  return pl;
+}
+
+const cache = new Map<string, Layout>();
+export function layoutOf(realm: number, seed: number): Layout {
+  const key = `${realm}:${seed}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const R = 10800;
+  const places: Place[] = [];
+  places.push(village(realm, seed, 0, 0, 0, "start"));
+  const nv = 3 + (realm % 2);
+  const base = hh(realm, 1, seed + 70) * Math.PI * 2;
+  const pos: { x: number; z: number }[] = [];
+  const total = nv + 4;
+  for (let i = 0; i < total; i++) {
+    const ang = base + (i / total) * Math.PI * 2 + (hh(i, realm, seed + 71) - 0.5) * 0.35;
+    const dist = 3300 + hh(i, realm, seed + 72) * 4300 + (i % 2) * 700;
+    pos.push({ x: Math.cos(ang) * dist, z: Math.sin(ang) * dist });
+  }
+  for (let i = 0; i < nv; i++) places.push(village(realm, seed, i + 1, pos[i]!.x, pos[i]!.z, "village"));
+  const mp = pos[nv]!;
+  places.push(mansion(realm, seed, nv + 1, mp.x, mp.z));
+  const cp = pos[nv + 1]!;
+  places.push(castle(realm, seed, nv + 2, cp.x, cp.z));
+  places.push(village(realm, seed, nv + 3, pos[nv + 2]!.x, pos[nv + 2]!.z, "hamlet"));
+  places.push(village(realm, seed, nv + 4, pos[nv + 3]!.x, pos[nv + 3]!.z, "hamlet"));
+  // portal oposto à mansão
+  const pa = Math.atan2(mp.z, mp.x) + Math.PI;
+  const portal = { x: Math.cos(pa) * (R - 1300), z: Math.sin(pa) * (R - 1300) };
+  const v1 = places[1]!;
+  const mans = places.find((p) => p.kind === "mansion")!;
+  const cast = places.find((p) => p.kind === "castle")!;
+  const parts: Marker[] = [
+    { id: "p0", x: v1.x, z: v1.z, name: "Peça 1: missão em " + v1.name, how: "quest" },
+    { id: "p1", x: mans.x, z: mans.z, name: "Peça 2: baú no alto da Mansão", how: "chest" },
+    { id: "p2", x: cast.x, z: cast.z, name: "Peça 3: Guardião do Castelo", how: "boss" },
+  ];
+  const roads: Rect[] = [];
+  const hub = places[0]!;
+  for (let i = 1; i < places.length; i++) roads.push({ x0: hub.x, z0: hub.z, x1: places[i]!.x, z1: places[i]!.z });
+  // estradas entre vizinhos próximos
+  for (let i = 1; i < places.length; i++) {
+    let bj = -1;
+    let bd = 1e9;
+    for (let j = 1; j < places.length; j++) if (j !== i) { const d = Math.hypot(places[i]!.x - places[j]!.x, places[i]!.z - places[j]!.z); if (d < bd) { bd = d; bj = j; } }
+    if (bj > i) roads.push({ x0: places[i]!.x, z0: places[i]!.z, x1: places[bj]!.x, z1: places[bj]!.z });
+  }
+  roads.push({ x0: places[1]!.x, z0: places[1]!.z, x1: portal.x, z1: portal.z });
+  const lay: Layout = { realm, seed, R, places, portal, parts, roads };
+  cache.set(key, lay);
+  return lay;
+}
+
+/** posição de um ponto da estrada (curva suave) para o segmento r no parâmetro t */
+function roadPt(r: Rect, t: number) {
+  const dx = r.x1 - r.x0;
+  const dz = r.z1 - r.z0;
+  const len = Math.hypot(dx, dz) || 1;
+  const bend = Math.sin(t * Math.PI) * 260 * Math.sin(r.x0 * 0.001 + r.z1 * 0.002);
+  return { x: r.x0 + dx * t - (dz / len) * bend, z: r.z0 + dz * t + (dx / len) * bend };
+}
+/** distância de um ponto às estradas (poligonal de 24 trechos por estrada) */
+export function roadDist(lay: Layout, x: number, z: number): number {
+  let best = 1e9;
+  for (const r of lay.roads) {
+    // descarte rápido pela caixa
+    const mnx = Math.min(r.x0, r.x1) - 420;
+    const mxx = Math.max(r.x0, r.x1) + 420;
+    const mnz = Math.min(r.z0, r.z1) - 420;
+    const mxz = Math.max(r.z0, r.z1) + 420;
+    if (x < mnx || x > mxx || z < mnz || z > mxz) continue;
+    let a = roadPt(r, 0);
+    for (let i = 1; i <= 24; i++) {
+      const b = roadPt(r, i / 24);
+      const ex = b.x - a.x;
+      const ez = b.z - a.z;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / (ex * ex + ez * ez || 1)));
+      best = Math.min(best, Math.hypot(x - (a.x + ex * t), z - (a.z + ez * t)));
+      a = b;
+    }
+  }
+  return best;
+}
