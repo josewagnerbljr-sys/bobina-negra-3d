@@ -345,6 +345,12 @@ export const REEL_NAMES = [
   "A Passagem entre o Céu e a Terra",
 ];
 
+/* Segunda Travessia: mesmo caminho, outra paisagem */
+(() => {
+  const n = REEL_NAMES.length;
+  for (let i = 0; i < n; i++) REEL_NAMES.push(`Retorno · ${REEL_NAMES[i]}`);
+})();
+
 /** regiões do mundo aberto (índices dos reinos) */
 export const REGIONS: { name: string; from: number; to: number }[] = [
   { name: "A Mansão", from: 0, to: 0 },
@@ -353,6 +359,9 @@ export const REGIONS: { name: string; from: number; to: number }[] = [
   { name: "Purgatório", from: 14, to: 20 },
   { name: "Paraíso e Olimpo", from: 21, to: 23 },
   { name: "A Passagem", from: 24, to: 24 },
+  { name: "Segunda Travessia: Mansão e Inferno", from: 25, to: 35 },
+  { name: "Segunda Travessia: Tártaro e Purgatório", from: 36, to: 45 },
+  { name: "Segunda Travessia: Paraíso e Passagem", from: 46, to: 49 },
 ];
 
 /** prefácio de cada reino: Dante, Perseu e a literatura grega sobre o Hades e o Tártaro */
@@ -383,6 +392,11 @@ export const REALM_PREFACE: string[] = [
   "O Olimpo: Zeus ouve, os Doze julgam. Perseu voltou daqui com sandálias aladas, e você precisa merecer as suas.",
   "A passagem entre o Céu e a Terra. Atrás, o Hades e o Tártaro; à frente, o mundo vivo. O último contrato exige uma decisão.",
 ];
+/* prefácios da Segunda Travessia */
+(() => {
+  const n = REALM_PREFACE.length;
+  for (let i = 0; i < n; i++) REALM_PREFACE.push(`Segunda travessia. O contrato foi reescrito e o caminho mudou de lugar. ${REALM_PREFACE[i]!.split(". ")[0]}. Os guardiões voltaram mais furiosos e mais bem pagos.`);
+})();
 
 export const BONUS_NAMES = [
   "Bis: Tesouro do Picadeiro",

@@ -1,5 +1,5 @@
 import { emptyEquip, setUidSeed } from "./items";
-import { EMPTY_STATS, EQUIP_KEYS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
+import { MAIN_LEVELS, EMPTY_STATS, EQUIP_KEYS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
 
 const KEY = "bobina-negra-v2";
 const OLD_KEY = "bobina-negra-v1";
@@ -16,6 +16,8 @@ export type Save = {
   points: number;
   alloc: Stats;
   seen: number;
+  /** reinos 30..49 cujo prefácio já foi lido (bits 0..19) */
+  realmsHi: number;
   /** reinos (0..24) cujo prefácio já foi lido */
   realms: number;
   best: number[];
@@ -48,13 +50,14 @@ export function emptySave(hero: HeroId): Save {
     alloc: { ...EMPTY_STATS },
     seen: 0,
     realms: 0,
+    realmsHi: 0,
     best: Array.from({ length: TOTAL_REELS }, () => 0),
     bag: [],
     equip: emptyEquip(),
     uid: 1,
     mode: 0,
     gold: 40,
-    parts: Array.from({ length: 25 }, () => 0),
+    parts: Array.from({ length: 50 }, () => 0),
     kills: 0,
     qs: {},
     spells: Array.from({ length: 13 }, () => 0),
@@ -82,7 +85,7 @@ function parse(text: string): Save | null {
   if (data.v === 1) {
     return {
       ...emptySave(data.hero),
-      next: clampInt(data.next, 1, 26),
+      next: clampInt(data.next, 1, MAIN_LEVELS + 1),
       level,
       xp: Math.max(0, Math.floor(data.xp ?? 0)),
       points: (level - 1) * POINTS_PER_LEVEL,
@@ -112,20 +115,21 @@ function parse(text: string): Save | null {
   return {
     v: 2,
     hero: data.hero,
-    next: clampInt(data.next, 1, 26),
+    next: clampInt(data.next, 1, MAIN_LEVELS + 1),
     level,
     xp: Math.max(0, Math.floor(data.xp ?? 0)),
     points: Math.max(0, Math.floor(data.points ?? 0)),
     alloc,
     seen: data.seen ?? 0,
     realms: data.realms ?? 0,
+    realmsHi: (data as { realmsHi?: number }).realmsHi ?? 0,
     best,
     bag,
     equip: eq,
     uid,
     mode: clampInt(data.mode, 0, 4),
     gold: Math.max(0, Math.floor(data.gold ?? 40)),
-    parts: Array.from({ length: 25 }, (_, i) => clampInt(data.parts?.[i], 0, 7)),
+    parts: Array.from({ length: 50 }, (_, i) => clampInt(data.parts?.[i], 0, 7)),
     kills: Math.max(0, Math.floor(data.kills ?? 0)),
     qs: data.qs && typeof data.qs === "object" ? data.qs : {},
     spells: Array.from({ length: 13 }, (_, i) => clampInt((data as { spells?: number[] }).spells?.[i], 0, 5)),

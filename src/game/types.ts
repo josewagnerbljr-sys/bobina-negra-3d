@@ -27,11 +27,11 @@ export const CAM_MODES = ["Lateral", "Atrás do herói", "Dinâmica", "Multi-din
 export const BAG_SIZE = 32;
 export const POINTS_PER_LEVEL = 5;
 export const MAX_LEVEL = 50;
-export const MAIN_LEVELS = 25;
-/** tema visual (0-9) de cada reino: 25 reinos espalhados nos 10 temas */
+export const MAIN_LEVELS = 50;
+/** tema visual (0-9) de cada reino: 50 reinos (25 da travessia + 25 da segunda travessia) */
 export const worldOfLevel = (i: number) => (i >= MAIN_LEVELS ? i - MAIN_LEVELS : Math.min(9, Math.floor((i * 10) / MAIN_LEVELS)));
 /** quantos bis liberados depois de concluir `next-1` reinos */
-export const bonusUnlocked = (next: number) => Math.min(10, Math.floor((next - 1) / 2.5));
+export const bonusUnlocked = (next: number) => Math.min(10, Math.floor((next - 1) / 5));
 export const BONUS_LEVELS = 10;
 export const TOTAL_REELS = MAIN_LEVELS + BONUS_LEVELS;
 /** índice especial do Mundo Aberto (hub explorável em todas as direções) */

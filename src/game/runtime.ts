@@ -79,6 +79,7 @@ type Actor = Body & {
   el?: number;
   npc?: { id: string; role: string; name: string };
   garb?: number;
+  home?: { x: number; z: number; tx: number; tz: number };
   vz?: number;
   room?: number;
   look?: Kind;
@@ -1349,6 +1350,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.touch = 0;
     a.speed = 0;
     a.hp = a.maxHp = 9999;
+    if (n.role === "villager") a.speed = 34;
     a.vx = 0;
     a.vz = 0;
     actors.push(a);
@@ -1439,7 +1441,38 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (shots.length > 70) shots.splice(0, shots.length - 70);
   }
 
+  /** moradores passeiam perto de casa; param quando o herói está perto ou conversando */
+  function npcWander(a: Actor, dt: number) {
+    const role = a.npc!.role;
+    if (role !== "villager") return;
+    const az = a.z ?? 0;
+    const h = (a.home ??= { x: a.x, z: az, tx: a.x, tz: az });
+    a.cd -= dt;
+    if (a.cd <= 0) {
+      const an = Math.random() * 6.28;
+      const r = 20 + Math.random() * 90;
+      h.tx = h.x + Math.cos(an) * r;
+      h.tz = h.z + Math.sin(an) * r;
+      a.cd = 3 + Math.random() * 6;
+    }
+    const near = Math.hypot(a.x + a.w / 2 - (player.x + player.w / 2), az - (player.z ?? 0)) < 90 || ow.talk === a || screen === "npc";
+    const dx = h.tx - a.x;
+    const dz = h.tz - az;
+    const d = Math.hypot(dx, dz) || 1;
+    const want = near || d < 8 ? 0 : 34;
+    a.vx = (dx / d) * want;
+    a.vz = (dz / d) * want;
+    a.x += a.vx * dt;
+    a.z = az + a.vz * dt;
+    pushOutOf(a, 10, (a.el ?? 0) / TILE);
+    if (want > 0) a.yaw = Math.atan2(a.vx, a.vz ?? 0);
+    else if (near) a.yaw = Math.atan2(player.x - a.x, (player.z ?? 0) - (a.z ?? 0));
+    a.el = elT(g2w(a.x + a.w / 2), a.z ?? 0, a.el ?? 0);
+    a.y = GROUND * TILE - a.h - a.el;
+  }
+
   function openAI(a: Actor, dt: number) {
+    if (a.npc) { npcWander(a, dt); return; }
     if (inert(a)) return;
     const px = player.x + player.w / 2;
     const pz = player.z ?? 0;
@@ -3071,14 +3104,15 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       const world = level?.world ?? 0;
       const fresh: Snap["lines"] = [];
-      if (index0 < MAIN_LEVELS && (save.realms & (1 << index0)) === 0) {
+      if (index0 < MAIN_LEVELS && (index0 < 30 ? save.realms & (1 << index0) : save.realmsHi & (1 << (index0 - 30))) === 0) {
         const pre = REALM_PREFACE[index0];
         if (pre) fresh.push({ who: "Narrador", text: pre });
         if (world > 0 && (save.seen & (1 << world)) === 0) {
           fresh.push(...worldIntro(world));
           save.seen |= 1 << world;
         }
-        save.realms |= 1 << index0;
+        if (index0 < 30) save.realms |= 1 << index0;
+        else save.realmsHi |= 1 << (index0 - 30);
         persist();
       }
       if (fresh.length) {

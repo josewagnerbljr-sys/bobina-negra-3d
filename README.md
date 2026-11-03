@@ -184,3 +184,12 @@ Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey):
 - **Controles 360°**: movimento relativo à câmera, mira automática no inimigo mais próximo, tiros/golpes/habilidades em qualquer direção. Câmera orbital: `,` e `.` (ou direita do analógico, ou botões ⟲ ⟳).
 - **Câmera "Atrás"** (todos os mapas): fica realmente atrás do herói, mais alta e afastada, olhando à frente.
 - Inspiração (padrões, sem código de terceiros): mundos abertos procedurais (biomas como dados, Voronoi com bordas ruidosas, dispersão por regras) e câmeras de terceira pessoa com spring-arm/look-ahead.
+
+## Versão 12 — mundo aberto
+
+- 50 reinos em mundo aberto (25 da travessia + 25 da "Segunda Travessia"), cada um com vilarejos-cidade, mansão, castelo, florestas, estradas, enigma de 3 peças e portal.
+- NPCs (comerciantes, ferreiro, bruxa, missões, moradores que passeiam e alguns possuídos), 13 magias com grimórios, 13 combos, mais de 650 itens, respawn de monstros em 3 minutos.
+
+## Créditos (licença CC0)
+
+Quaternius (Stylized Nature MegaKit, Medieval Village MegaKit, Fantasy Props MegaKit, Modular Character Outfits, Universal Animation Library), KayKit (Forest Nature Pack), Kenney (texturas e partículas de fumaça). Motor WebGL2, áudio e jogo: José Wagner Blanco Júnior.

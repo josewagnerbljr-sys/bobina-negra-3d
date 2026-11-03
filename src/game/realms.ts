@@ -178,6 +178,24 @@ export const REALM_THEMES: RealmTheme[] = [
   },
 ];
 
+/* ---- Segunda Travessia: reinos 26..50 reaproveitam o roteiro dos 25 primeiros com outro cenário e inimigos ---- */
+(() => {
+  const n = REALM_THEMES.length;
+  for (let r = 0; r < n; r++) {
+    const base = REALM_THEMES[r]!;
+    const alt = REALM_THEMES[(r + 12) % n]!;
+    REALM_THEMES.push({
+      ...base,
+      style: alt.style,
+      amb: alt.amb,
+      pal: alt.pal,
+      boss: `${base.boss} Redivivo`,
+      pool: [...alt.pool.slice(0, 3), ...base.pool.slice(0, 2)],
+      minis: base.minis.map((m, i) => ({ look: alt.minis[i]?.look ?? m.look, name: `${m.name} Sombrio` })),
+    });
+  }
+})();
+
 export function realmWorld(index: number): WorldDef {
   const t = REALM_THEMES[index] ?? REALM_THEMES[0]!;
   return { id: t.amb, name: REEL_NAMES[index] ?? "Reino", boss: t.boss, sky0: t.pal.s0, sky1: t.pal.s1, sky2: t.pal.s2, hill: t.pal.hill, hill2: t.pal.hill2, ground: t.pal.ground, groundDark: t.pal.dark, trim: t.pal.trim, accent: t.pal.accent, fog: t.pal.fog };

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Heart, Pause, Volume2, VolumeX } from "./icons";
-import { CAM_MODES } from "../game/types";
+import { CAM_MODES, MAIN_LEVELS, OPEN_INDEX } from "../game/types";
 import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, REGIONS, heroById } from "../game/content";
 import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf, compareItem, describeMods, itemInfo, itemName, itemSize, modText } from "../game/items";
 import { ItemIcon } from "./ItemIcon";
@@ -72,6 +72,7 @@ export function Bobina() {
   const rtRef = useRef<Runtime | null>(null);
   const [snap, setSnap] = useState<Snap>(BOOT);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [credits, setCredits] = useState(false);
   const [pick, setPick] = useState(1);
   const [sel, setSel] = useState<number | null>(null);
 
@@ -131,7 +132,7 @@ export function Bobina() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="hud-title font-display text-lg leading-none text-brass">
-                  {snap.reel > 35 ? "Mundo" : snap.bonus ? "Bis" : "Reino"} {snap.reel > 35 ? "" : snap.bonus ? snap.reel - 25 : snap.reel}
+                  {snap.reel > OPEN_INDEX ? "Mundo" : snap.bonus ? "Bis" : "Reino"} {snap.reel > OPEN_INDEX ? "" : snap.bonus ? snap.reel - MAIN_LEVELS : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
                 <p className="hud-sub mt-1 text-sm text-paper/75">
@@ -238,9 +239,9 @@ export function Bobina() {
                 <p className="text-xs tracking-widest text-brass">ESPETÁCULO ORIGINAL · TINTA E OSSO</p>
                 <h1 className="mt-2 font-display text-5xl leading-none text-paper">Bobina Negra</h1>
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
-                  Vinte e cinco reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
+                  Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v11.2 · magias e grimórios {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v12.0 · 50 reinos {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -270,6 +271,13 @@ export function Bobina() {
                     </>
                   )}
                   <Ghost onClick={() => rtRef.current?.openHelp(true)}>Como se joga</Ghost>
+                  <Ghost onClick={() => setCredits((v) => !v)}>{credits ? "Fechar créditos" : "Créditos"}</Ghost>
+                  {credits && (
+                    <div className="rounded-md border border-paper/20 bg-ink/70 p-3 text-xs leading-relaxed text-paper/80">
+                      <p>Modelos 3D (CC0): Quaternius — Stylized Nature MegaKit, Medieval Village MegaKit, Fantasy Props MegaKit, Modular Character Outfits, Universal Animation Library; KayKit — Forest Nature Pack; Kenney — texturas e fumaça.</p>
+                      <p className="mt-1">Motor WebGL2, música e efeitos sonoros procedurais: projeto original de José Wagner Blanco Júnior.</p>
+                    </div>
+                  )}
                   <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Som: mudo" : "Som: ligado"}</Ghost>
                 </div>
               </div>
@@ -398,15 +406,15 @@ export function Bobina() {
                   ))}
                   <div>
                     <h3 className="text-sm text-brass">Mundo Aberto</h3>
-                    <button type="button" onClick={() => rtRef.current?.enterReel(35)} className="mt-1 min-h-12 w-full rounded-md border border-brass bg-ink px-3 text-left text-sm text-paper">
-                      Explorar livremente: planície com os 25 portais, monstros, baús e ruínas
+                    <button type="button" onClick={() => rtRef.current?.enterReel(OPEN_INDEX)} className="mt-1 min-h-12 w-full rounded-md border border-brass bg-ink px-3 text-left text-sm text-paper">
+                      Explorar livremente: planície com os 50 portais, monstros, baús e ruínas
                     </button>
                   </div>
                   <div>
                     <h3 className="text-sm text-moon">Bis (tesouros)</h3>
                     <div className="mt-1 grid grid-cols-6 gap-1.5">
                       {Array.from({ length: 10 }, (_, k) => {
-                        const n = 26 + k;
+                        const n = MAIN_LEVELS + 1 + k;
                         const locked = snap.bonusOpen < k + 1;
                         return (
                           <button
@@ -423,13 +431,13 @@ export function Bobina() {
                     </div>
                   </div>
                 </div>
-                <p className="mt-3 font-display text-xl">{pick > 25 ? `Bis: ${BONUS_NAMES[pick - 26] ?? ""}` : `${pick}. ${REEL_NAMES[pick - 1]}`}</p>
+                <p className="mt-3 font-display text-xl">{pick > MAIN_LEVELS ? `Bis: ${BONUS_NAMES[pick - MAIN_LEVELS - 1] ?? ""}` : `${pick}. ${REEL_NAMES[pick - 1]}`}</p>
                 <p className="text-sm text-paper/70">
-                  {pick > 25 ? "Mapa de tesouro: baús e poucos monstros. Sem chefe." : "Reino aberto: três andares, cômodos com guardiões, portões que só abrem quando o guardião cai e um chefe no fim. Explore em profundidade."}
+                  {pick > MAIN_LEVELS ? "Mapa de tesouro: baús e poucos monstros. Sem chefe." : "Reino em mundo aberto: vilarejos, mansões, castelo, florestas, enigma de 3 peças e um portal para o próximo reino."}
                 </p>
                 <div className="mt-3">
-                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > 25 ? snap.bonusOpen < pick - 25 : pick > snap.next}>
-                    {pick > 25 ? `Entrar no bis ${pick - 25}` : `Entrar no reino ${pick}`}
+                  <Primary onClick={() => rtRef.current?.enterReel(pick - 1)} disabled={pick > MAIN_LEVELS ? snap.bonusOpen < pick - MAIN_LEVELS : pick > snap.next}>
+                    {pick > MAIN_LEVELS ? `Entrar no bis ${pick - MAIN_LEVELS}` : `Entrar no reino ${pick}`}
                   </Primary>
                 </div>
               </div>
