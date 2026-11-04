@@ -219,7 +219,7 @@ function propGeo(g: Geo, glow: Geo, p: Prop, style: string, realm: number) {
 }
 
 export type HouseGroup = { id: string; rect: { x0: number; z0: number; x1: number; z1: number }; floors: Geo[]; roof: Geo | null };
-export type ChunkMesh = { solid: Geo; glow: Geo; groups: HouseGroup[] };
+export type ChunkMesh = { solid: Geo; glow: Geo; groups: HouseGroup[]; /** todas as casas do bloco numa malha só (vista de longe: 1 desenho) */ hall: Geo | null };
 const shiftY = (g: Geo, from: number, dy: number) => { if (!dy) return; for (let i = from * 3 + 1; i < g.pos.length; i += 3) g.pos[i] = g.pos[i]! + dy; };
 
 export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
@@ -374,5 +374,18 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
     shiftY(g, ss0, sth);
     shiftY(glow, ss1, sth);
   }
-  return { solid: g, glow, groups: groupList };
+  let hall: Geo | null = null;
+  if (groupList.length) {
+    hall = newGeo();
+    for (const gp of groupList) {
+      for (const fg of [...gp.floors, ...(gp.roof ? [gp.roof] : [])]) {
+        const b0 = hall.pos.length / 3;
+        for (const v of fg.pos) hall.pos.push(v);
+        for (const v of fg.nor) hall.nor.push(v);
+        for (const v of fg.col) hall.col.push(v);
+        for (const k of fg.idx) hall.idx.push(b0 + k);
+      }
+    }
+  }
+  return { solid: g, glow, groups: groupList, hall };
 }

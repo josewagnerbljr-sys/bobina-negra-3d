@@ -289,7 +289,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camOX = 0;
   let camOZ = 0;
   let camOY = 0;
-  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; groups: { rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
+  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; hall: GpuMesh | null; groups: { rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
   let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
@@ -511,12 +511,22 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
             if (!natureReady() || built >= (openMeshes.size < 8 ? 25 : 2)) continue;
             built++;
             const cm = buildChunkMesh(i, j);
-            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), groups: cm.groups.map((gp) => ({ rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
+            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), hall: cm.hall ? e.upload(cm.hall) : null, groups: cm.groups.map((gp) => ({ rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
             openMeshes.set(key, mh);
+          }
+          // descarta blocos distantes que estão atrás da câmera
+          {
+            const ddx = (i + 0.5) * CH - owx;
+            const ddz = (j + 0.5) * CH - owz;
+            const dd = Math.hypot(ddx, ddz);
+            if (dd > CH * 1.25 && (ddx * Math.sin(oc.yaw) - ddz * Math.cos(oc.yaw)) / dd < -0.3) continue;
           }
           e.draw(mh.solid, tmpBlob, {});
           e.draw(mh.glow, tmpBlob, { unlit: true });
-          for (const gp of mh.groups) {
+          const anyNear = mh.groups.some((gp) => owx > gp.rect.x0 - 170 && owx < gp.rect.x1 + 170 && owz > gp.rect.z0 - 170 && owz < gp.rect.z1 + 170);
+          const useHall = Boolean(mh.hall) && !anyNear;
+          if (useHall) e.draw(mh.hall!, tmpBlob, {});
+          for (const gp of useHall ? [] : mh.groups) {
             const inside = owx > gp.rect.x0 && owx < gp.rect.x1 && owz > gp.rect.z0 && owz < gp.rect.z1;
             const lim = inside ? Math.max(0, Math.round(oc.el / 1.56 - 0.2)) : 99;
             for (let q = 0; q < gp.floors.length && q <= lim; q++) e.draw(gp.floors[q]!, tmpBlob, {});
@@ -537,6 +547,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
           if (tg !== String(LV.on ? LV.realm : -1) || Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
             e.free(v.solid);
             e.free(v.glow);
+            if (v.hall) e.free(v.hall);
             for (const gp of v.groups) { for (const fm of gp.floors) e.free(fm); if (gp.roof) e.free(gp.roof); }
             openMeshes.delete(k);
           }
@@ -660,9 +671,31 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         shadows.push({ x: (p.x + p.w / 2) * S, y: gy, r: Math.max(0.3, p.w * S * 0.75), h: hgt, z: pz });
       }
     };
+    // mundo aberto: só desenha atores perto e à frente da câmera (cada corpo animado tem milhares de triângulos)
+    // além disso, no máximo 9 moradores e 14 monstros por quadro (os mais próximos)
+    const allowed = new Set<Paint>();
+    if (oc) {
+      const dd = (p: Paint) => Math.hypot(p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx, (p.z ?? 0) - owz);
+      const vis = f.actors.filter((p) => p.kind !== "hero").sort((a1, b1) => dd(a1) - dd(b1));
+      let nn = 0;
+      let nm = 0;
+      for (const p of vis) {
+        if (p.garb !== undefined ? nn++ < 9 : nm++ < 14) allowed.add(p);
+      }
+    }
+    const farActor = (p: Paint) => {
+      if (!oc) return false;
+      if (!allowed.has(p)) return true;
+      const dx = p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx;
+      const dz = (p.z ?? 0) - owz;
+      const d = Math.hypot(dx, dz);
+      if (d > (p.garb !== undefined ? 620 : p.mini ? 1900 : 1250)) return true;
+      return d > 360 && (dx * Math.sin(oc.yaw) - dz * Math.cos(oc.yaw)) / d < -0.35;
+    };
     for (const p of f.actors) {
       if (p.kind === "hero") continue;
       if (!near((p.x + p.w / 2) * S)) continue;
+      if (farActor(p)) continue;
       const m = modelFor(p);
       drawActor(p, m, placeModel(m, p, f.t, dt));
     }
