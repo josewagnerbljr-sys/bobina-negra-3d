@@ -27,6 +27,7 @@ import {
   WORLDS,
 } from "./content";
 import { buildLevel } from "./maps";
+import { createNet } from "./net";
 import { COMBOS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
 import { REALM_THEMES } from "./realms";
 import type { BaseDef } from "./items";
@@ -141,6 +142,10 @@ export type Runtime = {
   enterReel: (index0: number) => void;
   playOpen: () => void;
   interact: () => void;
+  netHost: () => Promise<string>;
+  netJoin: (code: string) => Promise<string>;
+  netFinish: (code: string) => Promise<void>;
+  netClose: () => void;
   npcBuy: (i: number) => void;
   spellBuy: (id: number) => void;
   spellEquip: (id: number, slot: number) => void;
@@ -731,6 +736,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       lineIndex,
       deadLine: deadLineText,
       toast: toastT > 0 ? toast : "",
+      net: net.status(),
       mute,
       clearText,
       time: reelTime,
@@ -1220,6 +1226,25 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
   let aim = { x: 0, z: 1 };
   let padCamX = 0;
+  /* ---- cooperativo ponto a ponto: o amigo aparece no seu mundo (cada um simula os próprios monstros) ---- */
+  type Remote = { ref: object; x: number; z: number; el: number; yaw: number; facing: number; hero: HeroId; realm: number; vx: number; phase: number; t: number; tx: number; tz: number; tel: number };
+  const net = createNet();
+  let remote: Remote | null = null;
+  let netT = 0;
+  net.onStatus(() => { if (net.status() === "connected") showToast("Amigo conectado!"); else if (net.status() === "off") { remote = null; } emit(); });
+  net.onMessage((m) => {
+    if (m.k !== "p") return;
+    const r = remote ?? (remote = { ref: {}, x: Number(m.x), z: Number(m.z), el: Number(m.el), yaw: 0, facing: 1, hero: "ivo", realm: -1, vx: 0, phase: 0, t: 0, tx: 0, tz: 0, tel: 0 });
+    r.tx = Number(m.x);
+    r.tz = Number(m.z);
+    r.tel = Number(m.el) || 0;
+    r.yaw = Number(m.yaw) || 0;
+    r.facing = Number(m.f) || 1;
+    r.hero = (m.h as HeroId) ?? "ivo";
+    r.realm = Number(m.r);
+    r.vx = Number(m.vx) || 0;
+    r.t = performance.now();
+  });
   const w2g = (wx: number) => wx + OW_ORIGIN_X - ow.offX;
   const g2w = (gx: number) => gx - OW_ORIGIN_X + ow.offX;
   const angDiff = (a: number, b: number) => ((((b - a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
@@ -2589,6 +2614,32 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         yaw: level?.open ? a.yaw : undefined,
       });
     }
+    if (remote && level?.open && performance.now() - remote.t < 3000 && remote.realm === LV.realm && screen !== "title") {
+      const rw = 26;
+      const rh = 42;
+      list.push({
+        ref: remote.ref,
+        x: w2g(remote.x) - rw / 2,
+        y: GROUND * TILE - rh - remote.el,
+        z: remote.z,
+        vz: 0,
+        w: rw,
+        h: rh,
+        vx: remote.vx,
+        vy: 0,
+        speed: 268,
+        facing: remote.facing,
+        phase: remote.phase,
+        kind: "hero",
+        hero: remote.hero,
+        form: false,
+        hurt: false,
+        ally: false,
+        world: level?.world ?? 0,
+        attack: 0,
+        yaw: remote.yaw,
+      });
+    }
     if (screen === "play" || screen === "pause" || screen === "char" || screen === "dead" || screen === "clear" || screen === "talk" || screen === "npc" || screen === "title") {
       list.push({
         ref: player,
@@ -2812,6 +2863,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (ow.scan <= 0) { ow.scan = 0.6; streamChunks(); }
       for (const a of actors) a.phase += dt;
     }
+    if (net.status() === "connected" && level?.open && screen === "play") {
+      netT -= dt;
+      if (netT <= 0) {
+        netT = 0.09;
+        net.send({ k: "p", r: LV.realm, x: Math.round(g2w(player.x + player.w / 2)), z: Math.round(player.z ?? 0), el: Math.round(pEl), yaw: Math.atan2(aim.x, aim.z), f: player.facing, h: save.hero, vx: Math.round(player.vx) });
+      }
+    }
+    if (remote) {
+      const k = 1 - Math.exp(-12 * dt);
+      remote.x += (remote.tx - remote.x) * k;
+      remote.z += (remote.tz - remote.z) * k;
+      remote.el += (remote.tel - remote.el) * k;
+      remote.phase += dt * Math.min(12, Math.abs(remote.vx) / 40 + 0.5);
+    }
     if (screen === "play") {
       acc += dt;
       let steps = 0;
@@ -2954,6 +3019,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       api.enterReel(OPEN_INDEX);
     },
+    netHost: () => net.host(),
+    netJoin: (code) => net.join(code),
+    netFinish: (code) => net.finish(code),
+    netClose() { net.close(); remote = null; emit(); },
     interact() {
       if (screen !== "play" || !ow.talk) return;
       // alguns aldeões estão possuídos: viram monstro ao serem abordados
@@ -3403,6 +3472,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   const probe = {
+    netHost: () => net.host(),
+    netJoin: (c: string) => net.join(c),
+    netFinish: (c: string) => net.finish(c),
+    netState: () => ({ st: net.status(), remote: remote ? { x: Math.round(remote.x), z: Math.round(remote.z), realm: remote.realm, hero: remote.hero } : null }),
     getYaw: () => (player.facing > 0 ? 0 : Math.PI),
     getSpeed: () => player.vx,
     getX: () => player.x,

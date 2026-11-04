@@ -193,3 +193,7 @@ Câmera de seguimento por contexto (inspirada em Zelda/Uncharted/Mario Odyssey):
 ## Créditos (licença CC0)
 
 Quaternius (Stylized Nature MegaKit, Medieval Village MegaKit, Fantasy Props MegaKit, Modular Character Outfits, Universal Animation Library), KayKit (Forest Nature Pack), Kenney (texturas e partículas de fumaça). Motor WebGL2, áudio e jogo: José Wagner Blanco Júnior.
+
+## Multijogador (v13)
+
+Cooperativo ponto a ponto por WebRTC, sem servidor: na tela inicial, "Multijogador (amigos)". Um jogador cria a sala e envia o código; o outro cola, gera a resposta e a devolve; o anfitrião cola a resposta e conecta. Depois os dois entram no mesmo reino e se veem. Cada aparelho simula os próprios monstros (sincronização de monstros e baús é uma etapa futura).

@@ -192,6 +192,7 @@ export type NpcHud = {
 };
 
 export type Snap = {
+  net?: "off" | "waiting" | "connected" | "error";
   open?: OpenHud;
   npc?: NpcHud;
   screen: Screen;

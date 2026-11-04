@@ -73,6 +73,7 @@ export function Bobina() {
   const [snap, setSnap] = useState<Snap>(BOOT);
   const [confirmNew, setConfirmNew] = useState(false);
   const [credits, setCredits] = useState(false);
+  const [mp, setMp] = useState(false);
   const [pick, setPick] = useState(1);
   const [sel, setSel] = useState<number | null>(null);
 
@@ -241,7 +242,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v12.1 · desempenho {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v13.0 · multijogador {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -271,6 +272,8 @@ export function Bobina() {
                     </>
                   )}
                   <Ghost onClick={() => rtRef.current?.openHelp(true)}>Como se joga</Ghost>
+                  <Ghost onClick={() => setMp((v) => !v)}>{snap.net === "connected" ? "Multijogador: conectado" : "Multijogador (amigos)"}</Ghost>
+                  {mp && <MultiPanel rt={rtRef.current} status={snap.net ?? "off"} />}
                   <Ghost onClick={() => setCredits((v) => !v)}>{credits ? "Fechar créditos" : "Créditos"}</Ghost>
                   {credits && (
                     <div className="rounded-md border border-paper/20 bg-ink/70 p-3 text-xs leading-relaxed text-paper/80">
@@ -1137,6 +1140,59 @@ function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: (
         <p className="mt-2 max-w-[320px] text-xs text-paper/70">Quadrado dourado: vilarejo. Vermelho: mansão. Círculo numerado: peça do enigma (amarelo = falta, verde = conquistada). Anel roxo/verde: portal. Ponto vermelho: você.</p>
       </div>
     </section>
+  );
+}
+
+function MultiPanel({ rt, status }: { rt: Runtime | null; status: string }) {
+  const [code, setCode] = useState("");
+  const [input, setInput] = useState("");
+  const [mode, setMode] = useState<"" | "host" | "join">("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setMsg("");
+    try { await fn(); } catch { setMsg("Não deu certo. Confira o código e tente de novo."); }
+    setBusy(false);
+  };
+  const copy = () => { try { void navigator.clipboard.writeText(code); setMsg("Código copiado."); } catch { setMsg("Selecione o código e copie."); } };
+  return (
+    <div className="rounded-md border border-paper/20 bg-ink/70 p-3 text-xs leading-relaxed text-paper/80">
+      <p>Jogue com um amigo, cada um no seu aparelho: vocês se veem no mesmo reino. Conectem aqui e depois os dois entram no mesmo reino.</p>
+      <p className="mt-1 text-brass">Estado: {status === "connected" ? "conectado" : status === "waiting" ? "aguardando o amigo" : status === "error" ? "falhou" : "desconectado"}</p>
+      {status !== "connected" && !mode && (
+        <div className="mt-2 flex gap-2">
+          <Primary onClick={() => run(async () => { setMode("host"); setCode(await rt!.netHost()); })} disabled={busy}>Criar sala</Primary>
+          <Ghost onClick={() => setMode("join")}>Entrar em sala</Ghost>
+        </div>
+      )}
+      {mode === "host" && status !== "connected" && (
+        <div className="mt-2 space-y-2">
+          <p>1) Envie este código ao amigo:</p>
+          <textarea readOnly value={code} onFocus={(e) => e.currentTarget.select()} className="h-16 w-full rounded border border-paper/30 bg-black/40 p-1 text-[10px]" />
+          <Ghost onClick={copy}>Copiar código</Ghost>
+          <p>2) Cole aqui a resposta dele:</p>
+          <textarea value={input} onChange={(e) => setInput(e.target.value)} className="h-16 w-full rounded border border-paper/30 bg-black/40 p-1 text-[10px]" />
+          <Primary onClick={() => run(() => rt!.netFinish(input))} disabled={busy || !input.trim()}>Conectar</Primary>
+        </div>
+      )}
+      {mode === "join" && status !== "connected" && (
+        <div className="mt-2 space-y-2">
+          <p>1) Cole o código do anfitrião:</p>
+          <textarea value={input} onChange={(e) => setInput(e.target.value)} className="h-16 w-full rounded border border-paper/30 bg-black/40 p-1 text-[10px]" />
+          <Primary onClick={() => run(async () => { setCode(await rt!.netJoin(input)); })} disabled={busy || !input.trim()}>Gerar resposta</Primary>
+          {code && (
+            <>
+              <p>2) Envie esta resposta ao anfitrião:</p>
+              <textarea readOnly value={code} onFocus={(e) => e.currentTarget.select()} className="h-16 w-full rounded border border-paper/30 bg-black/40 p-1 text-[10px]" />
+              <Ghost onClick={copy}>Copiar resposta</Ghost>
+            </>
+          )}
+        </div>
+      )}
+      {status === "connected" && <Ghost onClick={() => { rt?.netClose(); setMode(""); setCode(""); setInput(""); }}>Desconectar</Ghost>}
+      {msg && <p className="mt-1 text-blood">{msg}</p>}
+    </div>
   );
 }
 
