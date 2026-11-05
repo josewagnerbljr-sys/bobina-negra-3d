@@ -327,6 +327,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let prevSkill = [false, false, false, false];
   const wantSkill = [false, false, false, false];
   let dashT = 0;
+  let rollT = 0;
+  let rollCd = 0;
+  let lastJumpAt = -9;
   let flashT = 0;
 
   const dxToPlayer = (z: { c: number; w: number }, pc: number) => z.c + z.w / 2 - pc;
@@ -1331,7 +1334,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     ow.iy = iy;
     const sp = moving ? speed * ow.slow : 0;
     const acc = Math.min(1, dt * (wasGround ? 12 : 5));
-    if (dashT > 0) player.vz = aim.z * 1150;
+    if (rollT > 0) {
+      player.vx = aim.x * 640;
+      player.vz = aim.z * 640;
+    } else if (dashT > 0) player.vz = aim.z * 1150;
     else {
       player.vx += (dx * sp - player.vx) * acc;
       player.vz = (player.vz ?? 0) + (dz * sp - (player.vz ?? 0)) * acc;
@@ -1862,7 +1868,23 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (wantMelee || (hold.melee && !prevMelee)) meleeAttack();
     wantMelee = false;
     prevMelee = hold.melee;
-    if (wantJump || (hold.jump && !prevJump)) buffer = 0.13;
+    rollT = Math.max(0, rollT - dt);
+    rollCd = Math.max(0, rollCd - dt);
+    if (wantJump || (hold.jump && !prevJump)) {
+      buffer = 0.13;
+      // esquiva rolando (mundo aberto): toque duplo em pular enquanto anda dá 0,3 s de invulnerabilidade
+      if (level?.open) {
+        if (ow.clock - lastJumpAt < 0.3 && rollCd <= 0 && ow.moving) {
+          rollT = 0.24;
+          rollCd = 0.9;
+          iframe = Math.max(iframe, 0.32);
+          buffer = 0;
+          audio.jump();
+          burst(player.x + player.w / 2, player.y + player.h, "#d8cdb0", 6, 90);
+        }
+        lastJumpAt = ow.clock;
+      }
+    }
     if (wantForm || (hold.form && !prevForm)) activateForm();
     wantJump = false;
     wantForm = false;
@@ -2130,6 +2152,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         } else if (!a.ally && a.touch > 0 && iframe <= 0 && overlaps(player, a) && zd(a, player) < TILE * 0.85) {
           hurtPlayer(a.x + a.w / 2, a.boss || a.mini ? 2 + Math.floor((a.room ?? 0) / 8) : 1 + Math.floor((a.room ?? 0) / 6));
         }
+        // bote: monstro perto do herói parte para cima dele (animação de ataque)
+        a.atkT = Math.max(0, a.atkT - dt);
+        if (!a.ally && !a.npc && a.touch > 0 && a.atkT <= 0 && a.hurt <= 0 && Math.hypot(dx, zd(a, player)) < TILE * 2.6 && Math.random() < dt * 1.6) a.atkT = 0.42;
         continue;
       }
       if (deep() && a.behavior !== "still" && a.kind !== "chest" && a.kind !== "candle") {
@@ -2678,7 +2703,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         hurt: a.hurt > 0,
         ally: a.ally,
         world: level?.world ?? 0,
-        attack: 0,
+        attack: a.atkT > 0 ? a.atkT / 0.42 : 0,
         fly: a.behavior === "fly",
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,

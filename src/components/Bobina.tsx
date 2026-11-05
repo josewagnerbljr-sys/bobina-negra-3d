@@ -6,6 +6,7 @@ import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf
 import { ItemIcon } from "./ItemIcon";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
+import { cycleQuality, qualityLabel } from "../game/render3d";
 import { BAG_SIZE, EMPTY_STATS, EQUIP_KEYS, SLOT_LABEL, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
 
 const BOOT: Snap = {
@@ -74,6 +75,7 @@ export function Bobina() {
   const rtRef = useRef<Runtime | null>(null);
   const [snap, setSnap] = useState<Snap>(BOOT);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [qv, setQv] = useState(0);
   const [credits, setCredits] = useState(false);
   const [mp, setMp] = useState(false);
   const [pick, setPick] = useState(1);
@@ -177,7 +179,7 @@ export function Bobina() {
             {playing && snap.open && (
               <div className="pointer-events-none flex items-start gap-2">
                 {snap.open.map && (
-                  <button type="button" aria-label="Abrir mapa da fase" onClick={() => setShowMap((v) => !v)} className="pointer-events-auto hud-ico shrink-0 rounded-full">
+                  <button type="button" aria-label="Abrir mapa da fase" onClick={() => setShowMap((v) => !v)} className="pointer-events-auto shrink-0 rounded-full" style={{ width: 84, height: 84 }}>
                     <MiniMap hud={snap.open} size={84} />
                   </button>
                 )}
@@ -257,7 +259,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v14.0 · realismo {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v15.0 · refino {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -296,7 +298,8 @@ export function Bobina() {
                       <p className="mt-1">Motor WebGL2, música e efeitos sonoros procedurais: projeto original de José Wagner Blanco Júnior.</p>
                     </div>
                   )}
-                  <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Som: mudo" : "Som: ligado"}</Ghost>
+                  <Ghost onClick={() => { cycleQuality(); setQv((v) => v + 1); }}>Qualidade gráfica: {qualityLabel()} (trocar){qv ? "" : ""}</Ghost>
+              <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Som: mudo" : "Som: ligado"}</Ghost>
                 </div>
               </div>
             </section>

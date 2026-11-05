@@ -226,7 +226,7 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
   const g = newGeo();
   const glow = newGeo();
   const ch = chunkAt(ci, cj);
-  const N = 8;
+  const N = 12;
   const step = CH / N;
   const base = ROWS * 0; // sem uso
   void base;
@@ -246,7 +246,12 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
       const slope = Math.hypot(dx, dz);
       const rock = Math.min(1, Math.max(0, (slope - 0.45) * 2.2));
       const snow = Math.min(1, Math.max(0, (h - 6.5) * 0.35));
-      const cc = mix(mix(c as Vec3, [0.42, 0.4, 0.38], rock * 0.8), [0.92, 0.94, 0.98], snow * 0.7);
+      // manchas de terra/pedra: ruído em duas escalas (rocha mais clara e lascada, chão mais mosqueado)
+      const hn = (x: number, z: number) => { const q = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return q - Math.floor(q); };
+      const nz = 0.55 * hn(Math.floor(wx / 40), Math.floor(wz / 40)) + 0.45 * hn(Math.floor(wx / 13), Math.floor(wz / 13));
+      const base2 = mix(mix(c as Vec3, [0.42, 0.4, 0.38], rock * 0.8), [0.92, 0.94, 0.98], snow * 0.7);
+      const k = 0.86 + 0.26 * nz + rock * 0.1 * (nz - 0.5);
+      const cc: Vec3 = [Math.min(1, base2[0]! * k), Math.min(1, base2[1]! * k), Math.min(1, base2[2]! * k * (1 - 0.03 * nz))];
       g.pos.push(wx / TILE, GY + h, wz / TILE);
       g.nor.push(-dx / nl, 1 / nl, -dz / nl);
       g.col.push(cc[0], cc[1], cc[2]);

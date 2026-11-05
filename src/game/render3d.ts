@@ -133,6 +133,25 @@ function lightingFor(w: WorldDef): Lighting {
   };
 }
 
+/** qualidade gráfica: auto (ajusta sozinha pelo desempenho), alta, média, baixa */
+export type QualMode = "auto" | "alta" | "media" | "baixa";
+const QPRE = {
+  alta: { dpr: 2, chunkR: 2, nNpc: 7, nMon: 12, fogK: 1, back: true, ol: 420 },
+  media: { dpr: 1.35, chunkR: 2, nNpc: 6, nMon: 10, fogK: 0.88, back: true, ol: 260 },
+  baixa: { dpr: 1, chunkR: 1, nNpc: 4, nMon: 6, fogK: 0.72, back: false, ol: 120 },
+} as const;
+let qMode: QualMode = (() => { try { const v = localStorage.getItem("bn_q"); return v === "alta" || v === "media" || v === "baixa" ? v : "auto"; } catch { return "auto"; } })();
+let autoTier: "alta" | "media" | "baixa" = (() => { try { return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? "media" : "alta"; } catch { return "alta"; } })();
+const Q = () => QPRE[qMode === "auto" ? autoTier : qMode];
+export function getQuality(): QualMode { return qMode; }
+export function qualityLabel(): string { return qMode === "auto" ? `Automática (${autoTier})` : qMode === "alta" ? "Alta" : qMode === "media" ? "Média" : "Baixa"; }
+export function cycleQuality(): QualMode {
+  const o: QualMode[] = ["auto", "alta", "media", "baixa"];
+  qMode = o[(o.indexOf(qMode) + 1) % o.length]!;
+  try { localStorage.setItem("bn_q", qMode); } catch { /* sem armazenamento */ }
+  return qMode;
+}
+
 export type Renderer = {
   setAttract: (l: Level) => void;
   render: (f: Frame) => void;
@@ -308,7 +327,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   const tmpBlob = m4.create();
   let ambBase = 1.5;
   let ambInit = false;
-  let frameAvg = 0.016, lastScale = 0, resScale = 1;
+  let frameAvg = 0.016, lastScale = 0, resScale = 1, badT = 0, goodT = 0;
   const moodLight: Lighting = { sun: [0, 0, 0], sunDir: [0, 1, 0], sky: [0, 0, 0], ground: [0, 0, 0], fog: [0, 0, 0], fogNear: 0, fogFar: 0 };
 
   function render(f: Frame) {
@@ -323,10 +342,16 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       lastScale = f.t;
       if (frameAvg > 0.026 && resScale > 0.6) resScale = Math.max(0.6, resScale - 0.12);
       else if (frameAvg < 0.019 && resScale < 1) resScale = Math.min(1, resScale + 0.06);
+      // automática: se já está na menor resolução e ainda engasga, desce de nível; se sobra por muito tempo, sobe
+      if (qMode === "auto") {
+        if (frameAvg > 0.03 && resScale <= 0.62) { badT++; goodT = 0; } else if (frameAvg < 0.0175 && resScale >= 1) { goodT++; badT = 0; } else { badT = 0; goodT = 0; }
+        if (badT >= 3) { badT = 0; autoTier = autoTier === "alta" ? "media" : "baixa"; resScale = 0.85; }
+        if (goodT >= 12) { goodT = 0; autoTier = autoTier === "baixa" ? "media" : "alta"; }
+      }
     }
     // cena de fala do chefe: resolução menor (a tela fica parada e o texto precisa fluir)
     const eco = f.cam && f.cam.cine ? 0.72 : 1;
-    e.resize(cssW, cssH, 1.5 * Math.min(resScale, eco));
+    e.resize(cssW, cssH, Q().dpr * Math.min(resScale, eco));
     const aspect = canvas.width / Math.max(1, canvas.height);
 
     // fase: a do jogo ou uma de vitrine nos menus
@@ -485,7 +510,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const fg = dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75));
       const base = tintLight(g.light, mood, moodLight);
       const sk = mix3(dk(osky.bot as Vec3), [1, 1, 1], 0.45);
-      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 14, fogFar: 40 });
+      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 14 * Q().fogK, fogFar: 40 * Q().fogK });
     } else {
       e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
       e.useLit(tintLight(g.light, mood, moodLight));
@@ -497,7 +522,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     e.draw(g.terrain, null, {});
     const openGlows: { x: number; y: number; z: number; s: number; c: Vec3; a: number }[] = [];
     if (oc) {
-      const R = 2;
+      const R = Q().chunkR;
       const ci0 = Math.floor(owx / CH);
       const cj0 = Math.floor(owz / CH);
       const tr = (OW_ORIGIN_X - oc.offX) / TILE;
@@ -537,6 +562,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
             for (let q = 0; q < gp.floors.length && q <= lim; q++) e.draw(gp.floors[q]!, tmpBlob, {});
             const near = owx > gp.rect.x0 - 150 && owx < gp.rect.x1 + 150 && owz > gp.rect.z0 - 150 && owz < gp.rect.z1 + 150;
             if (gp.roof && !near) e.draw(gp.roof, tmpBlob, {});
+          }
+          if (night > 0.3 && openGlows.length < 16) {
+            // janelas acesas: lume quente em cada casa próxima durante a noite
+            for (const gp of mh.groups) {
+              const hx = (gp.rect.x0 + gp.rect.x1) / 2;
+              const hz = (gp.rect.z0 + gp.rect.z1) / 2;
+              if (Math.hypot(hx - owx, hz - owz) > 520 || openGlows.length >= 16) continue;
+              openGlows.push({ x: hx / TILE + tr, y: ROWS - GROUND + 1.3, z: hz / TILE, s: Math.max(3.2, (gp.rect.x1 - gp.rect.x0) / TILE * 1.1), c: [1, 0.66, 0.28], a: 0.32 * night });
+            }
           }
           for (const st of chunkAt(i, j).sites) {
             if (st.kind === "camp") openGlows.push({ x: st.x / TILE + tr, y: ROWS - GROUND + 0.7, z: st.z / TILE, s: 3.2, c: [1, 0.55, 0.2], a: 0.5 });
@@ -669,12 +703,21 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         // pisca ao tomar dano
         if (Math.floor(f.t * 16) % 2 === 0) return;
       }
+      // contorno só perto da câmera (cada peça com contorno = 2 desenhos; monstros têm dezenas de peças)
+      if (oc && Math.hypot(p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx, (p.z ?? 0) - owz) > Q().ol) st.thick = 0;
       const copy = new Float32Array(mat);
-      const pz = (p.z ?? 0) * S;
+      let pz = (p.z ?? 0) * S;
+      // investida do ataque: o corpo avança para onde olha e recua (golpe de herói e bote de monstro no mundo aberto)
+      if (isOpen && p.attack > 0 && p.yaw !== undefined) {
+        const k = Math.sin(Math.min(1, p.attack) * Math.PI) * (p.kind === "hero" ? 0.38 : p.mini ? 0.7 : 0.5);
+        copy[12]! += Math.sin(p.yaw) * k;
+        pz += Math.cos(p.yaw) * k;
+      }
       e.zShift = pz;
       drawModel(e, m, copy, st, 0);
       e.zShift = 0;
-      pass1.push({ m, mat: copy, st, z: pz });
+      // contorno (2º desenho do corpo) só perto da câmera no mundo aberto: metade das chamadas em celular
+      if (!oc || Math.hypot(p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx, (p.z ?? 0) - owz) < Q().ol || p.kind === "hero" && p.garb === undefined) pass1.push({ m, mat: copy, st, z: pz });
       const gy = p.fly ? null : groundBelow(L, p.x + p.w / 2, p.y + p.h);
       if (gy !== null) {
         const hgt = Math.max(0, gy - (ROWS - (p.y + p.h) * S));
@@ -690,7 +733,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       let nn = 0;
       let nm = 0;
       for (const p of vis) {
-        if (p.garb !== undefined ? nn++ < 9 : nm++ < 14) allowed.add(p);
+        if (p.garb !== undefined ? nn++ < Q().nNpc : nm++ < Q().nMon) allowed.add(p);
       }
     }
     const farActor = (p: Paint) => {
