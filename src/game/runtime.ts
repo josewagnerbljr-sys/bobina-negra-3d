@@ -28,11 +28,11 @@ import {
 } from "./content";
 import { buildLevel } from "./maps";
 import { createNet } from "./net";
-import { COMBOS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
+import { COMBOS, HERO_KITS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
 import { REALM_THEMES } from "./realms";
 import type { BaseDef } from "./items";
 import { BASES, BASE_BY_ID } from "./items";
-import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
+import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rewardItem, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
 import { CH, LV, OW_ORIGIN_X, floorElev, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, levelPortal, poolsNear, setLevel, styleOf, wallsNear, type Prop, type Spawn } from "./openworld";
@@ -152,7 +152,8 @@ export type Runtime = {
   spellBuy: (id: number) => void;
   spellEquip: (id: number, slot: number) => void;
   npcSell: (uid: number) => void;
-  npcQuest: () => void;
+  npcQuest: (tier?: number) => void;
+  npcQuestAbandon: () => void;
   npcClose: () => void;
   advanceDialogue: () => void;
   skipDialogue: () => void;
@@ -449,6 +450,42 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const foes = () => foesNear(cx, cy, 560 * d.radius, 380 * d.radius);
     const nearestFirst = (list: Actor[]) => list.sort((a, b) => Math.hypot(a.x - cx, (a.z ?? 0) - (player.z ?? 0)) - Math.hypot(b.x - cx, (b.z ?? 0) - (player.z ?? 0)));
     switch (sp.kind) {
+      case "nova2": {
+        const el = ELEMENT[save.hero];
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.55, color: sp.color, r: R, dir: 0, el });
+        fx.push({ kind: "blast", x: cx, y: cy, t: 0, max: 0.75, color: sp.color, r: R, dir: 0, el });
+        let n = 0;
+        for (const a of foesNear(cx, cy, R, R * 0.8)) {
+          if (el === "lightning" && n < 6) fx.push({ kind: "bolt", x: a.x + a.w / 2, y: a.y + a.h, t: -n++ * 0.06, max: 0.4, color: sp.color, r: 0, dir: 0, el });
+          hurtFoe(a, pw, sp.color);
+          if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * 40;
+        }
+        for (const sh of shots) if (sh.foe && Math.hypot(sh.x - cx, sh.y - cy) < R) sh.life = 0;
+        shake = 6;
+        break;
+      }
+      case "bulwark": {
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.6, color: sp.color, r: R, dir: 0, el: "stone" });
+        fx.push({ kind: "blast", x: cx, y: cy, t: 0, max: 0.7, color: sp.color, r: R * 0.8, dir: 0, el: "stone" });
+        for (const a of foesNear(cx, cy, R, R * 0.8)) { hurtFoe(a, pw, sp.color); if (!a.boss && a.behavior !== "still") a.x += Math.sign(a.x + a.w / 2 - cx || 1) * 60; }
+        iframe = Math.max(iframe, 1.6 + 0.25 * lv);
+        shake = 8;
+        break;
+      }
+      case "raise": {
+        const kind = lastKill && lastKill !== "boss" && lastKill !== "candle" && lastKill !== "chest" ? lastKill : "skel";
+        const c = Math.floor((player.x + player.w / 2) / TILE);
+        const ally = spawnActor(kind, c, GROUND, true);
+        ally.x = player.x + player.facing * 36;
+        ally.y = player.y;
+        ally.z = player.z;
+        ally.hp = Math.max(4, ally.maxHp);
+        ally.maxHp = ally.hp;
+        actors.push(ally);
+        fx.push({ kind: "pillar", x: ally.x + ally.w / 2, y: ally.y + ally.h, t: 0, max: 0.8, color: sp.color, r: 0, dir: 0, el: "spirit" });
+        fx.push({ kind: "wave", x: cx, y: cy, t: 0, max: 0.6, color: sp.color, r: 90, dir: 0, el: "spirit" });
+        break;
+      }
       case "homing": {
         const t = nearestFirst(foesNear(cx, cy, 600, 300))[0] ?? null;
         shots.push({ x: cx - 9 + player.facing * 14, y: cy - 9, w: 18, h: 18, vx: player.facing * 420, vy: -90, life: 1.8, color: sp.color, dmg: pw, foe: false, pierce: sp.id === 4 ? 2 : 0, hit: new Set(), home: t, z: player.z, el: sp.id === 4 ? "fire" : ELEMENT[save.hero] });
@@ -518,6 +555,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       case "screen": {
         const hit = foes();
         fx.push({ kind: "nova", x: cx, y: cy, t: 0, max: 1.0, color: sp.color, r: 640 * d.radius, dir: 0, el: ELEMENT[save.hero] });
+        if (ELEMENT[save.hero] === "lightning") for (let k = 0; k < 9; k++) fx.push({ kind: "bolt", x: cx + (Math.random() - 0.5) * 900, y: cy + 60, t: -k * 0.07, max: 0.45, color: sp.color, r: 0, dir: 0, el: "lightning" });
+        if (ELEMENT[save.hero] === "fire") for (let k = 0; k < 7; k++) fx.push({ kind: "blast", x: cx + (Math.random() - 0.5) * 800, y: cy + 20, t: -k * 0.08, max: 0.6, color: "#ff8a2a", r: 110, dir: 0, el: "fire" });
         for (const a of hit) {
           fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: -Math.random() * 0.25, max: 0.9, color: sp.color, r: 0, dir: 0, el: ELEMENT[save.hero] });
           hurtFoe(a, pw, sp.color);
@@ -539,6 +578,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (mana < mc) { showToast("Sem mana."); return; }
     mana -= mc;
     if (spx) { castSpell(spx, save.spells[spx.id]!, i); return; }
+    // kit da classe do herói: cada um dos 8 luta de um jeito (cone, cadeia, dreno, servos, escudo, meteoros…)
+    const kit = HERO_KITS[save.hero]?.[i];
+    if (kit) { castSpell(kit, 1 + Math.floor((save.level - 1) / 8), i); return; }
     const def = SKILLS[save.hero][i]!;
     const cx = player.x + player.w / 2;
     const cy = player.y + player.h / 2;
@@ -759,7 +801,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       best: level ? (save.best[level.index] ?? 0) : 0,
       hint: hint && screen === "play" && reelTime < 9,
       progress: level ? Math.max(0, Math.min(1, (player.x + player.w) / (level.cols * TILE))) : 0,
-      skills: SKILLS[save.hero].map((sd, i) => { const sp = slotSpell(i); return sp ? { name: sp.name, kind: sp.tag, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: sp.cd * (1 - d.cdr), lv: save.spells[sp.id]!, unlocked: true } : { name: sd.name, kind: SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: SKILL_CD[i]! * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i) }; }),
+      skills: SKILLS[save.hero].map((sd, i) => { const sp = slotSpell(i); const kt = HERO_KITS[save.hero]?.[i]; return sp ? { name: sp.name, kind: sp.tag, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: sp.cd * (1 - d.cdr), lv: save.spells[sp.id]!, unlocked: true, icon: "📜", color: sp.color } : { name: kt?.name ?? sd.name, kind: kt?.tag ?? SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: (kt?.cd ?? SKILL_CD[i]!) * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i), icon: kt?.icon ?? "✦", color: kt?.color ?? sd.color }; }),
       bag: save.bag,
       equip: save.equip,
       bagUsed: bagUsed(save.bag),
@@ -1359,7 +1401,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     for (const a of actors) if (!a.dead && !a.ally && !inert(a) && Math.hypot(a.x - player.x, (a.z ?? 0) - (player.z ?? 0)) < 520) foes++;
     const spd = Math.min(1, Math.hypot(player.vx, player.vz ?? 0) / 260);
     const tp = camMode === 0 ? [0.44, 8.6, 1.6] : camMode === 1 ? [0.42, 9.6, 2.2] : camMode === 2 ? [0.5, 9.4, 1.8] : camMode === 4 ? [1.15, 16, 0.3] : [0.46 + 0.05 * spd, 9 + Math.min(2.5, foes * 0.5) + 0.8 * spd, 1.6 + 1.0 * spd];
-    if (LV.on && camMode !== 4) { tp[0]! -= 0.04; tp[1]! *= 1.6; tp[2]! += 0.5; }
+    if (LV.on && camMode !== 4) {
+      // câmera dinâmica: mais perto do herói; sobe e abre quando há monstros, desce e olha longe ao correr, aproxima ao atacar
+      const fz = Math.min(1, foes / 4);
+      const base = camMode === 0 ? 7.4 : camMode === 1 ? 8.2 : camMode === 2 ? 8.6 : 8.0;
+      tp[0] = 0.4 + 0.11 * fz - 0.06 * spd;
+      tp[1] = base + 1.8 * fz + 1.5 * spd - (atkT > 0 ? 0.8 : 0);
+      tp[2] = 0.9 + 1.2 * spd + 0.3 * fz;
+    }
     // dentro de uma casa: a câmera desce para dentro, fecha o exterior e mostra só o interior
     {
       const wxp = g2w(player.x + player.w / 2);
@@ -2595,6 +2644,26 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     villager: ["Cuidado com a mansão ao longe. Ninguém volta de lá.", "A estrada leva às outras vilas. Fique nela à noite.", "Dizem que o portal só abre com três peças."],
     guard: ["Circulando.", "Tudo calmo por aqui.", "Sem confusão."],
   };
+  /** 3 níveis de missão: curta (ouro + raro), média (mítico + peça do portal), longa/difícil (celestial + peça do portal) */
+  function questDef(tier: number, done: number, id: string) {
+    const r = LV.on ? LV.realm : 0;
+    const goal = [6 + 2 * done + Math.floor(r / 3), 16 + done + Math.floor(r / 2), 34 + done * 2 + r][tier]!;
+    const gold = Math.round([40 + r * 12 + done * 20, 110 + r * 28, 260 + r * 60][tier]!);
+    const xp = Math.round([60 + r * 25, 150 + r * 55, 380 + r * 120][tier]!);
+    const firstPart = id === "v1q" && done === 0 && tier === 0;
+    const parts = missingParts();
+    const reward = [
+      `${gold} moedas, ${xp} XP e 1 item raro${firstPart ? " e a Peça 1 do enigma" : ""}`,
+      `${gold} moedas, ${xp} XP, 1 item mítico${parts ? " e 1 peça do portal" : ""}`,
+      `${gold} moedas, ${xp} XP, 1 item celestial${parts ? " e 1 peça do portal" : ""}`,
+    ][tier]!;
+    return { goal, gold, xp, firstPart, label: ["Curta", "Média", "Longa e difícil"][tier]!, title: `${["Caçada curta", "Caçada média", "Desafio épico"][tier]}: derrote ${goal} monstros`, reward };
+  }
+  function missingParts() { const m = save.parts[LV.realm] ?? 0; return LV.on && (m & 7) !== 7; }
+  function grantNextPart(why: string) {
+    const m = save.parts[LV.realm] ?? 0;
+    for (let i = 0; i < 3; i++) if (!(m & (1 << i))) { grantPart(i, why); return; }
+  }
   function npcHud(): NpcHud | undefined {
     const n = ow.npc;
     if (!n || !n.npc) return undefined;
@@ -2613,13 +2682,15 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     }
     if (role === "quest") {
       const q = save.qs[n.npc.id];
-      const done = q?.done ?? 0;
       const active = Boolean(q && q.base >= 0);
-      const goal = active ? q!.goal : 6 + 3 * done + Math.floor(LV.realm / 3);
+      const qd = questDef(active ? (q!.tier ?? 0) : 0, q?.done ?? 0, n.npc.id);
+      const goal = active ? q!.goal : qd.goal;
       const prog = active ? Math.min(goal, save.kills - q!.base) : 0;
-      const gold = 40 + LV.realm * 12 + done * 20;
-      const xp = 60 + LV.realm * 25;
-      hud.quest = { title: `Derrote ${goal} monstros`, prog, goal, ready: active && prog >= goal, reward: `${gold} moedas, ${xp} XP` + (n.npc.id === "v1q" && done === 0 ? " e a Peça 1 do enigma" : ""), active };
+      const ad = active ? questDef(q!.tier ?? 0, q!.done, n.npc.id) : qd;
+      hud.quest = {
+        title: ad.title, prog, goal, ready: active && prog >= goal, reward: ad.reward, active, tier: q?.tier ?? 0,
+        offers: [0, 1, 2].map((t) => { const d = questDef(t, q?.done ?? 0, n.npc!.id); return { tier: t, label: d.label, title: d.title, reward: d.reward, goal: d.goal }; }),
+      };
     }
     return hud;
   }
@@ -2708,6 +2779,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
         garb: a.npc ? a.garb : undefined,
+        talk: a.npc ? ow.talk === a : undefined,
         gear: a.npc ? a.outfit : undefined,
         yaw: level?.open ? a.yaw : undefined,
       });
@@ -3207,25 +3279,41 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       persist();
       emit();
     },
-    npcQuest() {
+    npcQuestAbandon() {
+      const n = ow.npc;
+      if (!n || !n.npc || screen !== "npc") return;
+      const q = save.qs[n.npc.id];
+      if (q) q.base = -1;
+      showToast("Missão abandonada.");
+      persist();
+      emit();
+    },
+    npcQuest(tier = 0) {
       const n = ow.npc;
       if (!n || !n.npc || screen !== "npc" || n.npc.role !== "quest") return;
       const id = n.npc.id;
       const q = save.qs[id] ?? { base: -1, goal: 0, done: 0 };
       if (q.base < 0) {
-        q.goal = 6 + 3 * q.done + Math.floor(LV.realm / 3);
+        const t = Math.max(0, Math.min(2, tier));
+        const d = questDef(t, q.done, id);
+        q.goal = d.goal;
+        q.tier = t;
         q.base = save.kills;
         save.qs[id] = q;
-        showToast(`Missão aceita: derrote ${q.goal} monstros.`);
+        showToast(`Missão aceita: ${d.title}.`);
       } else if (save.kills - q.base >= q.goal) {
-        const gold = 40 + LV.realm * 12 + q.done * 20;
-        addGold(gold);
-        gainXp(60 + LV.realm * 25);
+        const t = q.tier ?? 0;
+        const d = questDef(t, q.done, id);
+        addGold(d.gold);
+        gainXp(d.xp);
+        const it = rewardItem(level?.world ?? 0, ([1, 3, 4] as const)[t]!, Math.random);
+        if (!addToBag(it)) dropLoot([it], player.x + player.w / 2, player.y, player.z ?? 0);
+        if (t === 0 && d.firstPart) grantPart(0, "missão do vilarejo");
+        else if (t > 0) grantNextPart("missão");
         q.done++;
         q.base = -1;
         save.qs[id] = q;
-        showToast(`Missão cumprida! +${gold} moedas.`);
-        if (id === "v1q" && q.done === 1) grantPart(0, "missão do vilarejo");
+        showToast(`Missão cumprida! +${d.gold} moedas e ${itemName(it)}.`);
       }
       audio.ui();
       persist();

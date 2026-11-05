@@ -42,7 +42,12 @@ export type Paint = {
   gear?: GearLook;
   /** mundo aberto: direção do corpo (rad, 0 = +z) */
   yaw?: number;
+  /** NPC com quem o herói pode conversar (balão "Conversar" acima da cabeça) */
+  talk?: boolean;
 };
+
+/** posição na tela (0..1) do balão de conversa; lida pelo HUD a cada quadro */
+export const talkScreen = { x: 0.5, y: 0.5, on: false };
 
 export type LootPaint = { z?: number; x: number; y: number; color: string; rarity: number; t: number; slot: string; fam: string; acc: string };
 
@@ -355,6 +360,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const aspect = canvas.width / Math.max(1, canvas.height);
 
     // fase: a do jogo ou uma de vitrine nos menus
+    talkScreen.on = false;
     const level = f.level ?? attractLevel!;
     const g = gfxFor(level);
     const L = g.level;
@@ -705,6 +711,16 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       }
       // contorno só perto da câmera (cada peça com contorno = 2 desenhos; monstros têm dezenas de peças)
       if (oc && Math.hypot(p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx, (p.z ?? 0) - owz) > Q().ol) st.thick = 0;
+      if (p.talk) {
+        const v = e.vp;
+        const X = (p.x + p.w / 2) * S, Y = ROWS - p.y * S + 0.45, Z = (p.z ?? 0) * S;
+        const cw = v[3]! * X + v[7]! * Y + v[11]! * Z + v[15]!;
+        if (cw > 0.01) {
+          talkScreen.x = ((v[0]! * X + v[4]! * Y + v[8]! * Z + v[12]!) / cw) * 0.5 + 0.5;
+          talkScreen.y = 0.5 - ((v[1]! * X + v[5]! * Y + v[9]! * Z + v[13]!) / cw) * 0.5;
+          talkScreen.on = true;
+        }
+      }
       const copy = new Float32Array(mat);
       let pz = (p.z ?? 0) * S;
       // investida do ataque: o corpo avança para onde olha e recua (golpe de herói e bote de monstro no mundo aberto)

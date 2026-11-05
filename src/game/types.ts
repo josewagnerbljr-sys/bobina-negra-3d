@@ -186,7 +186,7 @@ export type NpcHud = {
   name: string; role: string; text: string; gold: number;
   stock: { i: number; label: string; price: number; color: string; info: string }[];
   sell: { uid: number; label: string; price: number; color: string }[];
-  quest?: { title: string; prog: number; goal: number; ready: boolean; reward: string; active: boolean };
+  quest?: { title: string; prog: number; goal: number; ready: boolean; reward: string; active: boolean; tier: number; offers: { tier: number; label: string; title: string; reward: string; goal: number }[] };
   spells?: { id: number; name: string; text: string; tag: string; lv: number; price: number; slot: number }[];
   slots?: number[];
 };
@@ -253,7 +253,7 @@ export type Snap = {
   pad: string;
 };
 
-export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean };
+export type SkillSnap = { name: string; kind: string; key: string; cd: number; cdMax: number; lv: number; unlocked: boolean; icon?: string; color?: string };
 
 export const EMPTY_STATS: Stats = { str: 0, int: 0, dex: 0, wis: 0, rec: 0 };
 

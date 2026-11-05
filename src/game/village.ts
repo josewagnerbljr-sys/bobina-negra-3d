@@ -6,7 +6,8 @@
  */
 import { TILE } from "./types";
 
-export const MS = 0.5; // tiles por metro do modelo
+export const MS = 0.8; // tiles por metro do modelo (casas ~1,6× maiores que na v14: portas largas, andares altos)
+const K = MS / 0.5;
 export const MOD = 2 * MS * TILE; // largura de um módulo de parede (px) = 48
 export const FH = 3.12 * MS; // altura de um andar (tiles)
 
@@ -118,7 +119,7 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
         const k = isDoor ? (stone ? "Wall_UnevenBrick_Door_Round" : "Wall_Plaster_Door_Round") : pickWall(f, si, i);
         pieces.push({ m: "med", k, x: p.x, z: p.z, y: f * FH, yaw: a, s: MS, fl: f, hid: id });
         if (!isDoor) {
-          const th = 7;
+          const th = 7 * K;
           const hx = MOD / 2;
           const axisX = Math.abs(wox) < 0.5;
           walls.push({ ...(axisX ? { x0: p.x - hx, z0: p.z - th, x1: p.x + hx, z1: p.z + th } : { x0: p.x - th, z0: p.z - hx, x1: p.x + th, z1: p.z + hx }), y0: f * FH - 0.1, y1: (f + 1) * FH });
@@ -127,9 +128,9 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     });
   }
   // pisos e escadas (zigue-zague: esquerda sobe para +z, direita sobe para -z)
-  const SW = 38;
-  const ix = hw - 9;
-  const iz = hd - 9;
+  const SW = 52;
+  const ix = hw - 9 * K;
+  const iz = hd - 9 * K;
   const RUN = Math.max(MOD * 1.2, (nd - 1) * MOD);
   const ramps: { r: { x0: number; z0: number; x1: number; z1: number }; f: number; lo: number; hi: number; axis: "x" | "z"; swap: boolean }[] = [];
   for (let f = 0; f < floors - 1; f++) {
@@ -147,7 +148,9 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     surfs.push({ ...r, h0: startLow ? f * FH : (f + 1) * FH, h1: startLow ? (f + 1) * FH : f * FH, axis, vis: "stair", fl: f, house: id });
     ramps.push({ r, f, lo: f * FH, hi: (f + 1) * FH, axis, swap: !startLow });
     const railX = left ? -ix + SW : ix - SW;
-    walls.push({ ...RW(railX - 3, Math.min(zs, ze), railX + 3, Math.max(zs, ze)), y0: f * FH - 0.1, y1: (f + 1) * FH - 0.04 });
+    // corrimão só na metade de cima (o herói entra pela lateral na base da escada; antes fechava a rampa toda e ela ficava inalcançável)
+    const zm = zs + (ze - zs) * 0.55;
+    walls.push({ ...RW(railX - 4, Math.min(zm, ze), railX + 4, Math.max(zm, ze)), y0: f * FH + FH * 0.3, y1: (f + 1) * FH - 0.04 });
   }
   for (let f = 1; f < floors; f++) {
     const base = RW(-ix, -iz, ix, iz);
@@ -158,7 +161,7 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
   const fl0 = L(0, 0);
   const w2 = Math.abs(ca) > 0.5 ? nw : nd;
   const d2 = Math.abs(ca) > 0.5 ? nd : nw;
-  const rect: Rect = { x0: fl0.x - (w2 * MOD) / 2 - 8, z0: fl0.z - (d2 * MOD) / 2 - 8, x1: fl0.x + (w2 * MOD) / 2 + 8, z1: fl0.z + (d2 * MOD) / 2 + 8 };
+  const rect: Rect = { x0: fl0.x - (w2 * MOD) / 2 - 12, z0: fl0.z - (d2 * MOD) / 2 - 12, x1: fl0.x + (w2 * MOD) / 2 + 12, z1: fl0.z + (d2 * MOD) / 2 + 12 };
   // telhado + empenas
   const roofY = floors * FH;
   const rk = ar.tower && nw === 2 && nd === 2 ? "Roof_Tower_RoundTiles" : ROOF_OK[`${nw}x${nd}`] ? `Roof_RoundTiles_${nw * 2}x${nd * 2}` : "Roof_RoundTiles_6x6";
@@ -171,10 +174,10 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
   }
   // mobília por andar (zona central, longe das escadas)
   const prop = (k: string, lx: number, lz: number, r: number, f: number) => {
-    const p = L(lx, lz);
+    const p = L(lx * K, lz * K);
     pieces.push({ m: "prop", k, x: p.x, z: p.z, y: f * FH + 0.03, yaw: yaw0 + r, s: MS, fl: f, hid: id });
   };
-  const cz0 = nd >= 4 ? hd - 38 : hd - 30;
+  const cz0 = (nd >= 4 ? hd - 38 * K : hd - 30 * K) / K;
   const chests: ChestSpot[] = [];
   for (let f = 0; f < floors; f++) {
     const kit = (furnish + f) % 4;
@@ -183,7 +186,7 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     else if (kit === 1) { prop("Workbench", c, -cz0 + 8, 3.1416, f); prop("Crate_Wooden", c + 22, cz0 - 12, 0.5, f); prop("Bag", c - 18, cz0 - 18, 0, f); }
     else if (kit === 2) { prop("Bed_Twin1", c, -cz0 + 24, 1.5708, f); prop("Nightstand_Shelf", c + 22, cz0 - 14, 0, f); prop("CandleStick", c + 22, cz0 - 14, 0, f); }
     else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); prop("Cauldron", c - 18, cz0 - 20, 0, f); prop("Potion_1", c + 20, cz0 - 20, 0, f); }
-    const cp = L(0, cz0 - 34);
+    const cp = L(0, (cz0 - 34) * K);
     if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.5 : 0.8)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
   }
   return { pieces, walls, surfs, rect, chests, floors };
@@ -208,7 +211,7 @@ const fenceRing = (pl: Place, x: number, z: number, rad: number, n: number, skip
 };
 
 function addHouse(pl: Place, taken: { x: number; z: number; r: number }[], arch: Arch, hx: number, hz: number, tx: number, tz: number, idx: number, seed: number, cnt: number) {
-  const rad = (Math.max(arch.nw, arch.nd) * MOD) / 2 + 74;
+  const rad = (Math.max(arch.nw, arch.nd) * MOD) / 2 + 74 * K;
   if (!placeOK(taken, hx, hz, rad)) return false;
   const dx = tx - hx;
   const dz = tz - hz;
@@ -261,22 +264,22 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
   const id = `v${idx}`;
   const big = kind !== "hamlet";
   const name = kind === "start" ? "Vila de Partida" : kind === "hamlet" ? `${HNAMES[Math.floor(hh(idx, realm, seed + 90) * HNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}` : `${VNAMES[Math.floor(hh(idx, realm, seed + 90) * VNAMES.length)]} ${SUFFIX[Math.floor(hh(idx, realm, seed + 91) * SUFFIX.length)]}`;
-  const pl: Place = { id, kind, name, x, z, r: big ? 1050 : 560, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
-  const taken: { x: number; z: number; r: number }[] = [{ x, z, r: big ? 190 : 60 }];
+  const pl: Place = { id, kind, name, x, z, r: big ? 1400 : 760, pieces: [], walls: [], surfs: [], houses: [], npcs: [], chests: [], lamps: [] };
+  const taken: { x: number; z: number; r: number }[] = [{ x, z, r: big ? 260 : 80 }];
   const nh = kind === "start" ? 30 : big ? 26 + Math.floor(hh(idx, realm, seed + 92) * 10) : 9 + Math.floor(hh(idx, realm, seed + 92) * 5);
   const pool: ArchKey[] = big ? ["casa", "casao", "sobrado", "sobrado2", "casebre", "cabana", "sobrado", "estalagem", "torre3", "casa", "celeiro", "sobrado2", "casebre", "torre", "solar"] : ["cabana", "casebre", "cabana", "casa", "celeiro", "casebre", "sobrado"];
   let tries = 0;
   let cnt = 0;
   while (cnt < nh && tries++ < 900) {
     const ang = hh(idx * 17 + tries, realm, seed + 93) * Math.PI * 2;
-    const dist = (big ? 190 : 100) + hh(idx * 19 + tries, realm, seed + 94) * (big ? 800 : 400);
+    const dist = (big ? 260 : 130) + hh(idx * 19 + tries, realm, seed + 94) * (big ? 1100 : 560);
     const arch = ARCH[pool[Math.floor(hh(idx * 23 + tries, realm, seed + 95) * pool.length)]!]!;
     if (addHouse(pl, taken, arch, x + Math.cos(ang) * dist, z + Math.sin(ang) * dist, x, z, idx, seed, cnt)) {
       const h = pl.houses[pl.houses.length - 1]!;
       const hx = (h.rect.x0 + h.rect.x1) / 2;
       const hz = (h.rect.z0 + h.rect.z1) / 2;
       const d = Math.hypot(x - hx, z - hz) || 1;
-      const reach = Math.max(h.rect.x1 - h.rect.x0, h.rect.z1 - h.rect.z0) / 2 + 26;
+      const reach = Math.max(h.rect.x1 - h.rect.x0, h.rect.z1 - h.rect.z0) / 2 + 40;
       // morador na porta (cada casa grande tem alguém por perto; aldeias, metade das casas)
       if (big || cnt % 2 === 0) {
         const k = Math.floor(hh(idx * 31 + cnt, realm, seed + 110) * VILLAGERS.length);
@@ -294,7 +297,7 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
   const SMALL = ["Plant_1", "Plant_7", "Fern_1", "Clover_1", "Grass_Common_Tall", "Rock_Medium_1"];
   for (let t = 0, put = 0; t < 300 && put < (big ? 70 : 30); t++) {
     const ang = hh(idx * 41 + t, realm, seed + 120) * Math.PI * 2;
-    const dd = (big ? 200 : 90) + hh(idx * 43 + t, realm, seed + 121) * (big ? 840 : 400);
+    const dd = (big ? 270 : 120) + hh(idx * 43 + t, realm, seed + 121) * (big ? 1140 : 560);
     const tx = x + Math.cos(ang) * dd;
     const tz = z + Math.sin(ang) * dd;
     if (!placeOK(taken, tx, tz, 26)) continue;
@@ -323,7 +326,7 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
     pl.npcs.push({ id: `${id}g2`, role: "guard", name: "Guarda", x: x + 90, z: z + 90 });
     pl.lamps.push({ x: x - 36, z: z - 34 }, { x: x + 36, z: z + 66 }, { x: x - 76, z: z - 8 }, { x: x + 80, z: z - 20 });
     // praça calçada com tijolos do pacote medieval, poço e bancos
-    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if (Math.abs(i) + Math.abs(j) <= 5) pl.pieces.push({ m: "med", k: i + j & 1 ? "Floor_UnevenBrick" : "Floor_Brick", x: x + i * 48, z: z + j * 48, y: 0.02, yaw: 0, s: MS });
+    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if (Math.abs(i) + Math.abs(j) <= 5) pl.pieces.push({ m: "med", k: i + j & 1 ? "Floor_UnevenBrick" : "Floor_Brick", x: x + i * MOD, z: z + j * MOD, y: 0.02, yaw: 0, s: MS });
     pl.pieces.push({ m: "prop", k: "Bench", x: x - 110, z: z - 60, yaw: 1.57, s: MS }, { m: "prop", k: "Bench", x: x + 118, z: z + 66, yaw: -1.57, s: MS }, { m: "prop", k: "Banner_1", x: x + 150, z: z - 20, yaw: 0, s: MS }, { m: "prop", k: "Banner_2", x: x - 150, z: z + 30, yaw: 0, s: MS });
     for (let i = 0; i < 6; i++) pl.npcs.push({ id: `${id}p${i}`, role: i === 5 ? "merchant" : "villager", name: ["Aldeã", "Menino", "Andarilho", "Mulher do Poço", "Velho Sábio", "Mascate"][i]! + " " + NPC_NAMES[(i * 5 + idx) % NPC_NAMES.length]!, x: x + Math.cos(i * 1.05 + idx) * (70 + (i % 3) * 22), z: z + Math.sin(i * 1.05 + idx) * (70 + (i % 3) * 22), garb: (i * 3 + idx) % 12 });
     fenceRing(pl, x, z, 210, 22, 4);
@@ -408,6 +411,10 @@ function castle(realm: number, seed: number, idx: number, x: number, z: number):
     pl.houses.push({ id: `${id}t${i}`, rect: tw.rect, floors: tw.floors });
     pl.chests.push(...tw.chests.filter((c) => c.h > 0).slice(0, 1));
   });
+  // a muralha não atravessa o interior das torres de canto (antes cortava a escada)
+  const inTower = (px: number, pz: number) => pl.houses.some((h) => h.id.startsWith(`${id}t`) && px > h.rect.x0 && px < h.rect.x1 && pz > h.rect.z0 && pz < h.rect.z1);
+  pl.walls = pl.walls.filter((w) => !(w.y0 === -5 && inTower((w.x0 + w.x1) / 2, (w.z0 + w.z1) / 2)));
+  pl.pieces = pl.pieces.filter((q) => !(q.hid === undefined && q.fl === 0 && q.k.startsWith("Wall_") && inTower(q.x, q.z)));
   pl.lamps.push({ x: x - 60, z: z + S + 50 }, { x: x + 60, z: z + S + 50 }, { x: x - 120, z: z + 140 }, { x: x + 120, z: z + 140 });
   pl.pieces.push({ m: "prop", k: "WeaponStand", x: x - 90, z: z + 120, yaw: 0, s: MS }, { m: "prop", k: "Dummy", x: x + 90, z: z + 120, yaw: 0.3, s: MS });
   return pl;
@@ -427,7 +434,7 @@ export function layoutOf(realm: number, seed: number): Layout {
   const total = nv + 7;
   for (let i = 0; i < total; i++) {
     const ang = base + (i / total) * Math.PI * 2 + (hh(i, realm, seed + 71) - 0.5) * 0.35;
-    const dist = 2600 + hh(i, realm, seed + 72) * 5200 + (i % 2) * 700;
+    const dist = 3300 + hh(i, realm, seed + 72) * 4700 + (i % 2) * 800;
     pos.push({ x: Math.cos(ang) * dist, z: Math.sin(ang) * dist });
   }
   for (let i = 0; i < nv; i++) places.push(village(realm, seed, i + 1, pos[i]!.x, pos[i]!.z, "village"));

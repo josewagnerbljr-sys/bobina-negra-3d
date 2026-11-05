@@ -230,7 +230,7 @@ const STYLE_PROPS: Record<RealmStyle, PropKind[]> = {
   gold: ["pillar", "arch", "crystal", "wall", "lamp", "rock", "pillar"],
 };
 const DENSITY: Record<RealmStyle, number> = { mansion: 0.5, cave: 0.55, swamp: 0.55, city: 0.42, ice: 0.5, ruin: 0.46, garden: 0.62, cloud: 0.4, gold: 0.42 };
-const BLOCKING: Partial<Record<PropKind, number>> = { tree: 20, pine: 18, dead: 14, rock: 24, pillar: 18, crystal: 16, spire: 20, wall: 34, tomb: 20, arch: 0, lamp: 8, flame: 10 };
+const BLOCKING: Partial<Record<PropKind, number>> = { tree: 14, pine: 12, dead: 10, rock: 19, pillar: 14, crystal: 13, spire: 16, wall: 30, tomb: 16, arch: 0, lamp: 6, flame: 8 };
 
 /* ----------------------------------------------------------------- perigos */
 export type PoolKind = "lava" | "poison" | "thorn" | "frost" | "sand" | "storm";
@@ -367,7 +367,7 @@ function genChunk(ci: number, cj: number): Chunk {
       const d = Math.hypot(px, pz);
       if (d > lay.R - 420 && d < lay.R + 2400) {
         const s = 1.2 + hh(ci * 4 + i, cj * 4 + j, SEED + 38) * 0.9;
-        props.push({ k: hh(ci * 4 + i, cj * 4 + j, SEED + 39) < 0.55 ? "rock" : "dead", x: px, z: pz, r: 40 * s, s, v: hh(ci * 4 + i, cj * 4 + j, SEED + 40), block: true });
+        props.push({ k: hh(ci * 4 + i, cj * 4 + j, SEED + 39) < 0.55 ? "rock" : "dead", x: px, z: pz, r: 28 * s, s, v: hh(ci * 4 + i, cj * 4 + j, SEED + 40), block: true });
       }
     }
     const ov = (r: { x0: number; z0: number; x1: number; z1: number }) => r.x1 >= x0 && r.x0 < x0 + CH && r.z1 >= z0 && r.z0 < z0 + CH;

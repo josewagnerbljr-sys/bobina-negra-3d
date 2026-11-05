@@ -4,9 +4,11 @@ import { CAM_MODES, MAIN_LEVELS, OPEN_INDEX } from "../game/types";
 import { BONUS_NAMES, HEROES, MODES, REEL_NAMES, REGIONS, heroById } from "../game/content";
 import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf, compareItem, describeMods, itemInfo, itemName, itemSize, modText } from "../game/items";
 import { ItemIcon } from "./ItemIcon";
+import { terrainImage } from "../game/minimap";
+import { HERO_CLASS } from "../game/spells";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
-import { cycleQuality, qualityLabel } from "../game/render3d";
+import { cycleQuality, qualityLabel, talkScreen } from "../game/render3d";
 import { BAG_SIZE, EMPTY_STATS, EQUIP_KEYS, SLOT_LABEL, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
 
 const BOOT: Snap = {
@@ -236,12 +238,8 @@ export function Bobina() {
 
         {playing && snap.open && (
           <>
-            {snap.open.talk && (
-              <button type="button" onClick={() => rtRef.current?.interact()} className="pointer-events-auto hud-ico absolute left-1/2 z-20 min-h-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-brass bg-brass px-4 text-sm font-bold text-ink shadow-lg" style={{ bottom: "calc(max(env(safe-area-inset-bottom), 8px) + clamp(62px, 15vmin, 92px))" }}>
-                Falar com {snap.open.talk} [E]
-              </button>
-            )}
-            <div className="pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 items-end gap-3" style={{ bottom: "calc(max(env(safe-area-inset-bottom), 8px) + 10px)" }} aria-label={`Vida ${Math.ceil(snap.hp)} de ${snap.maxHp}, mana ${Math.floor(snap.mana)} de ${snap.maxMana}`}>
+            {snap.open.talk && <TalkBubble onTalk={() => rtRef.current?.interact()} />}
+            <div className="orb-dock pointer-events-none absolute z-10 flex items-end gap-3" aria-label={`Vida ${Math.ceil(snap.hp)} de ${snap.maxHp}, mana ${Math.floor(snap.mana)} de ${snap.maxMana}`}>
               <Orb frac={snap.hp / Math.max(1, snap.maxHp)} c1="#ff4d5a" c2="#6a0f1a" label={String(Math.ceil(snap.hp))} />
               <Orb frac={snap.mana / Math.max(1, snap.maxMana)} c1="#5aa8ff" c2="#10286a" label={String(Math.floor(snap.mana))} />
             </div>
@@ -259,7 +257,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v15.0 · refino {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v16.0 · classes e missões {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -371,7 +369,7 @@ export function Bobina() {
               </div>
               <div className="rounded-lg border border-brass/40 bg-panel/95 p-2 sm:p-3">
                 <p className="line-clamp-2 text-xs text-paper/85 sm:text-sm">
-                  <span className="text-brass">{selected.formName}. </span>
+                  <span className="text-brass">{HERO_CLASS[selected.id] ?? ""} · {selected.formName}. </span>
                   {selected.voice} {selected.attack}
                 </p>
                 <div className="mt-2 flex gap-2">
@@ -525,6 +523,7 @@ export function Bobina() {
               <Ghost onClick={() => rtRef.current?.openChar()}>Personagem e mochila{snap.points > 0 ? ` (${snap.points} pontos)` : ""}</Ghost>
               <Ghost onClick={() => rtRef.current?.cycleCam()}>Câmera: {CAM_MODES[snap.camMode] ?? "Multi-dinâmica"} (trocar)</Ghost>
               <p className="text-xs text-paper/60">{snap.pad ? `Controle conectado: ${snap.pad}` : "Controle: conecte por Bluetooth/USB e aperte qualquer botão."}</p>
+              <Ghost onClick={() => { cycleQuality(); setQv((v) => v + 1); }}>Qualidade gráfica: {qualityLabel()} (trocar){qv ? "" : ""}</Ghost>
               <Ghost onClick={() => rtRef.current?.toggleMute()}>{snap.mute ? "Ligar som" : "Silenciar"}</Ghost>
               <Ghost onClick={() => rtRef.current?.quitToMap()}>Sair para o arquivo</Ghost>
             </CenterCard>
@@ -565,7 +564,8 @@ export function Bobina() {
           )}
         </div>
 
-        {playing && (
+        {playing && snap.open && <OpenDock snap={snap} hero={hero} hold={hold} />}
+        {playing && !snap.open && (
           <div className="touch-dock dock pointer-events-none">
             <div className="dock-left-col pointer-events-auto">
               <div className="dock-row">
@@ -1125,6 +1125,115 @@ function Pad({
 }
 
 
+/** direcional único: arraste o polegar na base (8 direções), qualquer posição do aparelho */
+function Stick({ hold }: { hold: (a: Action, d: boolean) => void }) {
+  const knob = useRef<HTMLDivElement>(null);
+  const st = useRef({ id: -1, l: false, r: false, u: false, d: false });
+  const MAP = { l: "left", r: "right", u: "up", d: "down" } as const;
+  const set = (k: "l" | "r" | "u" | "d", on: boolean) => {
+    if (st.current![k] !== on) {
+      st.current![k] = on;
+      hold(MAP[k], on);
+    }
+  };
+  const upd = (e: { currentTarget: HTMLDivElement; clientX: number; clientY: number }) => {
+    const b = e.currentTarget.getBoundingClientRect();
+    const rad = b.width / 2;
+    const dx = e.clientX - (b.left + rad);
+    const dy = e.clientY - (b.top + rad);
+    const len = Math.hypot(dx, dy);
+    const k = len > rad ? rad / len : 1;
+    if (knob.current) knob.current.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+    const on = len > rad * 0.24;
+    set("l", on && dx / len < -0.38);
+    set("r", on && dx / len > 0.38);
+    set("u", on && dy / len < -0.38);
+    set("d", on && dy / len > 0.38);
+  };
+  const end = () => {
+    st.current!.id = -1;
+    if (knob.current) knob.current.style.transform = "translate(0,0)";
+    (["l", "r", "u", "d"] as const).forEach((k) => set(k, false));
+  };
+  return (
+    <div
+      role="group"
+      aria-label="Direcional"
+      className="pointer-events-auto relative touch-none select-none rounded-full border border-paper/30 bg-panel/55"
+      style={{ width: "calc(var(--u) * 2.7)", height: "calc(var(--u) * 2.7)", touchAction: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sem captura */ }
+        st.current!.id = e.pointerId;
+        upd(e);
+      }}
+      onPointerMove={(e) => { if (st.current!.id === e.pointerId) upd(e); }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <span className="pointer-events-none absolute left-1/2 top-[7%] -translate-x-1/2 text-xs text-paper/40">▲</span>
+      <span className="pointer-events-none absolute bottom-[7%] left-1/2 -translate-x-1/2 text-xs text-paper/40">▼</span>
+      <span className="pointer-events-none absolute left-[7%] top-1/2 -translate-y-1/2 text-xs text-paper/40">◀</span>
+      <span className="pointer-events-none absolute right-[7%] top-1/2 -translate-y-1/2 text-xs text-paper/40">▶</span>
+      <div ref={knob} className="pointer-events-none absolute left-1/2 top-1/2 -ml-[calc(var(--u)*0.55)] -mt-[calc(var(--u)*0.55)] rounded-full border border-brass/70 bg-brass/30" style={{ width: "calc(var(--u) * 1.1)", height: "calc(var(--u) * 1.1)" }} />
+    </div>
+  );
+}
+
+/** esfera de ação: ícone no centro; escurece ao usar e clareia conforme recarrega */
+function ActOrb({ icon, label, color = "#e0b15a", size, rad, ang, cd = 0, locked = false, tag, onDown }: { icon: ReactNode; label: string; color?: string; size: number; rad: number; ang: number; cd?: number; locked?: boolean; tag?: string; onDown: (d: boolean) => void }) {
+  const a = (ang * Math.PI) / 180;
+  const cx = 0.75 + rad * Math.cos(a);
+  const cy = 0.75 + rad * Math.sin(a);
+  const dark = locked ? 0.75 : Math.min(0.78, cd * 0.78);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={locked}
+      className="pointer-events-auto absolute grid touch-none select-none place-items-center overflow-hidden rounded-full border-2 text-paper"
+      style={{ width: `calc(var(--u) * ${size})`, height: `calc(var(--u) * ${size})`, right: `calc(var(--u) * ${cx - size / 2})`, bottom: `calc(var(--u) * ${cy - size / 2})`, borderColor: cd > 0 || locked ? "rgba(255,255,255,.25)" : color, background: `radial-gradient(circle at 35% 30%, ${color}66, #120a10 78%)`, boxShadow: cd > 0 || locked ? "none" : `0 0 10px ${color}88`, touchAction: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* sem captura */ }
+        onDown(true);
+      }}
+      onPointerUp={() => onDown(false)}
+      onPointerCancel={() => onDown(false)}
+      onLostPointerCapture={() => onDown(false)}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <span className="pointer-events-none relative leading-none" style={{ fontSize: `calc(var(--u) * ${size * 0.5})` }}>{icon}</span>
+      {tag && <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 text-[8px] leading-none text-brass/90">{tag}</span>}
+      <span className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: dark }} />
+    </button>
+  );
+}
+
+/** controles do mundo aberto: direcional único à esquerda e esferas em arco à direita (batem no canto do polegar) */
+function OpenDock({ snap, hero, hold }: { snap: Snap; hero: (typeof HEROES)[number]; hold: (a: Action, d: boolean) => void }) {
+  const arc1 = [8, 33, 58, 83];
+  const arc2 = [4, 26, 48, 70];
+  const p = snap.screen === "play";
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between" style={{ padding: "0 max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left))" }}>
+      <Stick hold={hold} />
+      <div className="relative" style={{ width: "calc(var(--u) * 4.2)", height: "calc(var(--u) * 4.2)" }}>
+        <ActOrb icon="⤒" label="Pular" size={1.5} rad={0} ang={0} color="#c4373a" onDown={(d) => hold("jump", d)} />
+        <ActOrb icon="🎯" label="Atirar" size={0.9} rad={1.95} ang={arc1[0]!} tag="J" onDown={(d) => hold("attack", d)} />
+        <ActOrb icon="⚔️" label="Golpe com a arma" size={0.9} rad={1.95} ang={arc1[1]!} cd={snap.meleeCd > 0 ? Math.min(1, snap.meleeCd / Math.max(0.1, snap.meleeMax)) : 0} tag="H" onDown={(d) => hold("melee", d)} />
+        <ActOrb icon="✨" label={`Forma ${hero.formName}`} size={0.9} rad={1.95} ang={arc1[2]!} color={hero.accent} cd={snap.formActive ? 0 : snap.formCd > 0 ? 1 : 0} tag="K" onDown={(d) => hold("form", d)} />
+        <ActOrb icon={<span className="text-blood">♥{snap.potions}</span>} label="Beber poção" size={0.8} rad={1.95} ang={arc1[3]!} color="#d0364a" tag="Q" onDown={(d) => hold("potion", d)} />
+        {p && snap.skills.map((k, i) => (
+          <ActOrb key={k.name + i} icon={k.icon ?? "✦"} label={`${k.name} (${k.kind})${k.unlocked ? "" : `, libera no nível ${k.lv}`}`} size={0.84} rad={3.05} ang={arc2[i]!} color={k.color ?? "#e0b15a"} cd={k.unlocked ? Math.min(1, k.cd / Math.max(0.1, k.cdMax)) : 1} locked={!k.unlocked} tag={k.key} onDown={(d) => hold(("s" + (i + 1)) as Action, d)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Orb({ frac, c1, c2, label }: { frac: number; c1: string; c2: string; label: string }) {
   const f = Math.max(0, Math.min(1, frac));
   return (
@@ -1136,6 +1245,7 @@ function Orb({ frac, c1, c2, label }: { frac: number; c1: string; c2: string; la
   );
 }
 
+const terrainImageOnce = () => terrainImage();
 function mapMarks(hud: NonNullable<Snap["open"]>) {
   const m = hud.map!;
   return {
@@ -1144,25 +1254,64 @@ function mapMarks(hud: NonNullable<Snap["open"]>) {
   };
 }
 
+/** balão "Conversar" sobre a cabeça do NPC: segue a projeção 3D a cada quadro, sem re-renderizar o React */
+function TalkBubble({ onTalk }: { onTalk: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    let id = 0;
+    const tick = () => {
+      const el = ref.current;
+      if (el) {
+        el.style.opacity = talkScreen.on ? "1" : "0";
+        el.style.left = `${Math.max(6, Math.min(94, talkScreen.x * 100))}%`;
+        el.style.top = `${Math.max(8, Math.min(88, talkScreen.y * 100))}%`;
+      }
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return (
+    <button ref={ref} type="button" onClick={onTalk} aria-label="Conversar" className="pointer-events-auto absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full border border-brass bg-ink/85 px-3 py-0.5 text-xs font-bold text-brass shadow-lg" style={{ opacity: 0 }}>
+      Conversar
+    </button>
+  );
+}
+
 function MiniMap({ hud, size }: { hud: NonNullable<Snap["open"]>; size: number }) {
   const m = hud.map!;
-  const sc = size / 2 / (m.R * 1.05);
-  const X = (x: number) => size / 2 + x * sc;
+  const img = terrainImageOnce();
+  const ZR = 2900;
+  const sz = size / 2 / ZR;
+  const px = hud.wx * 48;
+  const pz = hud.wz * 48;
+  const X = (x: number) => size / 2 + (x - px) * sz;
+  const Z = (z: number) => size / 2 + (z - pz) * sz;
   const mk = mapMarks(hud);
+  const inView = (x: number, z: number) => Math.hypot(x - px, z - pz) < ZR * 0.93;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rounded-full border-2 border-brass/70 bg-ink/80 shadow-lg">
-      <circle cx={size / 2} cy={size / 2} r={m.R * sc} fill="#16231a" />
-      {mk.quests.map((q, i) => <text key={`q${i}`} x={X(q.x)} y={X(q.z) + 4} fontSize={11} fontWeight="bold" textAnchor="middle" fill="#ffd34a" stroke="#000" strokeWidth={0.5}>?</text>)}
-      {mk.dungeons.map((q, i) => <text key={`d${i}`} x={X(q.x)} y={X(q.z) + 4} fontSize={11} fontWeight="bold" textAnchor="middle" fill="#ffffff" stroke="#000" strokeWidth={0.5}>!</text>)}
-      <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={3.5} fill="#ff2a2a" stroke="#fff" strokeWidth={1} />
-      <path d={`M ${X(hud.wx * 48)} ${X(hud.wz * 48) - 4} l 3.5 7 l -7 0 z`} fill="#7affc4" stroke="#000" strokeWidth={0.8} />
+      <defs><clipPath id="mmclip"><circle cx={size / 2} cy={size / 2} r={size / 2 - 1} /></clipPath></defs>
+      <g clipPath="url(#mmclip)">
+        <rect width={size} height={size} fill="#0e0c10" />
+        {img && <image href={img.url} x={X(-img.R)} y={Z(-img.R)} width={2 * img.R * sz} height={2 * img.R * sz} style={{ imageRendering: "auto" }} />}
+        {mk.quests.filter((q) => inView(q.x, q.z)).map((q, i) => <text key={`q${i}`} x={X(q.x)} y={Z(q.z) + 4} fontSize={12} fontWeight="bold" textAnchor="middle" fill="#ffd34a" stroke="#000" strokeWidth={0.7}>?</text>)}
+        {mk.dungeons.filter((q) => inView(q.x, q.z)).map((q, i) => <text key={`d${i}`} x={X(q.x)} y={Z(q.z) + 4} fontSize={12} fontWeight="bold" textAnchor="middle" fill="#ffffff" stroke="#000" strokeWidth={0.7}>!</text>)}
+        {inView(m.portal.x, m.portal.z) && <circle cx={X(m.portal.x)} cy={Z(m.portal.z)} r={4} fill="#ff2a2a" stroke="#fff" strokeWidth={1} />}
+        {!inView(m.portal.x, m.portal.z) && (() => {
+          // portal fora da vista: ponto vermelho na borda, na direção dele
+          const a = Math.atan2(m.portal.z - pz, m.portal.x - px);
+          return <circle cx={size / 2 + Math.cos(a) * (size / 2 - 6)} cy={size / 2 + Math.sin(a) * (size / 2 - 6)} r={3.5} fill="#ff2a2a" stroke="#fff" strokeWidth={1} />;
+        })()}
+        <path d={`M ${size / 2} ${size / 2 - 6} l 5 10 l -10 0 z`} fill="#7affc4" stroke="#000" strokeWidth={1} />
+      </g>
     </svg>
   );
 }
 
 function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: () => void }) {
   const m = hud.map!;
-  const S = 340;
+  const S = 360;
   const sc = S / 2 / (m.R * 1.05);
   const X = (x: number) => S / 2 + x * sc;
   return (
@@ -1173,8 +1322,8 @@ function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: (
           <button type="button" onClick={onClose} className="rounded-md border border-paper/30 px-3 py-1">Fechar [M]</button>
         </div>
         <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} className="max-h-[70vh] max-w-full rounded-md bg-ink">
-          <circle cx={S / 2} cy={S / 2} r={m.R * sc} fill="#1d2a1c" stroke="#8a6b2a" strokeWidth={2} />
-          {m.places.slice(1).map((p, i) => <line key={`l${i}`} x1={X(m.places[0]!.x)} y1={X(m.places[0]!.z)} x2={X(p.x)} y2={X(p.z)} stroke="#4a4a3a" strokeWidth={1.5} strokeDasharray="4 3" />)}
+          {terrainImageOnce() ? <image href={terrainImageOnce()!.url} x={0} y={0} width={S} height={S} /> : <circle cx={S / 2} cy={S / 2} r={m.R * sc} fill="#1d2a1c" />}
+          <circle cx={S / 2} cy={S / 2} r={m.R * sc} fill="none" stroke="#8a6b2a" strokeWidth={2} />
           {mapMarks(hud).quests.map((q, i) => <text key={`q${i}`} x={X(q.x)} y={X(q.z) + 6} fontSize={18} fontWeight="bold" textAnchor="middle" fill="#ffd34a" stroke="#000" strokeWidth={0.8}>?</text>)}
           {mapMarks(hud).dungeons.map((q, i) => <text key={`d${i}`} x={X(q.x)} y={X(q.z) + 6} fontSize={18} fontWeight="bold" textAnchor="middle" fill="#ffffff" stroke="#000" strokeWidth={0.8}>!</text>)}
           <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={6} fill="#ff2a2a" stroke="#fff" strokeWidth={1.5} />
@@ -1255,14 +1404,32 @@ function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | nu
         </div>
         <p className="mt-2 text-sm italic text-paper/80">“{npc.text}”</p>
         {npc.quest && (
-          <div className="mt-3 rounded-md border border-brass/40 bg-ink/60 p-3 text-sm">
-            <p className="font-bold">{npc.quest.title}</p>
-            <p className="text-paper/70">Recompensa: {npc.quest.reward}</p>
-            {npc.quest.active && <p className="text-brass">Progresso: {npc.quest.prog}/{npc.quest.goal}</p>}
-            <div className="mt-2">
-              {!npc.quest.active && <Primary onClick={() => rt?.npcQuest()}>Aceitar missão</Primary>}
-              {npc.quest.active && <Primary onClick={() => rt?.npcQuest()} disabled={!npc.quest.ready}>{npc.quest.ready ? "Entregar missão" : "Ainda não terminou"}</Primary>}
-            </div>
+          <div className="mt-3 min-h-0 space-y-2 overflow-y-auto rounded-md border border-brass/40 bg-ink/60 p-3 text-sm">
+            {npc.quest.active ? (
+              <>
+                <p className="font-bold">{npc.quest.title}</p>
+                <p className="text-paper/70">Recompensa: {npc.quest.reward}</p>
+                <p className="text-brass">Progresso: {npc.quest.prog}/{npc.quest.goal}</p>
+                <div className="mt-2 flex gap-2">
+                  <Primary onClick={() => rt?.npcQuest()} disabled={!npc.quest.ready}>{npc.quest.ready ? "Entregar missão" : "Ainda não terminou"}</Primary>
+                  <Ghost onClick={() => rt?.npcQuestAbandon()}>Abandonar</Ghost>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-paper/60">Escolha um trabalho. Quanto mais difícil, maior a recompensa.</p>
+                {npc.quest.offers.map((o) => (
+                  <div key={o.tier} className="rounded-md border border-paper/20 p-2">
+                    <p className="font-bold">{o.label}: {o.title}</p>
+                    <p className="text-xs text-paper/70">Recompensa: {o.reward}</p>
+                    <div className="mt-1 flex gap-2">
+                      <Primary onClick={() => rt?.npcQuest(o.tier)}>Aceitar</Primary>
+                      <Ghost onClick={() => rt?.npcClose()}>Recusar</Ghost>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         )}
         {shop && (

@@ -209,3 +209,19 @@ body {
 main {
   overflow: clip;
 }
+
+/* esferas de vida e mana: embaixo no centro (aparelho deitado); em pé sobem para o canto superior direito, sem cobrir os controles */
+.orb-dock {
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(max(env(safe-area-inset-bottom), 8px) + 10px);
+}
+@media (orientation: portrait) {
+  .orb-dock {
+    left: auto;
+    right: max(10px, env(safe-area-inset-right));
+    transform: none;
+    bottom: auto;
+    top: calc(max(env(safe-area-inset-top), 6px) + 62px);
+  }
+}

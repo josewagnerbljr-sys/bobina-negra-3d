@@ -1,5 +1,5 @@
 /** 13 magias definitivas (aprendidas e aprimoradas com a bruxa) e 13 combos de ataque físico */
-export type SpellKind = "homing" | "fan" | "chain" | "nova" | "dash" | "heal" | "ward" | "haste" | "drain" | "quake" | "meteor" | "screen" | "ice";
+export type SpellKind = "raise" | "bulwark" | "nova2" | "homing" | "fan" | "chain" | "nova" | "dash" | "heal" | "ward" | "haste" | "drain" | "quake" | "meteor" | "screen" | "ice";
 export type SpellDef = { id: number; name: string; color: string; kind: SpellKind; cd: number; power: number; price: number; text: string; tag: string };
 
 export const SPELLS: SpellDef[] = [
@@ -18,6 +18,20 @@ export const SPELLS: SpellDef[] = [
   { id: 12, name: "Sentença Final", color: "#ffffff", kind: "screen", cd: 28, power: 10, price: 1400, tag: "Super área", text: "Dano enorme em todos os monstros visíveis." },
 ];
 export const SPELL_MAX_LV = 5;
+
+/** classe de cada herói e seu kit de 4 poderes (cada classe luta de um jeito: dreno, cadeia, cone, servos, meteoros, escudo…) */
+export const HERO_CLASS: Record<string, string> = { ivo: "Guerreiro", lena: "Assassina", osso: "Necromante", syl: "Caçadora", tito: "Mago de Fogo", mari: "Bruxa da Maré", pia: "Guardião", lumen: "Tecnomante" };
+const K = (id: number, name: string, color: string, kind: SpellKind, cd: number, power: number, tag: string, icon: string, text: string): SpellDef & { icon: string } => ({ id, name, color, kind, cd, power, price: 0, tag, text, icon });
+export const HERO_KITS: Record<string, (SpellDef & { icon: string })[]> = {
+  ivo: [K(100, "Lança de Prata", "#d8dce8", "homing", 1.4, 3.6, "Unitário", "🗡️", "Lança pesada que persegue o alvo."), K(101, "Garra do Lobo", "#e0b15a", "dash", 2.2, 3.4, "Investida", "🐺", "Investida que rasga um alvo."), K(102, "Pisão da Alcateia", "#e0803a", "quake", 3.6, 3.4, "Área física", "💥", "O chão racha: dano e empurrão forte em volta."), K(103, "Noite de Lua Cheia", "#f4e4c8", "screen", 18, 8.5, "Super área", "🌕", "Uivo que fere todos os monstros visíveis.")],
+  lena: [K(110, "Facas de Tinta", "#ff3a4a", "fan", 1.6, 1.7, "Cone", "🔪", "Cinco lâminas em leque."), K(111, "Mordida Sombria", "#c4373a", "dash", 2.0, 4.6, "Execução", "🦇", "Salto em sombra com golpe fatal."), K(112, "Sede de Sangue", "#b06ad0", "drain", 4.0, 3.0, "Dreno", "🩸", "Fere em volta e rouba vida."), K(113, "Eclipse Carmesim", "#ff2a5a", "meteor", 16, 7.5, "Execução em área", "☠️", "Cinco golpes de execução nos mais próximos.")],
+  osso: [K(120, "Osso Teleguiado", "#f1ead8", "homing", 1.4, 3.4, "Unitário", "🦴", "Osso que gira atrás do alvo."), K(121, "Dreno de Alma", "#9fd4d8", "drain", 3.2, 3.2, "Dreno", "👻", "Puxa a alma de quem está perto."), K(122, "Erguer Servo", "#c8c2b4", "raise", 14, 0, "Invocação", "⚰️", "Ergue um servo do último monstro que caiu."), K(123, "Grande Final", "#9fd4d8", "screen", 18, 8.5, "Super área", "💀", "Aplausos fatais em todos os visíveis.")],
+  syl: [K(130, "Flecha Caçadora", "#d2e39a", "homing", 1.2, 3.2, "Unitário", "🏹", "Flecha que curva até o alvo."), K(131, "Rolamento Cortante", "#9bd46a", "dash", 1.8, 3.0, "Investida", "🍃", "Rolamento que atravessa e fere."), K(132, "Salva de Flechas", "#6aaa48", "fan", 3.0, 2.0, "Cone", "🎯", "Leque largo de flechas."), K(133, "Floresta Viva", "#d2ff7a", "meteor", 16, 7.0, "Super área", "🌲", "Raízes e luz atingem os mais próximos.")],
+  tito: [K(140, "Cometa de Brasa", "#ff9a3a", "homing", 1.6, 4.4, "Unitário", "☄️", "Bola de fogo que persegue."), K(141, "Cuspe de Dragão", "#ff5a1a", "dash", 2.4, 3.4, "Investida", "🐉", "Avanço em chamas."), K(142, "Anel de Fogo", "#ffb04a", "nova2", 3.6, 3.2, "Área", "🔥", "Círculo de chamas em volta."), K(143, "Grande Incêndio", "#ff3a1a", "meteor", 17, 8.0, "Super área", "🌋", "Chuva de meteoros nos mais próximos.")],
+  mari: [K(150, "Bolha Caçadora", "#8fe4ff", "homing", 1.4, 3.2, "Unitário", "🫧", "Bolha que segue o alvo."), K(151, "Maldição da Maré", "#4ac0e0", "ice", 2.6, 2.6, "Área", "🌊", "Onda gélida em volta."), K(152, "Dreno Salgado", "#5ad0e8", "drain", 3.8, 3.0, "Dreno", "🐚", "Suga vida do mar em volta."), K(153, "Maremoto", "#2a9ad0", "screen", 18, 8.0, "Super área", "🌀", "Parede de água em tela inteira.")],
+  pia: [K(160, "Estilhaço Guiado", "#c0c8d4", "homing", 1.5, 3.0, "Unitário", "🪨", "Pedra afiada que persegue."), K(161, "Mergulho de Gárgula", "#9aa4b0", "dash", 2.4, 3.8, "Investida", "🦅", "Investida pesada que esmaga."), K(162, "Pele de Pedra", "#8a929c", "bulwark", 5.0, 3.0, "Defesa", "🛡️", "Abalo em volta e escudo de pedra."), K(163, "Desabamento", "#d0d6e0", "screen", 18, 8.0, "Super área", "⛰️", "Chuva de pedras em tela inteira.")],
+  lumen: [K(170, "Faísca Encadeada", "#ffee6a", "chain", 1.6, 2.4, "Cadeia", "⚡", "Raio que salta entre monstros."), K(171, "Curto-Circuito", "#ffd02a", "dash", 2.0, 3.4, "Investida", "🔌", "Descarga em linha."), K(172, "Pulso Elétrico", "#a0e0ff", "nova2", 3.0, 2.8, "Área", "🔋", "Pulso em volta com raios."), K(173, "Apagão", "#ffffff", "screen", 18, 8.5, "Super área", "💡", "A luz some e volta num raio em todos.")],
+};
 export const spellUpCost = (sp: SpellDef, lv: number) => Math.round(sp.price * 0.7 * lv);
 
 export type ComboDef = { name: string; dmg: number; reach: number; hits: number; knock: number };

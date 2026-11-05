@@ -308,6 +308,14 @@ export function makeItem(baseId: string, rarity: Rarity, tier: number, rnd: () =
   return out;
 }
 
+/** recompensa de missão: peça de equipamento com raridade garantida (3 = mítico/lendário, 4 = celestial/divino) */
+export function rewardItem(world: number, rarity: Rarity, rnd: () => number): Item {
+  const tier = Math.min(10, world + 1);
+  const pool = BASES.filter((b) => b.slot !== "potion" && b.slot !== "gem" && b.boss === undefined && (b.minWorld ?? 0) <= world);
+  const b = pool[Math.floor(rnd() * pool.length)]!;
+  return makeItem(b.id, rarity, tier, rnd);
+}
+
 export type DropSource = "mob" | "mini" | "boss" | "chest";
 
 const POTION_W: Record<string, number> = { ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`grim${i}`, 0.22])), pot: 4, bread: 2.2, pot2: 2.4, pot3: 1, pot_royal: 0.5, tonic: 0.9, elx_haste: 1, elx_fury: 0.9, elx_ward: 0.8, elx_swift: 0.5, elx_rage: 0.5, elx_aegis: 0.4, scroll_a: 1.3, scroll_b: 0.8, scroll_c: 0.4, scroll_ward: 0.6 };

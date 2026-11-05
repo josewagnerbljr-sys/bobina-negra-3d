@@ -32,7 +32,7 @@ export type Save = {
   /** monstros derrotados (total) */
   kills: number;
   /** missões dos NPCs: id -> {base, goal, done} */
-  qs: Record<string, { base: number; goal: number; done: number }>;
+  qs: Record<string, { base: number; goal: number; done: number; tier?: number }>;
   /** nível (0 = não aprendida) de cada uma das 13 magias */
   spells: number[];
   /** magia equipada em U/I/O/P (-1 = poder do herói) */
