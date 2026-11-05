@@ -50,7 +50,7 @@ export type Fx = { z?: number; kind: "wave" | "slash" | "pillar" | "nova" | "bla
 
 export type ShotPaint = { z?: number; x: number; y: number; w: number; h: number; color: string; vx: number; foe: boolean; el?: string };
 
-export type OpenCam = { el: number; yaw: number; pitch: number; dist: number; look: number; offX: number; night: number; jump: number; tele: { x: number; z: number; r: number; k: number; c: string }[] };
+export type OpenCam = { inside?: { id: string; x0: number; z0: number; x1: number; z1: number } | null; el: number; yaw: number; pitch: number; dist: number; look: number; offX: number; night: number; jump: number; tele: { x: number; z: number; r: number; k: number; c: string }[] };
 
 export type Frame = {
   level: Level | null;
@@ -289,7 +289,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camOX = 0;
   let camOZ = 0;
   let camOY = 0;
-  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; hall: GpuMesh | null; groups: { rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
+  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; hall: GpuMesh | null; groups: { id: string; rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
   let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
@@ -511,7 +511,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
             if (!natureReady() || built >= (openMeshes.size < 8 ? 25 : 2)) continue;
             built++;
             const cm = buildChunkMesh(i, j);
-            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), hall: cm.hall ? e.upload(cm.hall) : null, groups: cm.groups.map((gp) => ({ rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
+            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), hall: cm.hall ? e.upload(cm.hall) : null, groups: cm.groups.map((gp) => ({ id: gp.id, rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
             openMeshes.set(key, mh);
           }
           // descarta blocos distantes que estão atrás da câmera
@@ -520,6 +520,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
             const ddz = (j + 0.5) * CH - owz;
             const dd = Math.hypot(ddx, ddz);
             if (dd > CH * 1.25 && (ddx * Math.sin(oc.yaw) - ddz * Math.cos(oc.yaw)) / dd < -0.3) continue;
+          }
+          if (oc.inside) {
+            // dentro de uma casa: só o interior (pisos até o andar atual), sem paisagem nem outras construções
+            for (const gp of mh.groups) if (gp.id === oc.inside.id) for (let q = 0; q < gp.floors.length && q <= Math.max(0, Math.round(oc.el / 1.56 - 0.2)); q++) e.draw(gp.floors[q]!, tmpBlob, {});
+            continue;
           }
           e.draw(mh.solid, tmpBlob, {});
           e.draw(mh.glow, tmpBlob, { unlit: true });
@@ -650,7 +655,12 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const drawActor = (p: Paint, m: Model, mat: Float32Array) => {
       const st: DrawState = { ...tmpDraw };
       st.flash = p.kind !== "hero" && p.hurt ? 0.75 : 0;
-      if (p.garb !== undefined) st.tint = GARB[p.garb % GARB.length]!;
+      if (p.garb !== undefined && p.kind !== "hero") st.tint = GARB[p.garb % GARB.length]!;
+      // monstros do mundo aberto: tons mais sujos e um brilho avermelhado de dentro (menos desenho animado, mais ameaça)
+      if (isOpen && p.kind !== "hero" && !p.ally && p.garb === undefined) {
+        st.tint = [0.74, 0.66, 0.68];
+        st.emis = p.mini ? [0.22, 0.03, 0.02] : [0.1, 0.012, 0.01];
+      }
       if (p.ally) {
         st.tint = [0.65, 0.95, 1.1];
         st.emis = [0.05, 0.25, 0.3];
@@ -676,7 +686,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     const allowed = new Set<Paint>();
     if (oc) {
       const dd = (p: Paint) => Math.hypot(p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx, (p.z ?? 0) - owz);
-      const vis = f.actors.filter((p) => p.kind !== "hero").sort((a1, b1) => dd(a1) - dd(b1));
+      const vis = f.actors.filter((p) => p.kind !== "hero" || p.garb !== undefined).sort((a1, b1) => dd(a1) - dd(b1));
       let nn = 0;
       let nm = 0;
       for (const p of vis) {
@@ -685,6 +695,15 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     const farActor = (p: Paint) => {
       if (!oc) return false;
+      if (oc.inside && p.kind !== "hero") {
+        const ix = p.x + p.w / 2 - OW_ORIGIN_X + oc.offX;
+        const iz = p.z ?? 0;
+        if (ix < oc.inside.x0 || ix > oc.inside.x1 || iz < oc.inside.z0 || iz > oc.inside.z1) return true;
+      }
+      if (oc.inside && p.garb !== undefined) {
+        const ix = p.x + p.w / 2 - OW_ORIGIN_X + oc.offX;
+        if (ix < oc.inside.x0 || ix > oc.inside.x1 || (p.z ?? 0) < oc.inside.z0 || (p.z ?? 0) > oc.inside.z1) return true;
+      }
       if (!allowed.has(p)) return true;
       const dx = p.x + p.w / 2 - OW_ORIGIN_X + oc.offX - owx;
       const dz = (p.z ?? 0) - owz;
@@ -701,6 +720,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     for (const p of f.actors) {
       if (p.kind !== "hero") continue;
+      if (p.garb !== undefined && farActor(p)) continue;
       const was = formPrev.get(p.ref);
       if (was !== undefined && was !== p.form) {
         bursts.push({ x: (p.x + p.w / 2) * S, y: ROWS - (p.y + p.h / 2) * S, foot: ROWS - (p.y + p.h) * S, t0: f.t, c: hex(heroAccent(p.hero)), on: p.form });

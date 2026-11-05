@@ -1,3 +1,4 @@
+import { SPELLS } from "./spells";
 import { BAG_SIZE, EQUIP_KEYS, STAT_KEYS, type Equip, type EquipKey, type Item, type ItemSlot, type Rarity, type Stats, type StatKey } from "./types";
 
 export type BaseDef = {
@@ -15,6 +16,8 @@ export type BaseDef = {
   dur?: number;
   /** XP concedido ao usar (pergaminhos) */
   xp?: number;
+  /** grimório: ensina ou aprimora esta magia (índice em SPELLS) */
+  spell?: number;
   text: string;
   /** família do desenho (ícone SVG e miniatura 3D no chão) */
   fam: string;
@@ -180,6 +183,11 @@ export const BASES: BaseDef[] = [
   I("gem_all", "Opala do Limiar", "gem", 1, { str: 1, int: 1 }, "#e8e0f0", "gem", "Pedra de encaixe: aumenta FOR e INT.", { acc: "#ffffff", minWorld: 3 }),
 ];
 
+/* ---- grimórios: um por magia; ao ler, ensinam a magia ou sobem o nível dela ---- */
+SPELLS.forEach((sp, i) => {
+  BASES.push({ id: `grim${i}`, name: `Grimório: ${sp.name}`, slot: "potion", size: 1, w: {}, color: sp.color, glyph: "", fam: "scroll", text: `Ao ler, ${sp.text.charAt(0).toLowerCase()}${sp.text.slice(1)} Ensina a magia ou sobe o nível dela.`, spell: i, minWorld: Math.min(9, Math.floor(i * 0.75)), acc: "#ffffff" });
+});
+
 /* ---- variantes por material: cada peça base ganha 6 versões (mais de 650 itens no total) ---- */
 const MATS: { suf: string; mul: number; mw: number; col: string; txt: string }[] = [
   { suf: "de Cobre", mul: 1.1, mw: 0, col: "#b87333", txt: "Forjado em cobre: simples, mas honesto." },
@@ -302,7 +310,7 @@ export function makeItem(baseId: string, rarity: Rarity, tier: number, rnd: () =
 
 export type DropSource = "mob" | "mini" | "boss" | "chest";
 
-const POTION_W: Record<string, number> = { pot: 4, bread: 2.2, pot2: 2.4, pot3: 1, pot_royal: 0.5, tonic: 0.9, elx_haste: 1, elx_fury: 0.9, elx_ward: 0.8, elx_swift: 0.5, elx_rage: 0.5, elx_aegis: 0.4, scroll_a: 1.3, scroll_b: 0.8, scroll_c: 0.4, scroll_ward: 0.6 };
+const POTION_W: Record<string, number> = { ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`grim${i}`, 0.22])), pot: 4, bread: 2.2, pot2: 2.4, pot3: 1, pot_royal: 0.5, tonic: 0.9, elx_haste: 1, elx_fury: 0.9, elx_ward: 0.8, elx_swift: 0.5, elx_rage: 0.5, elx_aegis: 0.4, scroll_a: 1.3, scroll_b: 0.8, scroll_c: 0.4, scroll_ward: 0.6 };
 
 export function rollDrops(src: DropSource, world: number, luck: number, rnd: () => number): Item[] {
   const tier = Math.min(10, world + 1);

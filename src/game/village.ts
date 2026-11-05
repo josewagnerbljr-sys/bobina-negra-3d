@@ -225,6 +225,38 @@ function addHouse(pl: Place, taken: { x: number; z: number; r: number }[], arch:
   return true;
 }
 
+const FLAVORS = ["vila", "mercado", "fazendas", "forja", "queimada", "cemitério", "bosque"] as const;
+type Flavor = (typeof FLAVORS)[number];
+/** ambiente próprio de cada vilarejo: mercado, fazendas, forja, vila queimada, cemitério ou bosque */
+function addFlavor(pl: Place, fl: Flavor, x: number, z: number, taken: { x: number; z: number; r: number }[], idx: number, realm: number, seed: number) {
+  if (fl === "vila") return;
+  const sets: Record<string, [string, "prop" | "nat"][]> = {
+    mercado: [["Stall_Empty", "prop"], ["Barrel", "prop"], ["Crate_Wooden", "prop"], ["Banner_1", "prop"], ["Banner_2", "prop"], ["Bag", "prop"], ["Barrel_Apples", "prop"], ["Stall_Cart_Empty", "prop"]],
+    fazendas: [["FarmCrate_Carrot", "prop"], ["FarmCrate_Apple", "prop"], ["Barrel_Apples", "prop"], ["Prop_Wagon", "prop"], ["Crate_Wooden", "prop"], ["Bucket_Wooden_1", "prop"], ["Carrot", "prop"], ["Clover_1", "nat"], ["Plant_7", "nat"]],
+    forja: [["Anvil", "prop"], ["Workbench", "prop"], ["WeaponStand", "prop"], ["Pickaxe_Bronze", "prop"], ["Barrel", "prop"], ["Crate_Metal", "prop"], ["Axe_Bronze", "prop"], ["Dummy", "prop"], ["Torch_Metal", "prop"]],
+    queimada: [["DeadTree_1", "nat"], ["DeadTree_3", "nat"], ["DeadTree_5", "nat"], ["Vase_Rubble_Medium", "prop"], ["Torch_Metal", "prop"], ["Rock_Medium_2", "nat"], ["Barrel", "prop"], ["Rope_1", "prop"]],
+    cemitério: [["DeadTree_2", "nat"], ["DeadTree_4", "nat"], ["CandleStick_Stand", "prop"], ["Vase_Rubble_Medium", "prop"], ["Rock_Medium_1", "nat"], ["Rock_Medium_3", "nat"], ["Chalice", "prop"], ["Mushroom_Laetiporus", "nat"]],
+    bosque: [["CommonTree_2", "nat"], ["CommonTree_5", "nat"], ["Pine_1", "nat"], ["Pine_3", "nat"], ["TwistedTree_3", "nat"], ["Mushroom_Common", "nat"], ["Fern_1", "nat"], ["Plant_1_Big", "nat"]],
+  };
+  const list = sets[fl]!;
+  const many = fl === "bosque" ? 90 : fl === "mercado" ? 46 : 38;
+  for (let t = 0, put = 0; t < 420 && put < many; t++) {
+    const ang = hh(idx * 61 + t, realm, seed + 140) * Math.PI * 2;
+    const dd = 230 + hh(idx * 67 + t, realm, seed + 141) * 760;
+    const px = x + Math.cos(ang) * dd;
+    const pz = z + Math.sin(ang) * dd;
+    if (!placeOK(taken, px, pz, 26)) continue;
+    const [k, m] = list[Math.floor(hh(t, idx, seed + 142) * list.length)]!;
+    const v = hh(t, idx, seed + 143);
+    const tall = k.includes("Tree") || k.startsWith("Pine");
+    pl.pieces.push({ m, k, x: px, z: pz, yaw: v * 6.28, s: m === "nat" ? (tall ? 0.42 : 0.55) * (0.85 + v * 0.4) : MS });
+    if (tall) pl.walls.push({ x0: px - 7, z0: pz - 7, x1: px + 7, z1: pz + 7, y0: -5, y1: 3 });
+    taken.push({ x: px, z: pz, r: 20 });
+    put++;
+  }
+  if (fl === "fazendas") for (let q = 0; q < 4; q++) fenceRing(pl, x + Math.cos(q * 1.57 + idx) * 520, z + Math.sin(q * 1.57 + idx) * 520, 70, 14, 5);
+}
+
 function village(realm: number, seed: number, idx: number, x: number, z: number, kind: "start" | "village" | "hamlet"): Place {
   const id = `v${idx}`;
   const big = kind !== "hamlet";
@@ -255,6 +287,8 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
       cnt++;
     }
   }
+  const flavor: Flavor = kind === "start" ? "vila" : FLAVORS[1 + Math.floor(hh(idx, realm, seed + 130) * (FLAVORS.length - 1))]!;
+  if (flavor !== "vila") pl.name = `${pl.name} · ${flavor}`;
   // árvores, arbustos e canteiros entre as casas
   const TREES = ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "Pine_2", "TwistedTree_2"];
   const SMALL = ["Plant_1", "Plant_7", "Fern_1", "Clover_1", "Grass_Common_Tall", "Rock_Medium_1"];
@@ -271,6 +305,7 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
     taken.push({ x: tx, z: tz, r: 22 });
     put++;
   }
+  addFlavor(pl, flavor, x, z, taken, idx, realm, seed);
   if (big) {
     const stalls: [string, number, number, NpcRole, string][] = [
       ["Stall_Empty", -62, -10, "merchant", "Mercador"],

@@ -9,6 +9,8 @@ import { createRuntime, type Runtime } from "../game/runtime";
 import { BAG_SIZE, EMPTY_STATS, EQUIP_KEYS, SLOT_LABEL, STAT_KEYS, type Action, type Item, type Snap, type StatKey } from "../game/types";
 
 const BOOT: Snap = {
+  mana: 0,
+  maxMana: 0,
   screen: "title",
   hasSave: false,
   hero: "ivo",
@@ -173,27 +175,24 @@ export function Bobina() {
               </div>
             </div>
             {playing && snap.open && (
-              <div className="pointer-events-none flex items-center gap-3 rounded-md border border-paper/20 bg-panel/80 px-3 py-1.5 text-xs text-paper/90">
-                <span className="relative grid size-9 shrink-0 place-items-center rounded-full border border-brass/60" aria-label="Bússola do próximo portal">
-                  <span className="absolute text-[9px] text-paper/50" style={{ top: 1 }}>N</span>
-                  <span className="block h-0 w-0 border-x-[5px] border-b-[13px] border-x-transparent border-b-brass" style={{ transform: `rotate(${snap.open.rel}rad)`, transformOrigin: "50% 70%" }} />
-                </span>
-                <span className="min-w-0 leading-tight">
+              <div className="pointer-events-none flex items-start gap-2">
+                {snap.open.map && (
+                  <button type="button" aria-label="Abrir mapa da fase" onClick={() => setShowMap((v) => !v)} className="pointer-events-auto hud-ico shrink-0 rounded-full">
+                    <MiniMap hud={snap.open} size={84} />
+                  </button>
+                )}
+                <div className="min-w-0 text-xs leading-tight text-paper/80">
                   <span className="block truncate text-paper">{snap.open.region}</span>
-                  <span className="block text-paper/60">Portal: {snap.open.target} · {snap.open.dist} passos · X {snap.open.wx} Z {snap.open.wz} · {snap.open.night > 0.5 ? "Noite" : snap.open.night > 0.15 ? "Anoitecendo" : "Dia"}</span>
-                  {snap.open.map && <span className="block text-brass">Moedas {snap.open.gold} · Peças do enigma {snap.open.parts}/3</span>}
-                  {snap.open.talk && <span className="block text-paper">Perto: {snap.open.talk}</span>}
+                  <span className="block text-paper/60">{snap.open.night > 0.5 ? "Noite" : snap.open.night > 0.15 ? "Anoitecendo" : "Dia"} · Moedas {snap.open.gold} · Peças {snap.open.parts}/3</span>
                   {snap.open.hazard && <span className="block font-bold text-blood">Perigo: {snap.open.hazard}</span>}
-                </span>
-                <span className="pointer-events-auto ml-auto flex gap-1">
-                  {snap.open.talk && <button type="button" onClick={() => rtRef.current?.interact()} className="hud-ico min-h-9 rounded-md border border-brass bg-brass px-3 text-xs font-bold text-ink">Falar [E]</button>}
-                  {snap.open.map && <button type="button" aria-label="Abrir mapa da fase" onClick={() => setShowMap((v) => !v)} className="hud-ico min-h-9 rounded-md border border-paper/30 bg-panel px-2 text-xs text-paper">Mapa</button>}
-                  <button type="button" aria-label="Girar câmera para a esquerda" onClick={() => rtRef.current?.camRot(-1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟲</button>
-                  <button type="button" aria-label="Girar câmera para a direita" onClick={() => rtRef.current?.camRot(1)} className="hud-ico grid size-9 place-items-center rounded-md border border-paper/30 bg-panel text-base text-paper">⟳</button>
-                </span>
+                  <span className="pointer-events-auto mt-1 flex gap-1">
+                    <button type="button" aria-label="Girar câmera para a esquerda" onClick={() => rtRef.current?.camRot(-1)} className="hud-ico grid size-8 place-items-center rounded-md border border-paper/30 bg-panel/80 text-base text-paper">⟲</button>
+                    <button type="button" aria-label="Girar câmera para a direita" onClick={() => rtRef.current?.camRot(1)} className="hud-ico grid size-8 place-items-center rounded-md border border-paper/30 bg-panel/80 text-base text-paper">⟳</button>
+                  </span>
+                </div>
               </div>
             )}
-            <div className="flex items-center gap-1">
+            {!snap.open && <div className="flex items-center gap-1">
               {Array.from({ length: snap.maxHp }, (_, i) => (
                 <Heart
                   key={i}
@@ -204,13 +203,13 @@ export function Bobina() {
               <span className="sr-only">
                 {snap.hp} de {snap.maxHp} corações
               </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-panel">
+            </div>}
+            {!snap.open && <div className="h-1.5 overflow-hidden rounded-full bg-panel">
               <div className="h-full bg-brass" style={{ width: `${Math.min(100, (snap.xp / Math.max(1, snap.xpNeed)) * 100)}%` }} />
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-panel">
+            </div>}
+            {!snap.open && <div className="h-1 overflow-hidden rounded-full bg-panel">
               <div className="h-full bg-blood" style={{ width: `${Math.min(100, snap.progress * 100)}%` }} />
-            </div>
+            </div>}
             {snap.bossAlive && (
               <div>
                 <p className="text-sm text-brass">{snap.bossName}</p>
@@ -233,6 +232,22 @@ export function Bobina() {
           </header>
         )}
 
+        {playing && snap.open && (
+          <>
+            {snap.open.talk && (
+              <button type="button" onClick={() => rtRef.current?.interact()} className="pointer-events-auto hud-ico absolute left-1/2 z-20 min-h-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-brass bg-brass px-4 text-sm font-bold text-ink shadow-lg" style={{ bottom: "calc(max(env(safe-area-inset-bottom), 8px) + clamp(62px, 15vmin, 92px))" }}>
+                Falar com {snap.open.talk} [E]
+              </button>
+            )}
+            <div className="pointer-events-none absolute left-1/2 z-10 flex -translate-x-1/2 items-end gap-3" style={{ bottom: "calc(max(env(safe-area-inset-bottom), 8px) + 10px)" }} aria-label={`Vida ${Math.ceil(snap.hp)} de ${snap.maxHp}, mana ${Math.floor(snap.mana)} de ${snap.maxMana}`}>
+              <Orb frac={snap.hp / Math.max(1, snap.maxHp)} c1="#ff4d5a" c2="#6a0f1a" label={String(Math.ceil(snap.hp))} />
+              <Orb frac={snap.mana / Math.max(1, snap.maxMana)} c1="#5aa8ff" c2="#10286a" label={String(Math.floor(snap.mana))} />
+            </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[5px] bg-black/60" aria-label="Experiência">
+              <div className="h-full bg-brass" style={{ width: `${Math.min(100, (snap.xp / Math.max(1, snap.xpNeed)) * 100)}%` }} />
+            </div>
+          </>
+        )}
         <div className="pointer-events-auto min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {snap.screen === "title" && (
             <section className="pointer-events-auto mx-auto flex min-h-full max-w-lg flex-col menu-sec px-4 pb-6">
@@ -242,7 +257,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v13.0 · multijogador {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v14.0 · realismo {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -1107,9 +1122,44 @@ function Pad({
 }
 
 
+function Orb({ frac, c1, c2, label }: { frac: number; c1: string; c2: string; label: string }) {
+  const f = Math.max(0, Math.min(1, frac));
+  return (
+    <div className="relative grid place-items-center overflow-hidden rounded-full border-2 border-black/70 shadow-lg" style={{ width: "clamp(40px, 10vmin, 62px)", height: "clamp(40px, 10vmin, 62px)", background: "#0b0b10" }}>
+      <div className="absolute inset-x-0 bottom-0 transition-[height] duration-200" style={{ height: `${f * 100}%`, background: `linear-gradient(to top, ${c2}, ${c1})` }} />
+      <div className="absolute inset-0 rounded-full" style={{ boxShadow: "inset 0 -6px 10px rgba(0,0,0,.45), inset 0 5px 8px rgba(255,255,255,.18)" }} />
+      <span className="relative text-[11px] font-bold text-white" style={{ textShadow: "0 1px 2px #000" }}>{label}</span>
+    </div>
+  );
+}
+
+function mapMarks(hud: NonNullable<Snap["open"]>) {
+  const m = hud.map!;
+  return {
+    quests: [...m.places.filter((p) => p.k === "start" || p.k === "village").map((p) => ({ x: p.x, z: p.z })), ...m.marks.filter((k) => !k.got).map((k) => ({ x: k.x, z: k.z }))],
+    dungeons: m.places.filter((p) => p.k === "mansion" || p.k === "castle").map((p) => ({ x: p.x, z: p.z })),
+  };
+}
+
+function MiniMap({ hud, size }: { hud: NonNullable<Snap["open"]>; size: number }) {
+  const m = hud.map!;
+  const sc = size / 2 / (m.R * 1.05);
+  const X = (x: number) => size / 2 + x * sc;
+  const mk = mapMarks(hud);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rounded-full border-2 border-brass/70 bg-ink/80 shadow-lg">
+      <circle cx={size / 2} cy={size / 2} r={m.R * sc} fill="#16231a" />
+      {mk.quests.map((q, i) => <text key={`q${i}`} x={X(q.x)} y={X(q.z) + 4} fontSize={11} fontWeight="bold" textAnchor="middle" fill="#ffd34a" stroke="#000" strokeWidth={0.5}>?</text>)}
+      {mk.dungeons.map((q, i) => <text key={`d${i}`} x={X(q.x)} y={X(q.z) + 4} fontSize={11} fontWeight="bold" textAnchor="middle" fill="#ffffff" stroke="#000" strokeWidth={0.5}>!</text>)}
+      <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={3.5} fill="#ff2a2a" stroke="#fff" strokeWidth={1} />
+      <path d={`M ${X(hud.wx * 48)} ${X(hud.wz * 48) - 4} l 3.5 7 l -7 0 z`} fill="#7affc4" stroke="#000" strokeWidth={0.8} />
+    </svg>
+  );
+}
+
 function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: () => void }) {
   const m = hud.map!;
-  const S = 320;
+  const S = 340;
   const sc = S / 2 / (m.R * 1.05);
   const X = (x: number) => S / 2 + x * sc;
   return (
@@ -1121,23 +1171,13 @@ function LevelMap({ hud, onClose }: { hud: NonNullable<Snap["open"]>; onClose: (
         </div>
         <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} className="max-h-[70vh] max-w-full rounded-md bg-ink">
           <circle cx={S / 2} cy={S / 2} r={m.R * sc} fill="#1d2a1c" stroke="#8a6b2a" strokeWidth={2} />
-          {m.places.slice(1).map((p, i) => <line key={`l${i}`} x1={X(m.places[0]!.x)} y1={X(m.places[0]!.z)} x2={X(p.x)} y2={X(p.z)} stroke="#6b5a3a" strokeWidth={2} strokeDasharray="4 3" />)}
-          {m.places.map((p, i) => (
-            <g key={i}>
-              <rect x={X(p.x) - 5} y={X(p.z) - 5} width={10} height={10} fill={p.k === "mansion" ? "#a5324a" : "#d9b36a"} />
-              <text x={X(p.x) + 8} y={X(p.z) + 3} fontSize={8} fill="#e8dcc0">{p.k === "start" ? "Início" : p.k === "mansion" ? "Mansão" : p.n}</text>
-            </g>
-          ))}
-          {m.marks.map((k, i) => (
-            <g key={`k${i}`}>
-              <circle cx={X(k.x)} cy={X(k.z)} r={6} fill={k.got ? "#4a7a3a" : "#ffcc33"} stroke="#000" />
-              <text x={X(k.x) - 3} y={X(k.z) + 3} fontSize={8} fill="#000">{i + 1}</text>
-            </g>
-          ))}
-          <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={8} fill="none" stroke={m.portal.open ? "#7affc4" : "#7a5aff"} strokeWidth={3} />
-          <circle cx={X(hud.wx * 48)} cy={X(hud.wz * 48)} r={4} fill="#ff4d4d" stroke="#fff" />
+          {m.places.slice(1).map((p, i) => <line key={`l${i}`} x1={X(m.places[0]!.x)} y1={X(m.places[0]!.z)} x2={X(p.x)} y2={X(p.z)} stroke="#4a4a3a" strokeWidth={1.5} strokeDasharray="4 3" />)}
+          {mapMarks(hud).quests.map((q, i) => <text key={`q${i}`} x={X(q.x)} y={X(q.z) + 6} fontSize={18} fontWeight="bold" textAnchor="middle" fill="#ffd34a" stroke="#000" strokeWidth={0.8}>?</text>)}
+          {mapMarks(hud).dungeons.map((q, i) => <text key={`d${i}`} x={X(q.x)} y={X(q.z) + 6} fontSize={18} fontWeight="bold" textAnchor="middle" fill="#ffffff" stroke="#000" strokeWidth={0.8}>!</text>)}
+          <circle cx={X(m.portal.x)} cy={X(m.portal.z)} r={6} fill="#ff2a2a" stroke="#fff" strokeWidth={1.5} />
+          <path d={`M ${X(hud.wx * 48)} ${X(hud.wz * 48) - 6} l 5 10 l -10 0 z`} fill="#7affc4" stroke="#000" strokeWidth={1} />
         </svg>
-        <p className="mt-2 max-w-[320px] text-xs text-paper/70">Quadrado dourado: vilarejo. Vermelho: mansão. Círculo numerado: peça do enigma (amarelo = falta, verde = conquistada). Anel roxo/verde: portal. Ponto vermelho: você.</p>
+        <p className="mt-2 max-w-[320px] text-xs text-paper/70">Ponto vermelho: portal. ? (amarelo): missões e peças do enigma. ! (branco): dungeons especiais. Seta verde: você.</p>
       </div>
     </section>
   );

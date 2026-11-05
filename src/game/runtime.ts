@@ -31,7 +31,7 @@ import { createNet } from "./net";
 import { COMBOS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
 import { REALM_THEMES } from "./realms";
 import type { BaseDef } from "./items";
-import { BASES } from "./items";
+import { BASES, BASE_BY_ID } from "./items";
 import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
@@ -80,6 +80,8 @@ type Actor = Body & {
   el?: number;
   npc?: { id: string; role: string; name: string };
   garb?: number;
+  body?: HeroId;
+  outfit?: GearLook;
   home?: { x: number; z: number; tx: number; tz: number };
   vz?: number;
   room?: number;
@@ -269,6 +271,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     melee: false,
   };
   let meleeCd = 0;
+  let mana = 0;
   let comboN = 0;
   let comboT = 0;
   let meleeMax = 0.4;
@@ -529,6 +532,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   function useSkill(i: number) {
     if (!level || screen !== "play" || !skillUnlocked(i) || skillCd[i]! > 0) return;
     const spx = slotSpell(i);
+    const mc = manaCost(i, spx);
+    if (mana < mc) { showToast("Sem mana."); return; }
+    mana -= mc;
     if (spx) { castSpell(spx, save.spells[spx.id]!, i); return; }
     const def = SKILLS[save.hero][i]!;
     const cx = player.x + player.w / 2;
@@ -609,6 +615,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   function maxHp() {
     return D().maxHp;
   }
+  function maxMana() {
+    const st = totalStats(save.hero, save.alloc, save.equip);
+    return Math.round(40 + 6 * (st.int + st.wis) + save.level * 2);
+  }
+  const manaCost = (i: number, sp: SpellDef | null) => (sp ? Math.round(6 + sp.cd * 3 + sp.power * 2) : [6, 10, 16, 40][i]!);
   function speedMul() {
     const f = formT > 0;
     const wolf = f ? (save.hero === "ivo" ? 1.38 : save.hero === "lumen" ? 1.35 : save.hero === "tito" ? 1.1 : save.hero === "pia" ? 0.85 : 1) : 1;
@@ -673,6 +684,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       points: save.points,
       hp: player.hp,
       maxHp: maxHp(),
+      mana,
+      maxMana: maxMana(),
       reel: level ? level.index + 1 : 0,
       reelName: level?.name ?? "",
       npc: screen === "npc" ? npcHud() : undefined,
@@ -846,6 +859,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     player.vx = 0;
     player.vy = 0;
     player.hp = maxHp();
+    mana = maxMana();
     player.facing = 1;
     respawn = { x: spawnX, y: spawnY };
     if (level.open) resetOpen();
@@ -1005,8 +1019,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       }
       player.hp = Math.min(maxHp(), player.hp + b.heal + bonusBoost());
       burst(player.x + player.w / 2, player.y + 14, "#ff6a8a", 10, 100);
+    } else if (b.spell !== undefined) {
+      const sp = SPELLS[b.spell]!;
+      const lv = save.spells[sp.id] ?? 0;
+      if (lv >= SPELL_MAX_LV) { showToast(`${sp.name} já está no máximo.`); return false; }
+      save.spells[sp.id] = lv + 1;
+      if (lv === 0) { const free = save.slot.indexOf(-1); if (free >= 0) save.slot[free] = sp.id; }
+      showToast(lv === 0 ? `Grimório lido: magia ${sp.name} aprendida!` : `${sp.name} evoluiu para o nível ${lv + 1}!`);
+      audio.fanfare();
+      burst(player.x + player.w / 2, player.y + 14, sp.color, 18, 140);
+      return true;
     } else if (b.buff) {
-      const dur = b.buff === "ward" ? 8 : 25;
+      const dur = b.dur ?? (b.buff === "ward" ? 8 : 25);
       buffs = buffs.filter((x) => x.kind !== b.buff);
       buffs.push({ kind: b.buff, left: dur });
       burst(player.x + player.w / 2, player.y + 14, b.color, 12, 120);
@@ -1208,7 +1232,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     offX: 0, yaw: 0, tyaw: 0, pitch: 0.5, dist: 11, look: 4, jump: 0,
     chunks: new Set<string>(), done: new Map<string, number>(), opened: new Set<string>(), stock: new Map<string, Item[]>(), npc: null as Actor | null, talk: null as Actor | null, tele: [] as Tele[],
     evT: 14, dotT: 0, clock: 0, night: 0, rwx: 8, rwz: 0, scan: 0, slow: 1, shrines: new Set<string>(),
-    region: 0, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[], walls: [] as { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number }[],
+    region: 0, inside: null as { id: string; x0: number; z0: number; x1: number; z1: number } | null, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[], walls: [] as { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number }[],
   };
   /** elevação do piso sob o herói (px): colinas, pisos e escadas */
   let pEl = 0;
@@ -1329,8 +1353,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     for (const a of actors) if (!a.dead && !a.ally && !inert(a) && Math.hypot(a.x - player.x, (a.z ?? 0) - (player.z ?? 0)) < 520) foes++;
     const spd = Math.min(1, Math.hypot(player.vx, player.vz ?? 0) / 260);
     const tp = camMode === 0 ? [0.44, 8.6, 1.6] : camMode === 1 ? [0.42, 9.6, 2.2] : camMode === 2 ? [0.5, 9.4, 1.8] : camMode === 4 ? [1.15, 16, 0.3] : [0.46 + 0.05 * spd, 9 + Math.min(2.5, foes * 0.5) + 0.8 * spd, 1.6 + 1.0 * spd];
-    if (LV.on && camMode !== 4) { tp[0]! += 0.2; tp[1]! *= 1.3; tp[2]! += 0.3; }
-    const k = 1 - Math.exp(-2.4 * dt);
+    if (LV.on && camMode !== 4) { tp[0]! -= 0.04; tp[1]! *= 1.6; tp[2]! += 0.5; }
+    // dentro de uma casa: a câmera desce para dentro, fecha o exterior e mostra só o interior
+    {
+      const wxp = g2w(player.x + player.w / 2);
+      const wzp = player.z ?? 0;
+      const ci = Math.floor(wxp / CH);
+      const cj = Math.floor(wzp / CH);
+      let ins: typeof ow.inside = null;
+      for (let j = cj - 1; j <= cj + 1 && !ins; j++) for (let i = ci - 1; i <= ci + 1 && !ins; i++) for (const h of chunkAt(i, j).houses) if (wxp > h.rect.x0 && wxp < h.rect.x1 && wzp > h.rect.z0 && wzp < h.rect.z1) { ins = { id: h.id, ...h.rect }; break; }
+      ow.inside = ins;
+      if (ins) { tp[0] = 1.05; tp[1] = Math.max(5.5, Math.min(9, (ins.x1 - ins.x0) / TILE * 0.9)); tp[2] = 0.3; }
+    }
+    const k = 1 - Math.exp(-(ow.inside ? 3.4 : 2.4) * dt);
     ow.pitch += (tp[0]! - ow.pitch) * k;
     ow.dist += (tp[1]! - ow.dist) * k;
     ow.look += (tp[2]! - ow.look) * k;
@@ -1359,6 +1394,37 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   const NPC_KIND: Record<string, Kind> = { merchant: "clerk", smith: "knight", witch: "witch", quest: "clerk", guard: "knight", villager: "clerk" };
+  const CLOTH = ["#8a5a38", "#3a5a8a", "#7a2a3a", "#4a6a3a", "#c9b27a", "#5a4a6a", "#2a2a34", "#a86a2a", "#d8d0c0", "#2f6a6a", "#8a3a8a", "#6a6a2a"];
+  /** roupa própria de cada NPC: corpo, peças e cores sorteados pelo id, com tendência por ofício */
+  function npcOutfit(id: string, role: string, garb: number): { body: HeroId; gear: GearLook } {
+    let h = 17;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const r = (n: number, k: number) => Math.abs(Math.imul(h ^ (k * 2654435761), 1597334677) >>> 0) % n;
+    const bodies: HeroId[] = ["ivo", "lena", "syl", "lumen", "ivo", "lena"];
+    const out = {} as GearLook;
+    for (const k of EQUIP_KEYS) out[k] = null;
+    const put = (slot: (typeof EQUIP_KEYS)[number], base: string, colorIdx = r(CLOTH.length, slot.length + base.length)) => {
+      const b = BASE_BY_ID[base];
+      if (!b) return;
+      out[slot] = { base, rarity: 0, color: CLOTH[colorIdx % CLOTH.length]!, fam: b.fam, acc: b.acc };
+    };
+    const pick = <T,>(l: T[], k: number) => l[r(l.length, k)]!;
+    const c0 = garb % CLOTH.length;
+    if (role === "smith") { put("armor", "plate", 6); put("gloves", "gauntlet", 6); put("boots", "boots_iron", 6); put("weapon", "hammer"); put("pants", "greaves", 6); }
+    else if (role === "witch") { put("armor", "robe", 5); put("helmet", "hood", 5); put("cape", "cloak_dark", 6); put("weapon", "staff"); put("boots", "slippers", 5); }
+    else if (role === "guard") { put("armor", pick(["plate", "cuirass"], 1), 6); put("helmet", "helm", 6); put("cape", "cape", 2); put("weapon", pick(["spear", "sword"], 2)); put("offhand", "lid", 7); put("boots", "boots_iron", 6); put("pants", "greaves", 6); }
+    else if (role === "merchant") { put("armor", pick(["tunic", "vest", "robe"], 1), c0); put("cape", "cape", (c0 + 3) % CLOTH.length); if (r(2, 3)) put("helmet", pick(["cap", "tophat"], 4), (c0 + 5) % CLOTH.length); put("boots", "boots", 0); put("pants", "pants", 6); put("offhand", pick(["lantern", "tome"], 5)); }
+    else {
+      put("armor", pick(["tunic", "vest", "robe", "coat_ring"], 1), c0);
+      put("pants", pick(["pants", "pants_leather", "pants_silk"], 2), (c0 + 4) % CLOTH.length);
+      put("boots", pick(["boots", "slippers", "boots_heel"], 3), 0);
+      if (r(3, 4) === 0) put("cape", pick(["cape", "cloak_dark"], 5), (c0 + 6) % CLOTH.length);
+      if (r(3, 6) === 0) put("helmet", pick(["cap", "hood", "tophat"], 7), (c0 + 2) % CLOTH.length);
+      if (r(5, 8) === 0) put("weapon", pick(["knife", "axe", "bow", "staff"], 9));
+      if (r(6, 10) === 0) put("offhand", pick(["lantern", "quiver", "tome"], 11));
+    }
+    return { body: bodies[r(bodies.length, 99)]!, gear: out };
+  }
   function spawnNpc(n: { id: string; role: string; name: string; x: number; z: number; garb?: number }, key: string) {
     const oid = `${key}:npc:${n.id}`;
     if (actors.some((x) => x.oid === oid)) return;
@@ -1370,6 +1436,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.oid = oid;
     a.npc = { id: n.id, role: n.role, name: n.name };
     a.garb = n.garb ?? (n.id.length * 7 + n.id.charCodeAt(n.id.length - 1)) % 12;
+    const ofit = npcOutfit(n.id, n.role, a.garb);
+    a.body = ofit.body;
+    a.outfit = ofit.gear;
     a.facing = (n.x + n.z) % 2 > 1 ? 1 : -1;
     a.behavior = "still";
     a.touch = 0;
@@ -1713,6 +1782,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (!ow.shrines.has(st.id) || (player.hp < maxHp() && ow.msgT <= 0)) {
           ow.shrines.add(st.id);
           player.hp = maxHp();
+    mana = maxMana();
           ow.msgT = 12;
           showToast("Santuário: vida restaurada. Você volta aqui se cair.");
           audio.pickup();
@@ -1787,6 +1857,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     wantPotion = false;
     prevPotion = hold.potion;
     meleeCd = Math.max(0, meleeCd - dt);
+    mana = Math.min(maxMana(), mana + dt * (2.2 + 0.18 * totalStats(save.hero, save.alloc, save.equip).wis));
     comboT = Math.max(0, comboT - dt);
     if (wantMelee || (hold.melee && !prevMelee)) meleeAttack();
     wantMelee = false;
@@ -2447,6 +2518,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     player.vx = 0;
     player.vy = 0;
     player.hp = maxHp();
+    mana = maxMana();
     iframe = 1.2;
     formT = 0;
     formCd = 0;
@@ -2600,8 +2672,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         // o monstro olha para onde anda (nunca de costas); chefes e parados olham para o herói
         facing: !a.boss && a.behavior !== "still" && Math.abs(a.vx) > 14 ? (a.vx > 0 ? 1 : -1) : a.facing,
         phase: a.phase,
-        kind: a.mini && a.look ? a.look : a.kind,
-        hero: save.hero,
+        kind: a.npc ? "hero" : a.mini && a.look ? a.look : a.kind,
+        hero: a.npc && a.body ? a.body : save.hero,
         form: false,
         hurt: a.hurt > 0,
         ally: a.ally,
@@ -2611,6 +2683,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
         garb: a.npc ? a.garb : undefined,
+        gear: a.npc ? a.outfit : undefined,
         yaw: level?.open ? a.yaw : undefined,
       });
     }
@@ -2708,7 +2781,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             cine: cine ? { x: cine.x + cine.w / 2, y: cine.y + cine.h / 2 } : null,
             mode: camMode,
             hazard: level?.open ? 0 : hazardAhead(),
-            open: level?.open ? { el: pEl / TILE, yaw: ow.yaw, pitch: ow.pitch, dist: ow.dist, look: ow.look, offX: ow.offX, night: ow.night, jump: ow.jump, tele: ow.tele.filter((t) => t.t > -0.5).map((t) => ({ x: w2g(t.x), z: t.z, r: t.r, k: Math.max(0, Math.min(1, t.t / t.max)), c: t.c })) } : undefined,
+            open: level?.open ? { inside: ow.inside, el: pEl / TILE, yaw: ow.yaw, pitch: ow.pitch, dist: ow.dist, look: ow.look, offX: ow.offX, night: ow.night, jump: ow.jump, tele: ow.tele.filter((t) => t.t > -0.5).map((t) => ({ x: w2g(t.x), z: t.z, r: t.r, k: Math.max(0, Math.min(1, t.t / t.max)), c: t.c })) } : undefined,
             space: level?.rooms && curRoom >= 0 ? level.rooms[curRoom]!.c1 - level.rooms[curRoom]!.c0 : 0,
           }
         : undefined,

@@ -300,7 +300,7 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
     }
   }
   // piso térreo
-  for (const h of ch.houses) addBox(g, h.rect.x0 / TILE + 0.16, GY, h.rect.z0 / TILE + 0.16, h.rect.x1 / TILE - 0.16, GY + 0.03, h.rect.z1 / TILE - 0.16, [0.42, 0.3, 0.2]);
+  for (const h of ch.houses) addBox(groups.get(h.id)?.floors[0] ?? g, h.rect.x0 / TILE + 0.16, GY, h.rect.z0 / TILE + 0.16, h.rect.x1 / TILE - 0.16, GY + 0.03, h.rect.z1 / TILE - 0.16, [0.42, 0.3, 0.2]);
   const groupList = [...groups.values()];
   void FH;
   void LV;

@@ -192,6 +192,8 @@ export type NpcHud = {
 };
 
 export type Snap = {
+  mana: number;
+  maxMana: number;
   net?: "off" | "waiting" | "connected" | "error";
   open?: OpenHud;
   npc?: NpcHud;
