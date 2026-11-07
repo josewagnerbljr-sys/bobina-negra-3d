@@ -22,6 +22,8 @@ export type CharAsset = {
   meshes: Map<Engine, GpuMesh>;
   height: number;
   version: number;
+  /** escala da animação do quadril (modelos com pernas de comprimento diferente) */
+  hipK?: number;
 };
 
 let asset: CharAsset | null = null;
@@ -378,9 +380,10 @@ export class SkinRig {
       let ty = rt[j * 3 + 1]!;
       let tz = rt[j * 3 + 2]!;
       if (j === 1) {
-        tx = hp[0]!;
-        ty = hp[1]!;
-        tz = hp[2]!;
+        const hk = a.hipK ?? 1;
+        tx = hp[0]! * hk;
+        ty = hp[1]! * hk;
+        tz = hp[2]! * hk;
       }
       const p = a.parent[j]!;
       const m = j * 16;

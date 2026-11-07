@@ -208,3 +208,17 @@ Cooperativo ponto a ponto por WebRTC, sem servidor: na tela inicial, "Multijogad
 - 4 novos heróis: Kael (Paladino), Nyx (Ceifadora), Brann (Xamã do Gelo), Skadi (Valquíria), cada um com kit de 4 poderes.
 - Companheiros: filhote de cão do inferno (25% por local de interesse), nefelin (Senhor do 5º andar de cada dungeon), almas amarradas (conjuradores, 20 de mana) e feras submetidas (guerreiros, monstro com ≤30% de vida). Tela G: nível, mochila de 20 itens, armadura/joia/adorno. Luta a partir do nv 15, adulto no 25, renascimento em forma final, 5 cães = mundo +2 níveis.
 - Clima: vento balançando árvores/capim, névoa em manchas aleatórias e nas vilas, tempestades com relâmpagos e chuva, geleiras com neve e monstros de gelo.
+
+## v18.1
+- Cão do inferno redesenhado: lobo de sombra estilo Cérbero (fumaça, brasas, fendas incandescentes, 3 cabeças na forma adulta), Nefelin como lobo celestial com halo e asas de luz, almas como espíritos de servos de guerra (capuz, correntes, lança espectral, translúcidos).
+
+## v19.0 — modelos reais
+- Moradores, diabretes/demônios/capetas, ogros/trolls e almas agora usam modelos texturizados de verdade (Quaternius Bestiary "Imp" e "Puglin", Modular Character Outfits "Ranger"/"Peasant", pacote Standard) no esqueleto Unreal, animados com as bibliotecas UAL1/UAL2 (CC0, 84 clipes: colheita, corte de lenha, golpes de espada, zumbi, dança…).
+- Alma = espírito translúcido com capuz e silhueta luminosa (shader próprio com textura, emissão e luz de contorno).
+- Conversor: tools/glb2ue.py. Créditos: Quaternius (CC0 / licença Standard dos packs).
+
+## v20.0 — casas reais
+- Interiores de casas com móveis texturizados reais (lareira, poltronas, mesa, barris) em escala ajustada.
+- Fazenda com canteiros, cercas, lanternas e caixotes como props reais.
+- Pendentes: criatura Aberration, trilha de terror, variedade de NPCs, cães do inferno.
+- Créditos: FoxDev (Victorian Study), Quaternius (CC0), Rafael Martins (Aberration).

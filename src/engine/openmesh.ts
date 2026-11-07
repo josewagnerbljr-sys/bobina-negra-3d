@@ -223,7 +223,8 @@ function propGeo(g: Geo, glow: Geo, p: Prop, style: string, realm: number) {
 }
 
 export type HouseGroup = { id: string; rect: { x0: number; z0: number; x1: number; z1: number }; floors: Geo[]; roof: Geo | null };
-export type ChunkMesh = { solid: Geo; glow: Geo; groups: HouseGroup[]; /** todas as casas do bloco numa malha só (vista de longe: 1 desenho) */ hall: Geo | null };
+export type TexPiece = { k: string; x: number; y: number; z: number; yaw: number; s: number; hid?: string; fl?: number };
+export type ChunkMesh = { tex: TexPiece[]; solid: Geo; glow: Geo; groups: HouseGroup[]; /** todas as casas do bloco numa malha só (vista de longe: 1 desenho) */ hall: Geo | null };
 const shiftY = (g: Geo, from: number, dy: number) => { if (!dy) return; for (let i = from * 3 + 1; i < g.pos.length; i += 3) g.pos[i] = g.pos[i]! + dy; };
 
 export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
@@ -279,7 +280,9 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
     }
     return gr;
   };
+  const texList: TexPiece[] = [];
   for (const pc of ch.pieces) {
+    if (pc.m === "tex") { texList.push({ k: pc.k, x: pc.x / TILE, y: GY + terrainH(pc.x, pc.z) + (pc.y ?? 0), z: pc.z / TILE, yaw: pc.yaw, s: pc.s ?? 0.8, hid: pc.hid, fl: pc.fl }); continue; }
     const set = pc.m === "med" ? SETS.med : pc.m === "prop" ? SETS.prop : SETS.nat;
     const th = terrainH(pc.x, pc.z);
     let tgt = g;
@@ -396,5 +399,5 @@ export function buildChunkMesh(ci: number, cj: number): ChunkMesh {
       }
     }
   }
-  return { solid: g, glow, groups: groupList, hall };
+  return { tex: texList, solid: g, glow, groups: groupList, hall };
 }

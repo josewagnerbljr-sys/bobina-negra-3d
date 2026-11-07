@@ -82,6 +82,8 @@ type Actor = Body & {
   el?: number;
   npc?: { id: string; role: string; name: string };
   garb?: number;
+  /** morador em trabalho agora */
+  wk?: boolean;
   body?: HeroId;
   outfit?: GearLook;
   home?: { x: number; z: number; tx: number; tz: number };
@@ -1376,7 +1378,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   const ENT_NAME = (k: Kind) => (({ hound: "Cão", imp: "Diabrete", demon: "Demônio", devil: "Capeta", wraith: "Espectro", skel: "Esqueleto", undead: "Morto-vivo", ogre: "Ogro", troll: "Troll", knight: "Cavaleiro", golem: "Golem", shade: "Sombra" }) as Record<string, string>)[k] ?? "Fera";
 
   function spawnPetActor(p: Pet) {
-    const a = spawnActor(p.look, 0, GROUND, true);
+    const a = spawnActor(p.kind === "hell" ? (p.lv >= ADULT_LV || p.final ? "cerberus3" : "cerberus") : p.kind === "nefelin" ? "lupin" : p.kind === "soul" ? "thrall" : p.look, 0, GROUND, true);
     const sc = petScale(p);
     a.w = Math.round(a.w * sc);
     a.h = Math.round(a.h * sc);
@@ -1479,7 +1481,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   function adoptPup(a: Actor) {
     if (houndCount(save.pets) >= HOUND_MAX) { showToast("Limite de 5 cães (inferno + celestiais)."); emit(); return; }
     const names = PET_NAMES.hell;
-    addPet("hell", "hound", names[(save.pets.length + Math.floor(Math.random() * 7)) % names.length]!);
+    addPet("hell", "cerberus", names[(save.pets.length + Math.floor(Math.random() * 7)) % names.length]!);
     if (a.oid) ow.opened.add(a.oid);
     a.dead = true;
     a.dyT = 0;
@@ -1491,12 +1493,12 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (houndCount(save.pets) >= HOUND_MAX) { showToast("Um nefelin apareceu, mas você já tem 5 cães."); return; }
     save.nef |= 1 << DG.kind;
     const names = PET_NAMES.nefelin;
-    addPet("nefelin", "hound", names[houndCount(save.pets) % names.length]!);
+    addPet("nefelin", "lupin", names[houndCount(save.pets) % names.length]!);
     showToast("Dungeon completa! Um filhote de Nefelin celestial escolheu você.");
   }
 
   function spawnSoul(wx: number, z: number, kind: Kind, nm: string) {
-    const a = spawnActor(kind, 0, GROUND, false);
+    const a = spawnActor("thrall", 0, GROUND, false);
     a.npc = { id: `soul${Date.now()}`, role: "soul", name: `Alma de ${nm}` };
     a.pfx = 3;
     a.x = w2g(wx) - a.w / 2;
@@ -1518,7 +1520,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (mana < 20) { showToast("Mana insuficiente para a Amarração da Alma (20)."); emit(); return; }
     mana -= 20;
     const base = a.npc!.name.replace("Alma de ", "");
-    addPet("soul", a.kind, `${PET_NAMES.soul[Math.floor(Math.random() * 3)]} ${base}`, 3 + Math.floor(dEff(LV.on ? LV.realm : 0) / 3));
+    addPet("soul", "thrall", `${PET_NAMES.soul[Math.floor(Math.random() * 3)]} ${base}`, 3 + Math.floor(dEff(LV.on ? LV.realm : 0) / 3));
     a.dead = true;
     a.dyT = 0;
     ow.talk = null;
@@ -1855,6 +1857,18 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   /** cada NPC tem um ofício: ferreiro martela, lenhador corta, camponês cuida da roça, vigia patrulha...
    *  à noite todos recolhem para perto de casa */
+  function npcTex(a: Actor): string {
+    const id = a.npc!.id;
+    let h = 7;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    const fem = Math.abs(h) % 2 === 1;
+    const r = a.npc!.role;
+    if (r === "guard" || r === "hunter") return fem ? "female_ranger" : "male_ranger";
+    if (r === "witch") return "female_ranger";
+    if (r === "smith") return "male_peasant";
+    return fem ? "female_peasant" : "male_peasant";
+  }
+
   function npcWander(a: Actor, dt: number) {
     const az = a.z ?? 0;
     const h = (a.home ??= { x: a.x, z: az, tx: a.x, tz: az });
@@ -1921,6 +1935,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       else if (k === "baker") { a.atkT = 0.3; j.hit = 2.4 + Math.random() * 2; }
       else j.hit = 4;
     }
+    a.wk = work && !near && !night;
     if (want > 0) a.yaw = Math.atan2(a.vx, a.vz ?? 0);
     else if (near) a.yaw = Math.atan2(player.x - a.x, (player.z ?? 0) - (a.z ?? 0));
     a.el = elT(g2w(a.x + a.w / 2), a.z ?? 0, a.el ?? 0);
@@ -3137,6 +3152,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
         garb: a.npc ? a.garb : undefined,
+        tex: a.npc && a.npc.role !== "pup" && a.npc.role !== "soul" ? npcTex(a) : undefined,
+        job: a.jb?.k,
+        working: a.wk,
         talk: a.npc || ow.sub === a ? ow.talk === a || ow.sub === a : undefined,
         petFx: a.pfx,
         iceFx: a.ice,
@@ -4185,7 +4203,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     setCam: (m: number) => { camMode = m; },
     strike: () => strikeEvent(),
     wxT: (k: string, v: number) => { (FORCE as Record<string, number>)[k] = v; },
-    petT: (kind: string, lv: number) => addPet(kind as Pet["kind"], kind === "soul" ? "wraith" : "hound", "Teste", lv).id,
+    petT: (kind: string, lv: number) => addPet(kind as Pet["kind"], kind === "soul" ? "thrall" : kind === "nefelin" ? "lupin" : "cerberus", "Teste", lv).id,
+    spawnT: (kind: string, dx: number, dz: number) => {
+      const a = spawnActor(kind as Kind, 0, GROUND, false);
+      a.x = player.x + dx; a.z = (player.z ?? 0) + dz; a.el = elT(g2w(a.x + a.w / 2), a.z, 0); a.y = GROUND * TILE - a.h - a.el;
+      a.behavior = "still"; a.speed = 0; a.touch = 0; a.hp = a.maxHp = 9999; a.facing = -1;
+      actors.push(a);
+    },
     enterDungeonT: (k: number, f: number) => enterDungeon(k, f, { realm: Math.max(0, LV.realm), x: 0, z: 0 }),
     enterRealm: (k: number) => { save.next = Math.max(save.next, k + 1); api.enterReel(k); if (screen === "talk") screen = "play"; },
     th: (x: number, z: number) => floorElev(x, z, 0),

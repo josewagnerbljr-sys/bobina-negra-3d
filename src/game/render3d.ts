@@ -1,8 +1,10 @@
 import { CH, DG, LV, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
-import { buildChunkMesh, loadNature, natureReady } from "../engine/openmesh";
+import { buildChunkMesh, loadNature, natureReady, type TexPiece } from "../engine/openmesh";
 import { moodFor, tintSky, tintLight, drawAmbientOpaque, drawAmbientBlend, type AmbientCtx } from "./ambient";
 import { Engine, hex, m4, mix3, type Geo, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
 import { loadCharAsset } from "../engine/skin";
+import { buildTexModel, loadUE, texReady, type TexLook } from "../engine/uemodel";
+import { drawProp, loadProps } from "../engine/props";
 import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type Model, type Pose } from "../engine/models";
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
@@ -55,6 +57,20 @@ export type Paint = {
   swing?: number;
   /** NPC com quem o herói pode conversar (balão "Conversar" acima da cabeça) */
   talk?: boolean;
+  /** modelo texturizado do morador (male_ranger, female_peasant…) */
+  tex?: string;
+  job?: string;
+  working?: boolean;
+};
+
+const TEX_NPC: TexLook = { scale: 1, anim: "human", rim: [0.1, 0.09, 0.08] };
+const TEX_MON: Partial<Record<string, TexLook & { name: string }>> = {
+  imp: { name: "imp", scale: 1.1, anim: "imp", rim: [0.55, 0.12, 0.05], emisK: 1.5 },
+  demon: { name: "imp", scale: 1.7, anim: "imp", tint: [0.62, 0.5, 0.52], rim: [0.7, 0.1, 0.04], emisK: 2.2 },
+  devil: { name: "imp", scale: 1.4, anim: "imp", tint: [0.5, 0.42, 0.62], rim: [0.45, 0.1, 0.7], emisK: 1.8 },
+  ogre: { name: "puglin", scale: 2.3, anim: "brute", tint: [0.85, 0.8, 0.78], rim: [0.3, 0.08, 0.04], emisK: 1.2 },
+  troll: { name: "puglin", scale: 1.9, anim: "brute", tint: [0.7, 0.85, 0.7], rim: [0.1, 0.3, 0.1], emisK: 1.2 },
+  thrall: { name: "male_ranger", scale: 1.05, anim: "zombie", ghost: true, rim: [0.35, 0.8, 1.0], emis: [0.02, 0.05, 0.08] },
 };
 
 /** posição na tela (0..1) do balão de conversa; lida pelo HUD a cada quadro */
@@ -208,8 +224,16 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         prevModels.clear();
       })
       .catch(() => undefined);
+    loadUE(e)
+      .then((ok) => {
+        if (!ok) return;
+        models = new WeakMap<object, Model>();
+        prevModels.clear();
+      })
+      .catch(() => undefined);
   }
   startSkinLoad();
+  void loadProps();
   void loadNature(new URL("./models/", document.baseURI).href, typeof __BUILD__ === "string" ? "?v=" + __BUILD__ : "");
 
   function gfxFor(level: Level): Gfx {
@@ -247,7 +271,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   function modelFor(p: Paint): Model {
     let m = models.get(p.ref);
     if (!m) {
-      m = buildModel(p.kind, p.hero, p.world);
+      const tm = p.tex ? undefined : TEX_MON[p.kind];
+      if (p.tex && texReady(p.tex)) m = buildTexModel(p.tex, TEX_NPC, "hero") ?? undefined;
+      else if (tm && texReady(tm.name)) m = buildTexModel(tm.name, tm, p.kind) ?? undefined;
+      if (!m) m = buildModel(p.kind, p.hero, p.world);
       models.set(p.ref, m);
     }
     return m;
@@ -294,6 +321,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       swing: p.swing,
       gear: p.gear,
       dying: p.dying ?? 0,
+      job: p.job,
+      working: p.working,
     };
     m.update(pose);
     let target = p.facing >= 0 ? Math.PI / 2 - 0.5 : -(Math.PI / 2 - 0.5);
@@ -329,7 +358,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   let camOX = 0;
   let camOZ = 0;
   let camOY = 0;
-  const openMeshes = new Map<string, { solid: GpuMesh; glow: GpuMesh; hall: GpuMesh | null; groups: { id: string; rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
+  const openMeshes = new Map<string, { tex: TexPiece[]; solid: GpuMesh; glow: GpuMesh; hall: GpuMesh | null; groups: { id: string; rect: { x0: number; z0: number; x1: number; z1: number }; floors: GpuMesh[]; roof: GpuMesh | null }[] }>();
   let camPZ = 0;
   let camYawS = 0;
   let camRS = 1.5;
@@ -555,6 +584,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const ci0 = Math.floor(owx / CH);
       const cj0 = Math.floor(owz / CH);
       const tr = (OW_ORIGIN_X - oc.offX) / TILE;
+      let texCount = 0;
       m4.compose(tmpBlob, [tr, 0, 0], [0, 0, 0], [1, 1, 1]);
       let built = 0;
       for (let j = cj0 - R; j <= cj0 + R; j++) {
@@ -565,7 +595,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
             if (!natureReady() || built >= (openMeshes.size < 8 ? 25 : 2)) continue;
             built++;
             const cm = buildChunkMesh(i, j);
-            mh = { solid: e.upload(cm.solid), glow: e.upload(cm.glow), hall: cm.hall ? e.upload(cm.hall) : null, groups: cm.groups.map((gp) => ({ id: gp.id, rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
+            mh = { tex: cm.tex, solid: e.upload(cm.solid), glow: e.upload(cm.glow), hall: cm.hall ? e.upload(cm.hall) : null, groups: cm.groups.map((gp) => ({ id: gp.id, rect: gp.rect, floors: gp.floors.map((fg) => e.upload(fg)), roof: gp.roof ? e.upload(gp.roof) : null })) };
             openMeshes.set(key, mh);
           }
           // descarta blocos distantes que estão atrás da câmera
@@ -577,8 +607,24 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
           }
           if (oc.inside) {
             // dentro de uma casa: só o interior (pisos até o andar atual), sem paisagem nem outras construções
-            for (const gp of mh.groups) if (gp.id === oc.inside.id) for (let q = 0; q < gp.floors.length && q <= Math.max(0, Math.round(oc.el / 1.56 - 0.2)); q++) e.draw(gp.floors[q]!, tmpBlob, {});
+            const flMax = Math.max(0, Math.round(oc.el / 1.56 - 0.2));
+            for (const gp of mh.groups) if (gp.id === oc.inside.id) for (let q = 0; q < gp.floors.length && q <= flMax; q++) e.draw(gp.floors[q]!, tmpBlob, {});
+            for (const tp of mh.tex) if (tp.hid === oc.inside.id && (tp.fl ?? 0) <= flMax) drawProp(e, tp.k, tp.x + tr, tp.y, tp.z, tp.yaw, tp.s);
             continue;
+          }
+          for (const tp of mh.tex) {
+            if (tp.hid) continue;
+            if (Math.hypot(tp.x * TILE - owx, tp.z * TILE - owz) > 760 || texCount > 140) continue;
+            texCount++;
+            drawProp(e, tp.k, tp.x + tr, tp.y, tp.z, tp.yaw, tp.s);
+          }
+          for (const tp of mh.tex) {
+            if (!tp.hid || texCount > 140) continue;
+            if (Math.hypot(tp.x * TILE - owx, tp.z * TILE - owz) > 260) continue;
+            const gi = mh.groups.find((gp) => gp.id === tp.hid);
+            if (!gi || (tp.fl ?? 0) > 0) continue;
+            texCount++;
+            drawProp(e, tp.k, tp.x + tr, tp.y, tp.z, tp.yaw, tp.s);
           }
           e.draw(mh.solid, tmpBlob, {});
           e.draw(mh.glow, tmpBlob, { unlit: true });
@@ -719,6 +765,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const st: DrawState = { ...tmpDraw };
       st.flash = p.kind !== "hero" && p.hurt ? 0.75 : 0;
       if (p.garb !== undefined && p.kind !== "hero") st.tint = GARB[p.garb % GARB.length]!;
+      if (p.tex && p.garb !== undefined) { const g0 = GARB[p.garb % GARB.length]!; st.tint = [0.55 + g0[0] * 0.5, 0.55 + g0[1] * 0.5, 0.55 + g0[2] * 0.5]; }
       // monstros do mundo aberto: tons mais sujos e um brilho avermelhado de dentro (menos desenho animado, mais ameaça)
       if (isOpen && p.kind !== "hero" && !p.ally && p.garb === undefined) {
         st.tint = [0.74, 0.66, 0.68];
@@ -729,9 +776,9 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         st.emis = [0.05, 0.25, 0.3];
       }
       if (p.iceFx && !p.ally) { st.tint = [0.62, 0.86, 1.25]; st.emis = [0.02, 0.09, 0.16]; }
-      if (p.petFx === 1) { st.tint = [1.15, 0.5, 0.35]; st.emis = [0.3, 0.05, 0.02]; }
-      else if (p.petFx === 2) { st.tint = [1.25, 1.2, 1.0]; st.emis = [0.3, 0.28, 0.15]; }
-      else if (p.petFx === 3) { st.tint = [0.5, 0.35, 0.8]; st.emis = [0.16, 0.06, 0.3]; st.alphaMul = 0.62; }
+      if (p.petFx === 1) { st.tint = [1, 1, 1]; st.emis = [0.05, 0.012, 0.0]; }
+      else if (p.petFx === 2) { st.tint = [1, 1, 1]; st.emis = [0.16, 0.14, 0.08]; }
+      else if (p.petFx === 3) { st.tint = [1, 1, 1]; st.emis = [0.05, 0.1, 0.14]; st.alphaMul = 0.7 + Math.sin(f.t * 2.4) * 0.08; }
       if (p.soulC) st.emis = [0.28, 0.05, 0.4];
       if (p.kind === "hero" && p.hurt) {
         // pisca ao tomar dano
@@ -814,7 +861,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         if (bursts.length > 6) bursts.shift();
       }
       formPrev.set(p.ref, p.form);
-      const m = heroModel(p.hero);
+      const m = p.tex && texReady(p.tex) ? modelFor(p) : heroModel(p.hero);
       drawActor(p, m, placeModel(m, p, f.t, dt));
     }
     // herói em vitrine nos menus

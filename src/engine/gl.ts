@@ -625,6 +625,66 @@ void main(){
   gl_Position = uVP * w;
 }`;
 
+const TSKIN_VS = SKIN_VS.replace("out vec3 vCol;", "out vec3 vCol;\nout vec2 vUv;").replace("vCol = uRegion[int(aCol.x + 0.5)] * aCol.y;", "vCol = vec3(1.0); vUv = aCol.xy;");
+
+const TSKIN_FS = `#version 300 es
+precision highp float;
+in vec3 vN;
+in vec3 vCol;
+in vec3 vW;
+in vec2 vUv;
+uniform vec3 uColor;
+uniform vec3 uEmis;
+uniform vec3 uSun;
+uniform vec3 uSunDir;
+uniform vec3 uSky;
+uniform vec3 uGround;
+uniform vec3 uFog;
+uniform vec3 uCam;
+uniform vec2 uFogRange;
+uniform float uAlpha;
+uniform float uFlash;
+uniform float uTime;
+uniform float uGhost;
+uniform float uEmisK;
+uniform vec3 uRim;
+uniform sampler2D uTex;
+uniform sampler2D uEmisTex;
+out vec4 outColor;
+void main(){
+  vec3 n = normalize(vN);
+  if (!gl_FrontFacing) n = -n;
+  vec4 tx = texture(uTex, vUv);
+  vec3 base = tx.rgb * uColor;
+  vec3 L = normalize(uSunDir);
+  vec3 v = normalize(uCam - vW);
+  float ndl = dot(n, L);
+  float wrap = clamp(ndl * 0.5 + 0.5, 0.0, 1.0);
+  vec3 hemi = mix(uGround, uSky, n.y * 0.5 + 0.5);
+  float diff = max(ndl, 0.0) * 0.75 + wrap * wrap * 0.35;
+  vec3 col = base * (hemi * 0.95 + uSun * diff);
+  // brilho especular suave e luz de contorno (silhueta fria/quente conforme o tom)
+  float ndv = max(dot(n, v), 0.0);
+  float sp = pow(max(dot(n, normalize(L + v)), 0.0), 28.0);
+  col += uSun * sp * 0.12;
+  float fr = pow(1.0 - ndv, 3.0);
+  col += uRim * fr * (0.35 + wrap * 0.65);
+  col += texture(uEmisTex, vUv).rgb * uEmisK + uEmis;
+  if (uGhost > 0.5) {
+    // espírito: corpo translúcido que some nas bordas internas e brilha na silhueta
+    float pulse = 0.85 + 0.15 * sin(uTime * 2.3 + vW.x * 1.7);
+    col = mix(col, uRim * 1.4, 0.55) + uRim * fr * 0.9;
+    col *= pulse;
+  }
+  col = mix(col, vec3(1.0, 0.96, 0.9), uFlash);
+  float d = length(vW - uCam);
+  float f = clamp((d - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0);
+  col = mix(col, uFog, f * f * (3.0 - 2.0 * f));
+  float al = uAlpha * (tx.a < 0.99 ? max(tx.a, 0.35) : 1.0);
+  if (uGhost > 0.5) al *= 0.35 + 0.65 * fr + 0.25;
+  outColor = vec4(col, min(al, 1.0));
+}`;
+
 const SKY_VS = `#version 300 es
 out vec2 vUv;
 void main(){
@@ -701,6 +761,9 @@ export class Engine {
   private lit: WebGLProgram;
   private sky: WebGLProgram;
   private skinP: WebGLProgram;
+  private tskinP: WebGLProgram;
+  private ut: Record<string, WebGLUniformLocation | null> = {};
+  uTime = 0;
   private us2: Record<string, WebGLUniformLocation | null> = {};
   private boneTex: WebGLTexture;
   private light: Lighting | null = null;
@@ -748,6 +811,8 @@ export class Engine {
     }
     this.skinP = this.program(SKIN_VS, LIT_FS);
     for (const n of [...Object.keys(this.u), "uBones", "uRegion"]) this.us2[n] = gl.getUniformLocation(this.skinP, n);
+    this.tskinP = this.program(TSKIN_VS, TSKIN_FS);
+    for (const n of ["uVP", "uModel", "uNor", "uOutline", "uBones", "uColor", "uEmis", "uSun", "uSunDir", "uSky", "uGround", "uFog", "uCam", "uFogRange", "uAlpha", "uFlash", "uTime", "uGhost", "uEmisK", "uRim", "uTex", "uEmisTex"]) this.ut[n] = gl.getUniformLocation(this.tskinP, n);
     this.boneTex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.boneTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 4, 96, 0, gl.RGBA, gl.FLOAT, null);
@@ -995,6 +1060,83 @@ export class Engine {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     return { vao, count: idx.length, vbo, ibo };
+  }
+
+  /** textura 2D a partir de imagem (com mipmaps, repete) */
+  makeTexture(img: TexImageSource, srgbLike = false): WebGLTexture {
+    void srgbLike;
+    const gl = this.gl;
+    const t = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return t;
+  }
+
+  /** malha com pele e textura (uv vai no atributo de cor); opções: ghost = espírito translúcido, rim = luz de contorno */
+  drawSkinTex(mesh: GpuMesh, model: Mat4, bones: Float32Array, nBones: number, tex: WebGLTexture, emisTex: WebGLTexture | null, o: { color?: Vec3; emis?: Vec3; emisK?: number; alpha?: number; flash?: number; ghost?: boolean; rim?: Vec3 }) {
+    const gl = this.gl;
+    const u = this.ut;
+    const l = this.light;
+    if (!l) return;
+    gl.useProgram(this.tskinP);
+    gl.uniformMatrix4fv(u.uVP!, false, this.vp);
+    gl.uniform3fv(u.uSun!, l.sun);
+    gl.uniform3fv(u.uSunDir!, l.sunDir);
+    gl.uniform3fv(u.uSky!, l.sky);
+    gl.uniform3fv(u.uGround!, l.ground);
+    gl.uniform3fv(u.uFog!, l.fog);
+    gl.uniform3fv(u.uCam!, this.camPos);
+    gl.uniform2f(u.uFogRange!, l.fogNear, l.fogFar);
+    gl.uniform1i(u.uBones!, 3);
+    gl.uniform1i(u.uTex!, 0);
+    gl.uniform1i(u.uEmisTex!, 1);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.boneTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, nBones, gl.RGBA, gl.FLOAT, bones);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, emisTex ?? tex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    let mdl = model;
+    if (this.zShift) {
+      this.mz.set(model);
+      this.mz[14] = this.mz[14]! + this.zShift;
+      mdl = this.mz;
+    }
+    gl.uniformMatrix4fv(u.uModel!, false, mdl);
+    gl.uniformMatrix3fv(u.uNor!, false, m4.normal(this.nmat, model));
+    gl.uniform1f(u.uOutline!, 0);
+    gl.uniform3fv(u.uColor!, o.color ?? [1, 1, 1]);
+    gl.uniform3fv(u.uEmis!, o.emis ?? [0, 0, 0]);
+    gl.uniform1f(u.uEmisK!, emisTex ? (o.emisK ?? 1) : 0);
+    gl.uniform1f(u.uAlpha!, o.alpha ?? 1);
+    gl.uniform1f(u.uFlash!, o.flash ?? 0);
+    gl.uniform1f(u.uTime!, this.uTime);
+    gl.uniform1f(u.uGhost!, o.ghost ? 1 : 0);
+    gl.uniform3fv(u.uRim!, o.rim ?? [0.08, 0.1, 0.14]);
+    gl.bindVertexArray(mesh.vao);
+    const tr = !!o.ghost || (o.alpha ?? 1) < 1;
+    if (tr) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+    }
+    gl.disable(gl.CULL_FACE);
+    gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+    gl.enable(gl.CULL_FACE);
+    if (tr) {
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+    }
+    this.drawCalls++;
+    gl.useProgram(this.lit);
   }
 
   /** desenha malha com pele; `bones` = J matrizes 4x4 (colunas), `region` = 9 cores */

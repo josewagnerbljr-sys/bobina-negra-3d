@@ -102,6 +102,9 @@ export type Pose = {
   behavior?: string;
   /** 0..1 carga/ataque do monstro */
   windup?: number;
+  /** ofício do morador e se está trabalhando agora */
+  job?: string;
+  working?: boolean;
 };
 
 export type Model = {
@@ -796,7 +799,7 @@ function standardAnim(m: Model, o: { bob?: number; legs?: number; arms?: number;
 }
 
 function buildEnemy(kind: Kind, world: number): Model {
-  const { root, body, parts, m } = make(kind, kind === "balloon" || kind === "wraith" || kind === "gull" || kind === "cherub" || kind === "shade");
+  const { root, body, parts, m } = make(kind, kind === "balloon" || kind === "wraith" || kind === "gull" || kind === "cherub" || kind === "shade" || kind === "thrall");
   const w = world;
   switch (kind) {
     case "imp": {
@@ -971,6 +974,133 @@ function buildEnemy(kind: Kind, world: number): Model {
       body.add(P("cone", [0.16, 0.34, 0.06], "#2a5a28", [-0.32, 0.12, 0.1], [0, 0, 0.9]));
       standardAnim(m, { sway: 0.07 });
       m.yaw = Math.PI / 2 - 0.5;
+      break;
+    }
+    case "cerberus":
+    case "cerberus3":
+    case "lupin": {
+      const cel = kind === "lupin";
+      const fur = cel ? "#efe6d0" : "#2a2436";
+      const fur2 = cel ? "#d9c89a" : "#3e3550";
+      const ember = cel ? "#ffe08a" : "#ff5a1a";
+      const eye = cel ? "#8ad8ff" : "#ff7a2a";
+      body.add(P("sphere", [0.52, 0.46, 1.05], fur, [0, 0.6, -0.05]));
+      body.add(P("sphere", [0.58, 0.54, 0.6], fur, [0, 0.66, 0.3]));
+      body.add(P("sphere", [0.44, 0.4, 0.5], fur2, [0, 0.58, -0.4]));
+      // chama/brasa no peito e fendas incandescentes
+      body.add(glow(P("sphere", [0.2, 0.2, 0.12], ember, [0, 0.62, 0.52]), 1.1));
+      for (let i = 0; i < 5; i++) body.add(glow(P("cube", [0.03, 0.12, 0.03], ember, [(i % 2 ? 1 : -1) * 0.2, 0.62, 0.15 - i * 0.17], [0, 0, (i % 2 ? 1 : -1) * 0.5]), 0.9));
+      // crina/espinhos do dorso
+      for (let i = 0; i < 9; i++) {
+        const z = 0.5 - i * 0.12;
+        body.add(P("cone", [0.1, cel ? 0.2 : 0.3 - i * 0.012, 0.08], cel ? "#ffe9a8" : "#0c0a10", [0, 0.86 - i * 0.012, z], [-0.35, 0, 0], false));
+      }
+      const mkHead = (hx: number, hy: number, hz: number, sc: number, yaw: number) => {
+        const head = G(hx, hy, hz);
+        head.scl = [sc, sc, sc];
+        head.rot[1] = yaw;
+        head.add(P("sphere", [0.4, 0.36, 0.42], fur));
+        head.add(P("cube", [0.2, 0.15, 0.36], fur, [0, -0.07, 0.3]));
+        head.add(P("cube", [0.15, 0.06, 0.28], fur2, [0, -0.17, 0.27]));
+        head.add(P("sphere", [0.09, 0.07, 0.06], "#050408", [0, -0.01, 0.5]));
+        for (let i = 0; i < 3; i++) for (const sx of [-1, 1]) head.add(P("cone", [0.035, 0.09, 0.03], "#fffaf0", [sx * 0.065, -0.14, 0.38 - i * 0.07], [Math.PI, 0, 0]));
+        for (const sx of [-1, 1]) {
+          head.add(P("cone", [0.12, 0.26, 0.07], fur2, [sx * 0.14, 0.26, -0.08], [-0.2, 0, -sx * 0.3]));
+          head.add(glow(P("sphere", [0.07, 0.05, 0.05], eye, [sx * 0.1, 0.07, 0.2]), 1.3));
+        }
+        if (cel) head.add(glow(P("cone", [0.04, 0.14, 0.04], "#fff2b8", [0, 0.24, 0.12]), 1));
+        body.add(head);
+        return head;
+      };
+      const h0 = mkHead(0, 0.82, 0.62, 1, 0);
+      if (kind === "cerberus3") {
+        mkHead(-0.3, 0.76, 0.5, 0.82, -0.45);
+        mkHead(0.3, 0.76, 0.5, 0.82, 0.45);
+        for (const sx of [-1, 1]) body.add(P("cone", [0.2, 0.4, 0.2], fur, [sx * 0.2, 0.7, 0.42], [-0.9, 0, sx * 0.4]));
+      }
+      if (cel) {
+        body.add(glow(P("ring", [0.5, 0.05, 0.5], "#ffe48a", [0, 1.32, 0.62], [Math.PI / 2, 0, 0]), 1.2));
+        for (const sx of [-1, 1]) {
+          const wing = G(sx * 0.26, 0.86, 0.0);
+          for (let i = 0; i < 4; i++) wing.add(glow(P("cube", [0.04, 0.34 - i * 0.04, 0.12], i % 2 ? "#fff5d0" : "#ffffff", [sx * (0.1 + i * 0.1), 0.18 - i * 0.03, -0.05], [0, 0, -sx * (0.8 + i * 0.1)]), 0.7));
+          body.add(wing);
+          parts[sx < 0 ? "wingL" : "wingR"] = wing;
+        }
+      }
+      // tufos de pelo no peito e nas patas + fumaça de sombra
+      for (let i = 0; i < 7; i++) body.add(P("cone", [0.09, 0.22, 0.07], fur2, [(i - 3) * 0.075, 0.42, 0.52], [Math.PI + 0.2, 0, 0]));
+      if (!cel) for (let i = 0; i < 6; i++) {
+        const w = P("sphere", [0.3 + (i % 3) * 0.08, 0.34, 0.3], "#3a2a5a", [(i % 2 ? 1 : -1) * 0.18, 0.92 + (i % 3) * 0.08, 0.35 - i * 0.17]);
+        w.alpha = 0.32; w.ink = false; w.emis = [0.05, 0.02, 0.1];
+        body.add(w);
+      }
+      const tail = G(0, 0.7, -0.62);
+      tail.add(P("cone", [0.18, 0.55, 0.16], fur2, [0, -0.05, -0.2], [-1.35, 0, 0]));
+      tail.add(glow(P("sphere", [0.12, 0.2, 0.12], ember, [0, 0.0, -0.5]), 1.2));
+      body.add(tail);
+      parts.tail = tail;
+      const legsList: Node[] = [];
+      for (const [x, z] of [[-0.17, 0.4], [0.17, 0.4], [-0.17, -0.42], [0.17, -0.42]] as const) {
+        const leg = G(x, 0.46, z);
+        leg.add(P("cyl", [0.13, 0.28, 0.13], fur, [0, -0.12, 0]));
+        leg.add(P("cyl", [0.09, 0.26, 0.09], fur2, [0, -0.3, 0.03]));
+        leg.add(P("sphere", [0.14, 0.08, 0.2], fur, [0, -0.44, 0.07]));
+        for (const cx of [-0.04, 0.04]) leg.add(P("cone", [0.025, 0.07, 0.025], "#e8e0d0", [cx, -0.45, 0.17], [Math.PI / 2, 0, 0]));
+        body.add(leg);
+        legsList.push(leg);
+      }
+      parts.legL = legsList[0]!;
+      parts.legR = legsList[1]!;
+      m.update = (p) => {
+        const sw = Math.sin(p.phase * 11);
+        const run = Math.max(0.3, p.speed);
+        body.pos[1] = Math.abs(sw) * 0.05 * run;
+        legsList.forEach((l, i) => (l.rot[0] = sw * 0.85 * run * (i % 2 === 0 ? 1 : -1) * (i < 2 ? 1 : -1)));
+        tail.rot[1] = Math.sin(p.phase * 5) * 0.45;
+        h0.rot[0] = Math.sin(p.phase * 11 + 1) * 0.06;
+        if (parts.wingL) { const f = Math.sin(p.t * 3) * 0.25; parts.wingL.rot[2] = f; parts.wingR!.rot[2] = -f; }
+      };
+      break;
+    }
+    case "thrall": {
+      const cloak = "#41566c";
+      const bone = "#dfe8ec";
+      body.add(P("cone", [0.58, 0.95, 0.4], cloak, [0, 0.5, 0], [Math.PI, 0, 0]));
+      body.add(P("cube", [0.4, 0.4, 0.24], "#5a7088", [0, 0.8, 0]));
+      body.add(glow(P("cube", [0.08, 0.3, 0.02], "#7ad8f0", [0, 0.8, 0.13]), 0.8));
+      for (let i = 0; i < 5; i++) body.add(P("cone", [0.12, 0.34 + (i % 2) * 0.14, 0.06], i % 2 ? "#41566c" : "#34465a", [-0.24 + i * 0.12, 0.06, 0.02], [Math.PI, 0, 0]));
+      for (const sx of [-1, 1]) {
+        body.add(P("sphere", [0.22, 0.14, 0.22], "#6a8098", [sx * 0.27, 0.95, 0]));
+        body.add(P("cone", [0.08, 0.2, 0.08], bone, [sx * 0.3, 1.08, 0], [0, 0, -sx * 0.3]));
+      }
+      const head = G(0, 1.1, 0);
+      head.add(P("sphere", [0.3, 0.34, 0.3], bone));
+      head.add(P("cube", [0.2, 0.12, 0.1], bone, [0, -0.14, 0.12]));
+      head.add(P("sphere", [0.26, 0.14, 0.08], "#06080c", [0, 0.0, 0.14]));
+      for (const sx of [-1, 1]) {
+        head.add(glow(P("sphere", [0.06, 0.08, 0.04], "#9af0ff", [sx * 0.07, 0.02, 0.19]), 1.6));
+        head.add(P("cone", [0.07, 0.34, 0.07], bone, [sx * 0.2, 0.26, 0], [0, 0, -sx * 0.55]));
+      }
+      head.add(P("cone", [0.4, 0.3, 0.36], cloak, [0, 0.12, -0.1], [-0.25, 0, 0]));
+      body.add(head);
+      for (const sx of [-1, 1]) {
+        const arm = G(sx * 0.3, 0.9, 0);
+        arm.add(P("cone", [0.14, 0.42, 0.1], cloak, [sx * 0.03, -0.18, 0], [0, 0, sx * 0.3]));
+        arm.add(P("sphere", [0.09, 0.09, 0.09], bone, [sx * 0.08, -0.4, 0.04]));
+        for (let i = 0; i < 4; i++) arm.add(glow(P("ring", [0.07, 0.015, 0.07], "#9ab0c0", [sx * 0.08, -0.5 - i * 0.08, 0.04], [i % 2 ? Math.PI / 2 : 0, 0, 0]), 0.3));
+        body.add(arm);
+        parts[sx < 0 ? "armL" : "armR"] = arm;
+      }
+      const spear = G(0.42, 0.5, 0.1);
+      spear.add(glow(P("cyl", [0.03, 1.3, 0.03], "#7ad0e8", [0, 0.3, 0]), 0.8));
+      spear.add(glow(P("cone", [0.1, 0.28, 0.05], "#d8fbff", [0, 1.04, 0]), 1.2));
+      body.add(spear);
+      for (let i = 0; i < 4; i++) {
+        const w = P("cone", [0.14, 0.5, 0.1], "#6a9ab8", [-0.24 + i * 0.16, -0.12, -0.05], [Math.PI, 0, 0]);
+        w.alpha = 0.4; w.emis = [0.1, 0.25, 0.35]; w.ink = false;
+        body.add(w);
+      }
+      standardAnim(m, { sway: 0.1, arms: 0.35 });
       break;
     }
     case "hound": {

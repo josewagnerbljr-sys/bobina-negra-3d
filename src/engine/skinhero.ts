@@ -12,7 +12,8 @@ import type { EquipKey, HeroId } from "../game/types";
    no referencial da T-pose: x = esquerda do personagem, y = para cima, z = para frente. */
 
 export type { Mount };
-export type SkinPart = { rig: SkinRig; a: CharAsset; mounts: Mount[]; rinv: Mat4[] };
+export type SkinPart = { rig: SkinRig; a: CharAsset; mounts: Mount[]; rinv: Mat4[]; tex?: TexDraw };
+export type TexDraw = { draw: (e: Engine, world: Mat4, bones: Float32Array, st: DrawState) => void; scale: number };
 
 const sw = m4.create();
 const sc = m4.create();
@@ -28,8 +29,13 @@ export function drawSkinModel(
   pass: 0 | 1,
   drawNode: (e: Engine, n: Node, parent: Mat4, depth: number, st: DrawState, pass: 0 | 1) => void,
 ) {
-  m4.compose(sc, FA, FA, [RIG_SCALE, RIG_SCALE, RIG_SCALE]);
+  const rs = RIG_SCALE * (sk.tex ? sk.tex.scale : 1);
+  m4.compose(sc, FA, FA, [rs, rs, rs]);
   m4.mul(sw, world, sc);
+  if (sk.tex) {
+    if (pass === 0) sk.tex.draw(e, sw, sk.rig.bones, st);
+    return;
+  }
   if (pass === 0) {
     e.drawSkin(skinMeshFor(e, sk.a), sw, sk.rig.bones, sk.a.J, sk.rig.region, { color: st.tint ?? [1, 1, 1], emis: st.emis ?? [0, 0, 0], flash: st.flash, alpha: st.alphaMul }, st.ink, st.thick * 0.26);
   }

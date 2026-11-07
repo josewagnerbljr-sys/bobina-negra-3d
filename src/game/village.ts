@@ -18,7 +18,7 @@ function hh(a: number, b: number, s: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-export type Piece = { m: "med" | "prop" | "nat"; k: string; x: number; z: number; y?: number; yaw: number; s?: number; roof?: string; fl?: number; hid?: string };
+export type Piece = { m: "med" | "prop" | "nat" | "tex"; k: string; x: number; z: number; y?: number; yaw: number; s?: number; roof?: string; fl?: number; hid?: string };
 /** retângulo em px; y0/y1 = faixa de elevação (tiles) em que bloqueia */
 export type Rect = { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number };
 /** superfície caminhável: piso (axis null) ou rampa/escada (h varia de h0 em x0/z0 até h1 em x1/z1) */
@@ -179,15 +179,19 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     const p = L(lx * K, lz * K);
     pieces.push({ m: "prop", k, x: p.x, z: p.z, y: f * FH + 0.03, yaw: yaw0 + r, s: MS, fl: f, hid: id });
   };
+  const tex = (k: string, lx: number, lz: number, r: number, f: number, sc = 1, up = 0) => {
+    const p = L(lx * K, lz * K);
+    pieces.push({ m: "tex", k, x: p.x, z: p.z, y: f * FH + 0.03 + up, yaw: yaw0 + r, s: MS * sc, fl: f, hid: id });
+  };
   const cz0 = (nd >= 4 ? hd - 38 * K : hd - 30 * K) / K;
   const chests: ChestSpot[] = [];
   for (let f = 0; f < floors; f++) {
     const kit = (furnish + f) % 4;
     const c = hw > 60 ? 0 : 0;
-    if (kit === 0) { prop("Table_Large", c, 0, 0, f); prop("Stool", c - 24, 18, 0, f); prop("Candle_1", c, 0, 0, f); prop("Barrel", c + 20, -cz0 + 14, 0, f); }
-    else if (kit === 1) { prop("Workbench", c, -cz0 + 8, 3.1416, f); prop("Crate_Wooden", c + 22, cz0 - 12, 0.5, f); prop("Bag", c - 18, cz0 - 18, 0, f); }
-    else if (kit === 2) { prop("Bed_Twin1", c, -cz0 + 24, 1.5708, f); prop("Nightstand_Shelf", c + 22, cz0 - 14, 0, f); prop("CandleStick", c + 22, cz0 - 14, 0, f); }
-    else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); prop("Cauldron", c - 18, cz0 - 20, 0, f); prop("Potion_1", c + 20, cz0 - 20, 0, f); }
+    if (kit === 0) { tex("hp_table", c, 2, 0, f, 0.3); tex("vs_chair", c - 26, 16, 0.7, f, 1.2); tex("vs_chair", c + 26, 14, -0.7, f, 1.2); tex("vs_vase", c, 2, 0, f, 1.4, 0.55); tex("vs_fire_wall", c, -cz0 + 2, 0, f, 0.9); tex("vs_fire_base", c, -cz0 + 2, 0, f, 0.9); prop("Candle_1", c + 8, 2, 0, f); prop("Barrel", c + 30, -cz0 + 18, 0, f); }
+    else if (kit === 1) { prop("Workbench", c, -cz0 + 8, 3.1416, f); tex("hf_farm_harvest_crate", c + 22, cz0 - 12, 0.5, f, 1.8); tex("hf_farm_harvest_crate", c + 22, cz0 - 12, 0.2, f, 1.8, 0.4); prop("Bag", c - 18, cz0 - 18, 0, f); tex("hp_stand", c - 30, 4, 1.57, f, 0.4); }
+    else if (kit === 2) { tex("hp_bed", c, -cz0 + 24, 1.5708, f, 0.42); tex("hp_stand", c + 26, -cz0 + 4, 0, f, 0.4); prop("CandleStick", c + 26, -cz0 + 4, 0, f); tex("vs_mirror", c - 40, 0, 1.5708, f, 1.5, 0.55); tex("hp_dress", c + 28, cz0 - 14, 0.5, f, 0.4); }
+    else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); tex("vs_books1", c - 30, -cz0 + 6, 0, f, 1.6, 0.5); tex("vs_viola", c + 22, cz0 - 20, 0.8, f, 1.3); prop("Cauldron", c - 18, cz0 - 20, 0, f); tex("vs_ladder", c + 34, -cz0 + 8, 3.14, f, 1.0); }
     const cp = L(0, (cz0 - 34) * K);
     if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.2 : 0.4)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
   }
@@ -259,7 +263,24 @@ function addFlavor(pl: Place, fl: Flavor, x: number, z: number, taken: { x: numb
     taken.push({ x: px, z: pz, r: 20 });
     put++;
   }
-  if (fl === "fazendas") for (let q = 0; q < 4; q++) fenceRing(pl, x + Math.cos(q * 1.57 + idx) * 520, z + Math.sin(q * 1.57 + idx) * 520, 70, 14, 5);
+  if (fl === "fazendas") for (let q = 0; q < 4; q++) {
+    const cx2 = x + Math.cos(q * 1.57 + idx) * 520;
+    const cz2 = z + Math.sin(q * 1.57 + idx) * 520;
+    // canteiro de tomates com cerca de ripas (Horror Farm); alguns pés estão corrompidos
+    for (let r = 0; r < 5; r++) for (let c2 = 0; c2 < 7; c2++) {
+      const v = hh(q * 40 + r * 7 + c2, idx, seed + 150);
+      pl.pieces.push({ m: "tex", k: v < 0.22 ? "hf_tomato_mature_corrupted" : "hf_tomato_mature_healthy", x: cx2 + (c2 - 3) * 17, z: cz2 + (r - 2) * 17, yaw: v * 6.28, s: MS * (1.1 + v * 0.3) });
+    }
+    for (let k2 = 0; k2 < 6; k2++) {
+      const a2 = (k2 / 6) * 6.283;
+      pl.pieces.push({ m: "tex", k: "hf_outdoor_fence_picket_panel_2m", x: cx2 + Math.cos(a2) * 92, z: cz2 + Math.sin(a2) * 92, yaw: -a2 + Math.PI / 2, s: MS * 1.1 });
+    }
+    taken.push({ x: cx2, z: cz2, r: 110 });
+  } else if (fl === "cemitério" || fl === "queimada") {
+    for (let q = 0; q < 10; q++) pl.pieces.push({ m: "tex", k: "hf_outdoor_lantern_path_corrupted", x: x + Math.cos(q * 0.7 + idx) * (260 + (q % 3) * 120), z: z + Math.sin(q * 0.7 + idx) * (260 + (q % 3) * 120), yaw: q, s: MS * 1.2 });
+  } else if (fl === "mercado") {
+    for (let q = 0; q < 8; q++) pl.pieces.push({ m: "tex", k: "hf_farm_harvest_crate", x: x + Math.cos(q * 0.9 + idx) * (150 + (q % 3) * 60), z: z + Math.sin(q * 0.9 + idx) * (150 + (q % 3) * 60), yaw: q * 0.7, s: MS * 2.2 });
+  }
 }
 
 function village(realm: number, seed: number, idx: number, x: number, z: number, kind: "start" | "village" | "hamlet"): Place {
