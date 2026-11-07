@@ -142,6 +142,66 @@ export const HEROES: HeroDef[] = [
     shoe: "#1a1c28",
     accent: "#ffe24a",
   },
+  {
+    id: "kael",
+    name: "Kael Aurélio",
+    role: "Paladino do holofote",
+    formName: "Aurora",
+    blurb: "Jura proteger o elenco. O elenco jura que não pediu.",
+    voice: "A luz não julga. Eu julgo, e depois ela ilumina.",
+    attack: "Lâmina de luz. Em forma de Aurora, golpe sagrado em arco.",
+    skin: "#e8c8a0",
+    hair: "#f0d890",
+    cloth: "#d8dce8",
+    cloth2: "#e0b15a",
+    shoe: "#8a6a2a",
+    accent: "#ffe48a",
+  },
+  {
+    id: "nyx",
+    name: "Nyx Corvina",
+    role: "Ceifadora de coxia",
+    formName: "Corvo",
+    blurb: "Trabalha nos bastidores, onde as almas esperam a deixa.",
+    voice: "Eu não mato ninguém. Eu só puxo o pano da saída.",
+    attack: "Foice de sombra. Em forma de corvo, voa em arcos.",
+    skin: "#d8c8d8",
+    hair: "#1a1428",
+    cloth: "#1c1628",
+    cloth2: "#6a3a9a",
+    shoe: "#100c18",
+    accent: "#b488ff",
+  },
+  {
+    id: "brann",
+    name: "Brann Nevasca",
+    role: "Xamã do gelo seco",
+    formName: "Yeti",
+    blurb: "Fazia névoa de palco. A névoa aprendeu a congelar.",
+    voice: "O frio é só silêncio com dentes.",
+    attack: "Estaca de gelo. Em forma de Yeti, pancada que congela.",
+    skin: "#e0c8b0",
+    hair: "#e8f0f8",
+    cloth: "#3a5a8a",
+    cloth2: "#e8f0f8",
+    shoe: "#2a3040",
+    accent: "#8fe8ff",
+  },
+  {
+    id: "skadi",
+    name: "Skadi Trovão",
+    role: "Valquíria de arquibancada",
+    formName: "Fúria",
+    blurb: "Entrou para vaiar. Saiu com um machado e uma torcida.",
+    voice: "Se vai bater, bata com vontade. Se vai cair, caia pra frente.",
+    attack: "Machado voador. Em forma de Fúria, fendas de guerra.",
+    skin: "#e8c0a0",
+    hair: "#c8602a",
+    cloth: "#7a2a1a",
+    cloth2: "#c8a060",
+    shoe: "#3a2418",
+    accent: "#ff7a3a",
+  },
 ];
 
 export function heroById(id: HeroId): HeroDef {
@@ -711,6 +771,10 @@ export function ending(): Line[] {
 }
 
 const DEATHS: Record<HeroId, string[]> = {
+  kael: ["A luz apagou. Alguém troque a lâmpada.", "Até paladino cai. Só não precisa fazer barulho."],
+  nyx: ["Hoje eu fui a alma da vez.", "Quem ceifa também recebe a conta."],
+  brann: ["Derreti. Que vergonha de gelo seco.", "O frio venceu. Ironia pura."],
+  skadi: ["Caí com o machado na mão. Conta como vitória.", "Valhalla com fila. Eu volto."],
   ivo: [
     "Morri. De novo. O figurino nem teve tempo de rasgar com dignidade.",
     "Isso não entra no currículo. Entra no atestado.",
@@ -754,6 +818,10 @@ const DEATHS: Record<HeroId, string[]> = {
 };
 
 const CLEARS: Record<HeroId, string[]> = {
+  kael: ["Reino iluminado. A conta de luz vem depois.", "Mais um palco salvo."],
+  nyx: ["Sem testemunhas. Só sombras e aplausos.", "Fim de cena. Cortinas."],
+  brann: ["Tudo congelado e organizado.", "Silêncio. Do jeito que eu gosto."],
+  skadi: ["Próximo! Quem mais quer apanhar?", "Esse foi aquecimento."],
   ivo: [
     "Rolo queimado. Cheira a cabelo e cláusula vencida.",
     "Mais um. Se o próximo tiver escada, eu mordo a escada.",
@@ -789,6 +857,10 @@ const CLEARS: Record<HeroId, string[]> = {
 };
 
 const TOASTS: Record<HeroId, string> = {
+  kael: "Aurora! A armadura brilha mais que o contrato.",
+  nyx: "Asas de corvo. A coxia ficou pequena.",
+  brann: "Yeti! O gelo seco agora tem músculos.",
+  skadi: "Fúria! A arquibancada inteira ouviu.",
   ivo: "A camisa rasgou. De novo. O figurino não é reembolsável.",
   lena: "Asas fora. Se alguém comentar a orelha, eu comento a jugular.",
   osso: "Caveira à mostra. O último que eu derrubei ganhou um crachá e uma ordem.",
@@ -867,6 +939,10 @@ export const SKILL_KEYS = ["U", "I", "O", "P"];
 export const SKILL_KINDS = ["Unitário", "Unitário", "Área", "Super área"];
 
 export const SKILLS: Record<HeroId, { name: string; color: string; text: string }[]> = {
+  kael: [{ name: "Lança de Luz", color: "#ffe48a", text: "Lança que persegue o alvo." }, { name: "Investida Sagrada", color: "#fff0b0", text: "Avanço luminoso." }, { name: "Aura Curativa", color: "#aaffc0", text: "Cura o herói e os aliados." }, { name: "Julgamento", color: "#ffffff", text: "Luz em todos os visíveis." }],
+  nyx: [{ name: "Foice Sombria", color: "#b488ff", text: "Arco de lâminas." }, { name: "Passo Fantasma", color: "#8a5ad0", text: "Salto de sombra." }, { name: "Colheita de Almas", color: "#d8b8ff", text: "Rouba vida em volta." }, { name: "Ceifa Final", color: "#ff5aa0", text: "Execução em área." }],
+  brann: [{ name: "Estaca de Gelo", color: "#8fe8ff", text: "Estaca que persegue." }, { name: "Nevasca", color: "#d8f4ff", text: "Frio em volta." }, { name: "Armadura de Geada", color: "#b8e8ff", text: "Escudo de gelo." }, { name: "Era Glacial", color: "#ffffff", text: "Gelo em toda a tela." }],
+  skadi: [{ name: "Machado Voador", color: "#ff9a5a", text: "Machado que persegue." }, { name: "Salto Titã", color: "#e07a3a", text: "Pancada que racha o chão." }, { name: "Grito de Guerra", color: "#ffd07a", text: "Velocidade e fúria." }, { name: "Ragnarök", color: "#ff4a1a", text: "Chuva de fogo nos próximos." }],
   ivo: [
     { name: "Bala de Prata", color: "#d8dce8", text: "Projétil que persegue o alvo mais próximo." },
     { name: "Garra do Lobo", color: "#e0b15a", text: "Investida cortante: atravessa o espaço e rasga um alvo." },

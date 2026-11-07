@@ -15,7 +15,7 @@ export const Tile = {
 
 export type TileId = (typeof Tile)[keyof typeof Tile];
 
-export const HERO_IDS = ["ivo", "lena", "osso", "syl", "tito", "mari", "pia", "lumen"] as const;
+export const HERO_IDS = ["ivo", "lena", "osso", "syl", "tito", "mari", "pia", "lumen", "kael", "nyx", "brann", "skadi"] as const;
 export type HeroId = (typeof HERO_IDS)[number];
 
 export const STAT_KEYS = ["str", "int", "dex", "wis", "rec"] as const;
@@ -124,6 +124,7 @@ export type Screen =
   | "dead"
   | "clear"
   | "npc"
+  | "pets"
   | "ending";
 
 export type Line = { who: string; text: string };
@@ -163,7 +164,7 @@ export type Level = {
 };
 
 /** portal para um reino (índice 0..24); z em tiles */
-export type Portal = { c: number; z: number; realm: number };
+export type Portal = { c: number; z: number; realm: number; /** dungeon: 0..4 entrada, 10 descida, 11 saída */ dg?: number };
 
 /** portão: bloqueia a porta (3 tiles) até o guardião do cômodo `room` ser derrotado */
 export type Gate = { c: number; w: number; f: number; room: number; open: boolean };
@@ -177,6 +178,8 @@ export type OpenHud = {
   region: string; wx: number; wz: number; night: number; hazard: string; target: string; dist: number; rel: number;
   /** pode falar com um NPC aqui */
   talk?: string;
+  /** texto do balão: Conversar, Adotar, Amarrar alma, Submeter */
+  talkLabel?: string;
   gold: number;
   parts: number;
   /** mapa da fase: lugares, marcas do enigma e portal (px de mundo) */
@@ -241,6 +244,7 @@ export type Snap = {
   progress: number;
   skills: SkillSnap[];
   bag: Item[];
+  pets: import("./pets").Pet[];
   equip: Equip;
   bagUsed: number;
   potions: number;

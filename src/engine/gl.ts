@@ -507,11 +507,21 @@ uniform mat4 uVP;
 uniform mat4 uModel;
 uniform mat3 uNor;
 uniform float uOutline;
+uniform vec2 uWind;
 out vec3 vN;
 out vec3 vCol;
 out vec3 vW;
 void main(){
   vec3 p = aPos * (1.0 + uOutline);
+  float wg = length(aNor) - 1.0;
+  if (wg > 0.001) {
+    vec3 wp = (uModel * vec4(p, 1.0)).xyz;
+    float ph = uWind.x * 1.7 + wp.x * 0.9 + wp.z * 0.6;
+    float gust = sin(uWind.x * 0.45 + wp.x * 0.12) * 0.5 + 0.5;
+    p.x += (sin(ph) * 0.5 + gust * 0.8) * wg * uWind.y * 0.07;
+    p.z += cos(ph * 0.8) * wg * uWind.y * 0.04;
+    p.y -= abs(sin(ph)) * wg * uWind.y * 0.01;
+  }
   vec4 w = uModel * vec4(p, 1.0);
   vW = w.xyz;
   vN = normalize(uNor * aNor);
@@ -702,6 +712,9 @@ export class Engine {
   view = m4.create();
   proj = m4.create();
   camPos: Vec3 = [0, 0, 10];
+  /** vento: tempo e força (balanço de folhas e capim) */
+  windT = 0;
+  windK = 1;
   private model = m4.create();
   private nmat = new Float32Array(9);
   private ident = m4.create();
@@ -729,7 +742,7 @@ export class Engine {
     this.sky = this.program(SKY_VS, SKY_FS);
     for (const n of [
       "uVP", "uModel", "uNor", "uOutline", "uColor", "uEmis", "uSun", "uSunDir", "uSky", "uGround",
-      "uFog", "uCam", "uFogRange", "uAlpha", "uFlash", "uUnlit", "uCel", "uSoft",
+      "uFog", "uCam", "uFogRange", "uAlpha", "uFlash", "uUnlit", "uCel", "uSoft", "uWind",
     ]) {
       this.u[n] = gl.getUniformLocation(this.lit, n);
     }
@@ -935,6 +948,7 @@ export class Engine {
     gl.uniform3fv(this.u.uFog!, l.fog);
     gl.uniform3fv(this.u.uCam!, this.camPos);
     gl.uniform2f(this.u.uFogRange!, l.fogNear, l.fogFar);
+    gl.uniform2f(this.u.uWind!, this.windT, this.windK);
   }
 
   private setMat(opts: DrawOpts, u: Record<string, WebGLUniformLocation | null> = this.u) {

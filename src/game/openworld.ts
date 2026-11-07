@@ -8,7 +8,7 @@
  */
 import { TILE, MAIN_LEVELS, type Kind } from "./types";
 import { REALM_THEMES, type RealmStyle } from "./realms";
-import { layoutOf, roadDist, roadPt, type Layout, type NpcSpawn, type Piece, type Rect, type Surf } from "./village";
+import { dungeonLayout, layoutOf, roadDist, roadPt, type Layout, type NpcSpawn, type Piece, type Rect, type Surf } from "./village";
 
 export const OW_COLS = 24000;
 export const OW_ORIGIN_C = 12000;
@@ -22,9 +22,20 @@ export const RING = 3.4 * BC;
 let SEED = 7741;
 /** modo fase (v11): um mundo aberto próprio por reino, com vilarejos, mansão, estradas e portal trancado */
 export const LV = { on: false, realm: 0, lay: null as Layout | null };
+/** dungeon ativa: mapa aberto independente (inferno, céu, purgatório, castelo, calabouço), andares infinitos */
+export const DG = { on: false, kind: 0, floor: 1, diff: 8 };
+/** dificuldade (equivalente a um reino) de uma posição de bioma: reinos normais usam o índice; dungeons crescem por andar */
+export const diffOf = (r: number) => (r < MAIN_LEVELS ? r : DG.diff);
+export function setDungeon(kind: number, floor: number) {
+  DG.on = true; DG.kind = kind; DG.floor = floor; DG.diff = Math.min(70, 8 + Math.floor(floor * 1.6) + kind % 2);
+  LV.on = true; LV.realm = 50 + kind; SEED = 9100 + kind * 977 + floor * 131; LV.lay = dungeonLayout(kind, floor, SEED);
+  LVBIOME.a = 50 + kind; LVBIOME.b = 50 + kind;
+  cache.clear();
+}
 const LVBIOME: { a: number; b: number; t: number } = { a: 0, b: 0, t: 0 };
 export function setLevel(realm: number | null) {
-  if (realm === null) { LV.on = false; LV.lay = null; SEED = 7741; } else {
+  if (realm === null) { DG.on = false; LV.on = false; LV.lay = null; SEED = 7741; } else {
+    DG.on = false;
     LV.on = true; LV.realm = realm; SEED = 7741 + (realm + 1) * 1013; LV.lay = layoutOf(realm, SEED);
     LVBIOME.a = realm; LVBIOME.b = realm;
   }
@@ -192,6 +203,12 @@ export function groundColor(wx: number, wz: number, bh?: BiomeHit): [number, num
   const cb = mixc(pb.d, pb.g, n);
   const c = mixc(ca, cb, b.t);
   const k = 0.82 + 0.3 * vnoise(wx / 70, wz / 70, SEED + 22);
+  const gi = glacier(wx, wz);
+  if (gi > 0) {
+    const ik = 0.9 + 0.2 * vnoise(wx / 55, wz / 55, SEED + 23);
+    const ice: [number, number, number] = [0.8 * ik, 0.9 * ik, 1.0 * ik];
+    return [c[0] * k + (ice[0] - c[0] * k) * gi, c[1] * k + (ice[1] - c[1] * k) * gi, c[2] * k + (ice[2] - c[2] * k) * gi];
+  }
   if (LV.on && LV.lay) {
     // estradas de terra e praças dos vilarejos
     const rd = roadDist(LV.lay, wx, wz);
@@ -214,6 +231,22 @@ export function skyAt(wx: number, wz: number) {
   return { top: m("s0"), mid: m("s1"), bot: m("s2"), fog: m("fog"), realm: b.a, style: styleOf(b.a) };
 }
 
+/** geleiras: manchas de gelo em partes do mapa (0..1), longe dos vilarejos; só nos reinos abertos */
+export function glacier(wx: number, wz: number): number {
+  if (!LV.on || DG.on || !LV.lay) return 0;
+  const n = fbm(wx / 2300 + 7, wz / 2300 - 3, SEED + 300);
+  let g = Math.min(1, Math.max(0, (n - 0.585) * 7));
+  if (g <= 0) return 0;
+  for (const pl of LV.lay.places) {
+    const d = Math.hypot(wx - pl.x, wz - pl.z);
+    if (d < pl.r + 350) g *= Math.max(0, Math.min(1, (d - pl.r) / 350));
+  }
+  if (Math.hypot(wx, wz) < 1500) g = 0;
+  return g;
+}
+export const ICE_POOL: Kind[] = ["hound", "golem", "wraith", "troll", "ogre", "skel"];
+const ICE_PROPS: PropKind[] = ["pine", "crystal", "pine", "rock", "crystal", "spire", "pine", "bones"];
+
 /* ---------------------------------------------------------- objetos do chão */
 export type PropKind = "tree" | "pine" | "dead" | "rock" | "pillar" | "crystal" | "spire" | "bones" | "wall" | "bush" | "flower" | "puff" | "tomb" | "lamp" | "mush" | "arch" | "pebble" | "grass" | "flame" | "fissure";
 export type Prop = { k: PropKind; x: number; z: number; r: number; s: number; v: number; block: boolean };
@@ -229,6 +262,14 @@ const STYLE_PROPS: Record<RealmStyle, PropKind[]> = {
   cloud: ["puff", "crystal", "pillar", "puff", "flower", "arch", "puff"],
   gold: ["pillar", "arch", "crystal", "wall", "lamp", "rock", "pillar"],
 };
+/** objetos de cada dungeon (cenários próprios) */
+const DG_PROPS: PropKind[][] = [
+  ["spire", "flame", "bones", "spire", "rock", "pillar", "flame", "tomb"],
+  ["puff", "pillar", "arch", "crystal", "puff", "flower", "arch", "pillar"],
+  ["tomb", "dead", "bones", "arch", "wall", "dead", "pillar", "tomb"],
+  ["wall", "pillar", "lamp", "tomb", "arch", "wall", "bones", "lamp"],
+  ["wall", "rock", "bones", "pillar", "lamp", "spire", "tomb", "rock"],
+];
 const DENSITY: Record<RealmStyle, number> = { mansion: 0.5, cave: 0.55, swamp: 0.55, city: 0.42, ice: 0.5, ruin: 0.46, garden: 0.62, cloud: 0.4, gold: 0.42 };
 const BLOCKING: Partial<Record<PropKind, number>> = { tree: 14, pine: 12, dead: 10, rock: 19, pillar: 14, crystal: 13, spire: 16, wall: 30, tomb: 16, arch: 0, lamp: 6, flame: 8 };
 
@@ -247,9 +288,9 @@ export const POOL_COLOR: Record<PoolKind, [number, number, number]> = {
 export const POOL_NAME: Record<PoolKind, string> = { lava: "lava", poison: "veneno", thorn: "espinhos", frost: "gelo cortante", sand: "areia movediça", storm: "descarga elétrica" };
 
 /* ------------------------------------------------------------------ pontos */
-export type SiteKind = "camp" | "shrine" | "ruin" | "elite" | "chest";
+export type SiteKind = "camp" | "shrine" | "ruin" | "elite" | "chest" | "dungeon";
 export type Site = { kind: SiteKind; x: number; z: number; id: string; h?: number };
-export type Spawn = { id: string; kind: Kind; x: number; z: number; mini?: boolean; look?: Kind; name?: string; realm: number; h?: number };
+export type Spawn = { id: string; kind: Kind; x: number; z: number; mini?: boolean; look?: Kind; name?: string; realm: number; h?: number; ice?: boolean };
 
 export type Chunk = { ci: number; cj: number; props: Prop[]; pools: Pool[]; sites: Site[]; spawns: Spawn[]; pieces: Piece[]; walls: Rect[]; surfs: Surf[]; houses: { id: string; rect: Rect; floors: number }[]; npcs: NpcSpawn[] };
 
@@ -300,16 +341,18 @@ function genChunk(ci: number, cj: number): Chunk {
       // clareiras: ruído grande esvazia regiões
       const clear = fbm(px / 500, pz / 500, SEED + 33);
       // fases: florestas densas, campinas abertas e encostas rochosas
-      const forest = LV.on ? fbm(px / 1100, pz / 1100, SEED + 210) : 0.5;
-      const dens = LV.on ? (forest > 0.46 ? 2.4 + (forest - 0.46) * 4 : forest < 0.3 ? 0.55 : 1.2) : 1;
+      const forest = LV.on && !DG.on ? fbm(px / 1100, pz / 1100, SEED + 210) : 0.5;
+      const dens = DG.on ? 1.35 : LV.on ? (forest > 0.46 ? 2.4 + (forest - 0.46) * 4 : forest < 0.3 ? 0.55 : 1.2) : 1;
       if (hh(sx, sz, SEED + 34) > DENSITY[st] * (0.35 + clear * 1.1) * dens * (LV.on ? 0.9 : 1)) continue;
       if (near0 && Math.hypot(px, pz) < 300) continue;
       if (lay) {
-        if (nearPlace(px, pz, 30) || roadDist(lay, px, pz) < 70 || Math.hypot(px - lay.portal.x, pz - lay.portal.z) < 200) continue;
+        if (nearPlace(px, pz, 30) || roadDist(lay, px, pz) < 70 || Math.hypot(px - lay.portal.x, pz - lay.portal.z) < 200 || (lay.exit && Math.hypot(px - lay.exit.x, pz - lay.exit.z) < 220)) continue;
       }
-      const list = STYLE_PROPS[st];
+      const gl0 = glacier(px, pz);
+      if (gl0 > 0.3 && hh(sx, sz, SEED + 301) > 0.7) continue;
+      const list = gl0 > 0.3 ? ICE_PROPS : DG.on ? DG_PROPS[DG.kind]! : STYLE_PROPS[st];
       let k = list[Math.floor(hh(sx, sz, SEED + 35) * list.length)]!;
-      if (LV.on && st !== "cave" && st !== "cloud" && st !== "gold") {
+      if (gl0 <= 0.3 && LV.on && !DG.on && st !== "cave" && st !== "cloud" && st !== "gold") {
         const hv = terrainH(px, pz);
         const q = hh(sx, sz, SEED + 211);
         if (hv > 2.2) k = q < 0.55 ? "rock" : q < 0.8 ? "pine" : "dead";
@@ -328,8 +371,9 @@ function genChunk(ci: number, cj: number): Chunk {
       const px = x0 + (i + 0.1 + 0.8 * hh(gx, gz, SEED + 51)) * (CH / 7);
       const pz = z0 + (j + 0.1 + 0.8 * hh(gx, gz, SEED + 52)) * (CH / 7);
       const st = styleOf(biomeAt(px, pz).a);
-      if (st === "cave" || st === "cloud" || st === "gold" || hh(gx, gz, SEED + 53) > 0.55) continue;
-      if (nearPlace(px, pz, -60) || roadDist(lay, px, pz) < 40) continue;
+      if (st === "cave" || st === "cloud" || st === "gold" || hh(gx, gz, SEED + 53) > (DG.on ? 0.8 : 0.55)) continue;
+      if (DG.on && !(POOL_STYLE[st] === "lava" || st === "ruin")) continue;
+      if (nearPlace(px, pz, -60) || roadDist(lay, px, pz) < 40 || glacier(px, pz) > 0.3) continue;
       const q = hh(gx, gz, SEED + 54);
       // infernos: chamas e fendas incandescentes espalhadas pelo chão
       if (POOL_STYLE[st] === "lava" || st === "ruin") {
@@ -386,13 +430,13 @@ function genChunk(ci: number, cj: number): Chunk {
   // perigos do terreno: poças grandes (lava, veneno, gelo cortante...)
   const cb = biomeAt(x0 + CH / 2, z0 + CH / 2);
   const hz = hh(ci, cj, SEED + 41);
-  const poolChance = 0.2 + Math.min(0.2, cb.a * 0.01);
-  if (!near0 && hz < poolChance && !(lay && (nearPlace(x0 + CH / 2, z0 + CH / 2, 500) || roadDist(lay, x0 + CH / 2, z0 + CH / 2) < 200))) {
+  const poolChance = DG.on ? 0.34 : 0.2 + Math.min(0.2, cb.a * 0.01);
+  if (!near0 && hz < poolChance && !(DG.on && Math.hypot(x0 + CH / 2, z0 + CH / 2) < 560) && !(lay && (nearPlace(x0 + CH / 2, z0 + CH / 2, 500) || roadDist(lay, x0 + CH / 2, z0 + CH / 2) < 200))) {
     const px = x0 + (0.2 + 0.6 * hh(ci, cj, SEED + 42)) * CH;
     const pz = z0 + (0.2 + 0.6 * hh(ci, cj, SEED + 43)) * CH;
     const r = 70 + hh(ci, cj, SEED + 44) * 110;
     const bb = biomeAt(px, pz);
-    pools.push({ x: px, z: pz, r, kind: POOL_STYLE[styleOf(bb.a)] });
+    pools.push({ x: px, z: pz, r, kind: glacier(px, pz) > 0.3 ? "frost" : POOL_STYLE[styleOf(bb.a)] });
   }
   // remove objetos que ficariam dentro de poças
   for (let i = props.length - 1; i >= 0; i--) {
@@ -402,13 +446,14 @@ function genChunk(ci: number, cj: number): Chunk {
   // inimigos
   const pool = (r: number) => REALM_THEMES[r]!.pool;
   const hb = hh(ci, cj, SEED + 51);
-  const base = near0 ? 0 : hb < 0.4 ? 0 : hb < 0.85 ? 1 : 2;
+  const base = near0 ? 0 : glacier(x0 + CH / 2, z0 + CH / 2) > 0.3 ? 2 + (hb < 0.5 ? 0 : 1) : DG.on ? (hb < 0.15 ? 1 : hb < 0.6 ? 2 : 3) : hb < 0.4 ? 0 : hb < 0.85 ? 1 : 2;
   for (let n = 0; n < base; n++) {
     const px = x0 + hh(ci * 7 + n, cj, SEED + 52) * CH;
     const pz = z0 + hh(ci, cj * 7 + n, SEED + 53) * CH;
     const r = biomeAt(px, pz).a;
-    const pl = pool(r);
-    spawns.push({ id: `${ci},${cj}:m${n}`, kind: pl[Math.floor(hh(ci + n, cj, SEED + 54) * pl.length)]!, x: px, z: pz, realm: r });
+    const ice = glacier(px, pz) > 0.3;
+    const pl = ice ? ICE_POOL : pool(r);
+    spawns.push({ id: `${ci},${cj}:m${n}`, kind: pl[Math.floor(hh(ci + n, cj, SEED + 54) * pl.length)]!, x: px, z: pz, realm: r, ice });
   }
   // pontos de interesse
   const roll = hh(ci, cj, SEED + 61);
@@ -441,14 +486,39 @@ function genChunk(ci: number, cj: number): Chunk {
       const m = th.minis[Math.floor(hh(ci, cj, SEED + 65) * th.minis.length)]!;
       sites.push({ kind: "elite", x: cx, z: cz, id: `${ci},${cj}:elite` });
       spawns.push({ id: `${ci},${cj}:elite`, kind: "boss", x: cx, z: cz, mini: true, look: m.look, name: m.name, realm: rr });
-    } else if (roll < 0.26) {
+    } else if (roll < (DG.on ? 0.36 : 0.32)) {
       sites.push({ kind: "chest", x: cx, z: cz, id: `${ci},${cj}:chest` });
+    }
+    // baús de recompensa espalhados pelo mapa (fora de camp/ruína) e entradas de dungeon
+    if (roll >= 0.07 && roll < 0.32 || roll >= 0.32) {
+      const wx2 = x0 + (0.15 + 0.7 * hh(ci, cj, SEED + 73)) * CH;
+      const wz2 = z0 + (0.15 + 0.7 * hh(ci, cj, SEED + 74)) * CH;
+      if (hh(ci, cj, SEED + 75) < (DG.on ? 0.3 : 0.2)) sites.push({ kind: "chest", x: wx2, z: wz2, id: `${ci},${cj}:wchest` });
+    }
+    // filhote de cão do inferno ferido perto de acampamentos, ruínas, santuários e baús (25%)
+    if (!DG.on && lay && roll < 0.32 && hh(ci, cj, SEED + 80) < 0.25) npcs.push({ id: `${ci},${cj}:pup`, role: "pup", name: "Filhote do Inferno", x: cx - 50, z: cz + 40 });
+    if (!DG.on && lay && Math.hypot(cx, cz) > 1500 && hh(ci, cj, SEED + 76) < 0.05) {
+      sites.push({ kind: "dungeon", x: cx + 90, z: cz - 70, id: `${ci},${cj}:dg:${Math.floor(hh(ci, cj, SEED + 77) * 5)}` });
     }
   }
   if (lay) {
     // nada de monstros dentro dos vilarejos; mais fortes longe da partida
     for (let i = spawns.length - 1; i >= 0; i--) if (nearPlace(spawns[i]!.x, spawns[i]!.z, 60) ) spawns.splice(i, 1);
     for (let i = sites.length - 1; i >= 0; i--) { const st = sites[i]!; if (st.kind !== "chest" && nearPlace(st.x, st.z, 40)) sites.splice(i, 1); }
+    if (DG.on) {
+      for (let i = spawns.length - 1; i >= 0; i--) if (Math.hypot(spawns[i]!.x, spawns[i]!.z) < 520) spawns.splice(i, 1);
+      // guardião da descida: mini-chefe + corte
+      const th = REALM_THEMES[lay.realm]!;
+      if (inChunk(lay.portal.x, lay.portal.z)) {
+        const m = th.minis[(DG.floor - 1) % th.minis.length]!;
+        const bx = lay.portal.x - Math.sign(lay.portal.x || 1) * 190;
+        const bz = lay.portal.z - Math.sign(lay.portal.z || 1) * 190;
+        sites.push({ kind: "elite", x: bx, z: bz, id: "dg:elite" });
+        spawns.push({ id: "dg:boss", kind: "boss", x: bx, z: bz, mini: true, look: m.look, name: (DG.floor % 5 === 0 ? "Senhor do Andar: " : "Guardião: ") + m.name, realm: lay.realm });
+        for (let q = 0; q < 5; q++) { const a = (q / 5) * Math.PI * 2; spawns.push({ id: `dg:g${q}`, kind: th.pool[q % th.pool.length]!, x: bx + Math.cos(a) * 170, z: bz + Math.sin(a) * 170, realm: lay.realm }); }
+        sites.push({ kind: "chest", x: bx + 60, z: bz - 40, id: "dg:reward" });
+      }
+    }
     // guardiões da mansão
     for (const pl of lay.places) if (pl.kind === "castle" && inChunk(pl.x, pl.z - 60)) {
       const th = REALM_THEMES[lay.realm]!;

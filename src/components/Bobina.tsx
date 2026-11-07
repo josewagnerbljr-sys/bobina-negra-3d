@@ -6,6 +6,7 @@ import { FORGE_CHANCE, BASE_BY_ID, fuseChance, RARITY_COLOR, RARITY_NAME, baseOf
 import { ItemIcon } from "./ItemIcon";
 import { terrainImage } from "../game/minimap";
 import { HERO_CLASS } from "../game/spells";
+import { BAG_MAX, GEAR_LABEL, canFight, isAdult, isHound, petMaxHp, petNeed, petSlotFor, petTitle, type Pet } from "../game/pets";
 import { BASE_STATS, STAT_INFO } from "../game/stats";
 import { createRuntime, type Runtime } from "../game/runtime";
 import { cycleQuality, qualityLabel, talkScreen } from "../game/render3d";
@@ -56,6 +57,7 @@ const BOOT: Snap = {
   progress: 0,
   skills: [],
   bag: [],
+  pets: [],
   equip: { helmet: null, necklace: null, armor: null, cape: null, gloves: null, pants: null, boots: null, weapon: null, offhand: null, ring1: null, ring2: null },
   bagUsed: 0,
   potions: 0,
@@ -139,7 +141,7 @@ export function Bobina() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="hud-title font-display text-lg leading-none text-brass">
-                  {snap.reel > OPEN_INDEX ? "Mundo" : snap.bonus ? "Bis" : "Reino"} {snap.reel > OPEN_INDEX ? "" : snap.bonus ? snap.reel - MAIN_LEVELS : snap.reel}
+                  {snap.reel > OPEN_INDEX ? (snap.worldName.includes("Andar") ? "Dungeon" : "Mundo") : snap.bonus ? "Bis" : "Reino"} {snap.reel > OPEN_INDEX ? "" : snap.bonus ? snap.reel - MAIN_LEVELS : snap.reel}
                   <span className="text-paper"> · {snap.reelName}</span>
                 </p>
                 <p className="hud-sub mt-1 text-sm text-paper/75">
@@ -238,7 +240,7 @@ export function Bobina() {
 
         {playing && snap.open && (
           <>
-            {snap.open.talk && <TalkBubble onTalk={() => rtRef.current?.interact()} />}
+            {snap.open.talk && <TalkBubble label={snap.open.talkLabel ?? "Conversar"} onTalk={() => rtRef.current?.interact()} />}
             <div className="orb-dock pointer-events-none absolute z-10 flex items-end gap-3" aria-label={`Vida ${Math.ceil(snap.hp)} de ${snap.maxHp}, mana ${Math.floor(snap.mana)} de ${snap.maxMana}`}>
               <Orb frac={snap.hp / Math.max(1, snap.maxHp)} c1="#ff4d5a" c2="#6a0f1a" label={String(Math.ceil(snap.hp))} />
               <Orb frac={snap.mana / Math.max(1, snap.maxMana)} c1="#5aa8ff" c2="#10286a" label={String(Math.floor(snap.mana))} />
@@ -257,7 +259,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v16.0 · classes e missões {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v18.0 · pets, heróis e clima {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -520,6 +522,7 @@ export function Bobina() {
                 {snap.formActive ? ` ativa (${snap.formLeft.toFixed(1)}s)` : snap.formCd > 0 ? ` em ${snap.formCd.toFixed(1)}s` : " pronta"}.
               </p>
               <Primary onClick={() => rtRef.current?.resume()}>Voltar ao rolo</Primary>
+              <Ghost onClick={() => rtRef.current?.openPets()}>Companheiros ({snap.pets.length}) [G]</Ghost>
               <Ghost onClick={() => rtRef.current?.openChar()}>Personagem e mochila{snap.points > 0 ? ` (${snap.points} pontos)` : ""}</Ghost>
               <Ghost onClick={() => rtRef.current?.cycleCam()}>Câmera: {CAM_MODES[snap.camMode] ?? "Multi-dinâmica"} (trocar)</Ghost>
               <p className="text-xs text-paper/60">{snap.pad ? `Controle conectado: ${snap.pad}` : "Controle: conecte por Bluetooth/USB e aperte qualquer botão."}</p>
@@ -528,6 +531,8 @@ export function Bobina() {
               <Ghost onClick={() => rtRef.current?.quitToMap()}>Sair para o arquivo</Ghost>
             </CenterCard>
           )}
+
+          {snap.screen === "pets" && <PetPanel snap={snap} rt={rtRef.current} />}
 
           {snap.screen === "char" && (
             <CharSheet snap={snap} sel={sel} setSel={setSel} rt={rtRef.current} />
@@ -848,6 +853,104 @@ function ForgePanel({ snap, a, b, pick2, setPick2, clear2, rt }: { snap: Snap; a
         </div>
       )}
     </div>
+  );
+}
+
+const PET_ICON: Record<string, string> = { hell: "🐺", nefelin: "☁️", soul: "👻", tamed: "🐾" };
+
+/** tela de companheiros: nível, mochila de 20 itens e 3 espaços de equipamento (armadura, joia, adorno) */
+function PetPanel({ snap, rt }: { snap: Snap; rt: Runtime | null }) {
+  const [id, setId] = useState<string | null>(null);
+  const pet: Pet | undefined = snap.pets.find((p) => p.id === id) ?? snap.pets[0];
+  const row = (it: Item, label: string, fn: () => void, c = "text-moon") => (
+    <li key={it.uid} className="flex items-center gap-2 rounded-md border border-paper/15 bg-ink p-1.5">
+      <ItemIcon item={it} size={30} ring={false} />
+      <span className="min-w-0 flex-1 truncate text-xs" style={{ color: RARITY_COLOR[it.rarity] }}>{itemName(it)}</span>
+      <button type="button" onClick={fn} className={"min-h-9 rounded-md border border-paper/30 px-2 text-xs " + c}>{label}</button>
+    </li>
+  );
+  return (
+    <section className="pointer-events-auto mx-auto flex min-h-full max-w-4xl flex-col menu-sec px-3 pb-4">
+      <div className="max-h-[92dvh] overflow-y-auto rounded-lg border border-brass/50 bg-panel/97 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs tracking-widest text-brass">COMPANHEIROS</p>
+            <h2 className="font-display text-3xl leading-none">{snap.pets.length} companheiro{snap.pets.length === 1 ? "" : "s"}</h2>
+            <p className="mt-1 text-xs text-paper/60">Até 5 cães (inferno + nefelins) e 5 servos (almas ou feras). Até 4 ativos. Eles recebem 35% do XP dos monstros.</p>
+          </div>
+          <Primary onClick={() => rt?.closePets()}>Voltar</Primary>
+        </div>
+        {snap.pets.length === 0 && (
+          <p className="mt-4 rounded-md border border-paper/15 bg-ink p-3 text-sm text-paper/80">
+            Nenhum companheiro ainda. Procure filhotes de cão do inferno feridos perto de acampamentos e ruínas, complete uma dungeon (Senhor do 5º andar) para ganhar um nefelin, amarre almas (conjuradores) ou submeta feras enfraquecidas (guerreiros).
+          </p>
+        )}
+        {snap.pets.length > 0 && pet && (
+          <div className="mt-3 grid gap-3 md:grid-cols-[14rem_1fr]">
+            <ul className="grid content-start gap-2">
+              {snap.pets.map((p) => (
+                <li key={p.id}>
+                  <button type="button" onClick={() => setId(p.id)} className={"w-full rounded-md border p-2 text-left " + (p.id === pet.id ? "border-brass bg-ink" : "border-paper/20 bg-ink/50")}>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-display text-base">{PET_ICON[p.kind]} {p.name}</span>
+                      <span className="text-xs text-paper/60">Nv {p.lv}</span>
+                    </span>
+                    <span className="block text-xs text-paper/60">{petTitle(p)} {p.active ? "· ativo" : "· em casa"}</span>
+                    <span className="mt-1 block h-1.5 rounded bg-black/50"><span className="block h-full rounded bg-brass" style={{ width: `${Math.min(100, (p.xp / petNeed(p.lv)) * 100)}%` }} /></span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-display text-2xl text-brass">{PET_ICON[pet.kind]} {pet.name}</h3>
+                  <p className="text-sm text-paper/75">
+                    {petTitle(pet)} · Nv {pet.lv} · {petMaxHp(pet)} vida · {isHound(pet) ? (isAdult(pet) ? "luta ao seu lado" : canFight(pet) ? "já luta ao seu lado" : `luta a partir do nível 15, adulto no 25`) : "luta ao seu lado"}
+                  </p>
+                </div>
+                <Ghost onClick={() => rt?.petToggle(pet.id)}>{pet.active ? "Deixar em casa" : "Chamar para o grupo"}</Ghost>
+              </div>
+              <h4 className="mt-3 font-display text-lg">Equipamento (dá atributos ao herói)</h4>
+              <ul className="mt-1 grid gap-2 sm:grid-cols-3">
+                {GEAR_LABEL.map((lab, i) => {
+                  const it = pet.gear[i];
+                  return (
+                    <li key={lab} className="rounded-md border border-paper/15 bg-ink p-2">
+                      <p className="text-xs text-paper/60">{lab}</p>
+                      {it ? (
+                        <button type="button" onClick={() => rt?.petUnequip(pet.id, i)} className="mt-1 flex w-full items-center gap-2 text-left">
+                          <ItemIcon item={it} size={30} ring={false} />
+                          <span className="min-w-0 flex-1 truncate text-xs" style={{ color: RARITY_COLOR[it.rarity] }}>{itemName(it)}</span>
+                          <span className="text-xs text-moon">tirar</span>
+                        </button>
+                      ) : <p className="mt-1 text-xs text-paper/30">▫ vazio</p>}
+                    </li>
+                  );
+                })}
+              </ul>
+              <h4 className="mt-3 font-display text-lg">Mochila do companheiro ({pet.bag.length}/{BAG_MAX})</h4>
+              <ul className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                {pet.bag.map((it) => row(it, "pegar", () => rt?.petTake(pet.id, it.uid)))}
+                {pet.bag.length === 0 && <li className="text-xs text-paper/40">Vazia.</li>}
+              </ul>
+              <h4 className="mt-3 font-display text-lg">Sua mochila</h4>
+              <ul className="mt-1 grid gap-1.5 sm:grid-cols-2">
+                {snap.bag.map((it) => (
+                  <li key={it.uid} className="flex items-center gap-2 rounded-md border border-paper/15 bg-ink p-1.5">
+                    <ItemIcon item={it} size={30} ring={false} />
+                    <span className="min-w-0 flex-1 truncate text-xs" style={{ color: RARITY_COLOR[it.rarity] }}>{itemName(it)}</span>
+                    {petSlotFor(baseOf(it).slot) >= 0 && <button type="button" onClick={() => rt?.petEquip(pet.id, it.uid)} className="min-h-9 rounded-md border border-brass/50 px-2 text-xs text-brass">vestir</button>}
+                    <button type="button" onClick={() => rt?.petStore(pet.id, it.uid)} className="min-h-9 rounded-md border border-paper/30 px-2 text-xs">guardar</button>
+                  </li>
+                ))}
+                {snap.bag.length === 0 && <li className="text-xs text-paper/40">Mochila vazia.</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1255,7 +1358,7 @@ function mapMarks(hud: NonNullable<Snap["open"]>) {
 }
 
 /** balão "Conversar" sobre a cabeça do NPC: segue a projeção 3D a cada quadro, sem re-renderizar o React */
-function TalkBubble({ onTalk }: { onTalk: () => void }) {
+function TalkBubble({ onTalk, label }: { onTalk: () => void; label: string }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     let id = 0;
@@ -1272,8 +1375,8 @@ function TalkBubble({ onTalk }: { onTalk: () => void }) {
     return () => cancelAnimationFrame(id);
   }, []);
   return (
-    <button ref={ref} type="button" onClick={onTalk} aria-label="Conversar" className="pointer-events-auto absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full border border-brass bg-ink/85 px-3 py-0.5 text-xs font-bold text-brass shadow-lg" style={{ opacity: 0 }}>
-      Conversar
+    <button ref={ref} type="button" onClick={onTalk} aria-label={label} className="pointer-events-auto absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full border border-brass bg-ink/85 px-3 py-0.5 text-xs font-bold text-brass shadow-lg" style={{ opacity: 0 }}>
+      {label}
     </button>
   );
 }

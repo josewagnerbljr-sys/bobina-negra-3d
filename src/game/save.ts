@@ -1,4 +1,5 @@
 import { emptyEquip, setUidSeed } from "./items";
+import type { Pet } from "./pets";
 import { MAIN_LEVELS, EMPTY_STATS, EQUIP_KEYS, HERO_IDS, MAX_LEVEL, POINTS_PER_LEVEL, TOTAL_REELS, type Equip, type HeroId, type Item, type Stats } from "./types";
 
 const KEY = "bobina-negra-v2";
@@ -37,6 +38,10 @@ export type Save = {
   spells: number[];
   /** magia equipada em U/I/O/P (-1 = poder do herói) */
   slot: number[];
+  /** companheiros (cães do inferno, nefelins, almas, feras) */
+  pets: Pet[];
+  /** dungeons (bits 0..4) que já deram um nefelin */
+  nef: number;
 };
 
 export function emptySave(hero: HeroId): Save {
@@ -62,6 +67,8 @@ export function emptySave(hero: HeroId): Save {
     qs: {},
     spells: Array.from({ length: 13 }, () => 0),
     slot: [-1, -1, -1, -1],
+    pets: [],
+    nef: 0,
   };
 }
 
@@ -134,7 +141,26 @@ function parse(text: string): Save | null {
     qs: data.qs && typeof data.qs === "object" ? data.qs : {},
     spells: Array.from({ length: 13 }, (_, i) => clampInt((data as { spells?: number[] }).spells?.[i], 0, 5)),
     slot: Array.from({ length: 4 }, (_, i) => clampInt((data as { slot?: number[] }).slot?.[i], -1, 12)),
+    pets: cleanPets((data as { pets?: unknown }).pets),
+    nef: clampInt((data as { nef?: number }).nef, 0, 31),
   };
+}
+
+function cleanPets(v: unknown): Pet[] {
+  if (!Array.isArray(v)) return [];
+  const out: Pet[] = [];
+  for (const r of v.slice(0, 12)) {
+    const p = r as Partial<Pet>;
+    if (!p || typeof p.id !== "string" || typeof p.name !== "string" || typeof p.look !== "string") continue;
+    if (p.kind !== "hell" && p.kind !== "nefelin" && p.kind !== "soul" && p.kind !== "tamed") continue;
+    out.push({
+      id: p.id, kind: p.kind, look: p.look, name: p.name.slice(0, 24),
+      lv: clampInt(p.lv, 1, 50), xp: Math.max(0, Math.floor(p.xp ?? 0)), final: Boolean(p.final), active: Boolean(p.active),
+      gear: [0, 1, 2].map((i) => { const it = p.gear?.[i]; return it && okItem(it) ? it : null; }),
+      bag: Array.isArray(p.bag) ? p.bag.filter(okItem).slice(0, 20) : [],
+    });
+  }
+  return out;
 }
 
 export function loadSave(): Save | null {

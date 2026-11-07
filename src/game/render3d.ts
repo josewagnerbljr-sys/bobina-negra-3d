@@ -1,4 +1,4 @@
-import { CH, LV, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
+import { CH, DG, LV, OW_ORIGIN_X, chunkAt, skyAt } from "./openworld";
 import { buildChunkMesh, loadNature, natureReady } from "../engine/openmesh";
 import { moodFor, tintSky, tintLight, drawAmbientOpaque, drawAmbientBlend, type AmbientCtx } from "./ambient";
 import { Engine, hex, m4, mix3, type Geo, type GpuMesh, type Lighting, type Vec3 } from "../engine/gl";
@@ -7,6 +7,7 @@ import { buildModel, drawModel, INK_COLOR, type DrawState, type GearLook, type M
 import { buildLevelParts, type LevelParts } from "../engine/scenery";
 import { themedWorld, type WorldDef } from "./content";
 import { realmWorld } from "./realms";
+import { WX, updateWeather } from "./weather";
 import { GROUND, MAIN_LEVELS, ROWS, TILE, Tile, type HeroId, type Kind, type Level, tileAt } from "./types";
 
 export type Spark = { z?: number; x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; r: number };
@@ -42,6 +43,16 @@ export type Paint = {
   gear?: GearLook;
   /** mundo aberto: direção do corpo (rad, 0 = +z) */
   yaw?: number;
+  /** companheiro/alma: 1 cão do inferno, 2 nefelin, 3 sombra */
+  petFx?: number;
+  /** monstro das geleiras */
+  iceFx?: boolean;
+  /** monstro portador de alma (brilho violeta) */
+  soulC?: boolean;
+  /** pés no chão (mundo aberto): evita pose de pulo ao descer escada/colina */
+  ground?: boolean;
+  /** 0..1 golpe corpo a corpo em andamento */
+  swing?: number;
   /** NPC com quem o herói pode conversar (balão "Conversar" acima da cabeça) */
   talk?: boolean;
 };
@@ -148,6 +159,9 @@ const QPRE = {
 let qMode: QualMode = (() => { try { const v = localStorage.getItem("bn_q"); return v === "alta" || v === "media" || v === "baixa" ? v : "auto"; } catch { return "auto"; } })();
 let autoTier: "alta" | "media" | "baixa" = (() => { try { return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? "media" : "alta"; } catch { return "alta"; } })();
 const Q = () => QPRE[qMode === "auto" ? autoTier : qMode];
+const lvTag = () => (LV.on ? `${LV.realm}${DG.on ? "f" + DG.floor : ""}` : "-1");
+const DG_HUES: Vec3[] = [[1, 0.18, 0.08], [1, 0.95, 0.6], [0.7, 0.45, 1], [0.45, 0.6, 1], [0.35, 0.9, 0.45]];
+const dgHue = (d: number): Vec3 => (d === 11 ? [0.9, 0.9, 1] : DG_HUES[(d === 10 ? DG.kind : d) % 5]!);
 export function getQuality(): QualMode { return qMode; }
 export function qualityLabel(): string { return qMode === "auto" ? `Automática (${autoTier})` : qMode === "alta" ? "Alta" : qMode === "media" ? "Média" : "Baixa"; }
 export function cycleQuality(): QualMode {
@@ -276,6 +290,8 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       ally: p.ally,
       world: p.world,
       attack: p.attack,
+      ground: p.ground,
+      swing: p.swing,
       gear: p.gear,
       dying: p.dying ?? 0,
     };
@@ -505,18 +521,25 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       owx = f.focus!.x - OW_ORIGIN_X + oc.offX;
       owz = f.focus!.z ?? 0;
       osky = skyAt(owx, owz);
+      updateWeather(f.t, Math.min(0.1, dt), owx, owz);
     }
     e.begin(osky ? dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75)) : g.world ? hex(g.world.fog) : [0, 0, 0]);
     e.setCamera(eye, at, FOV, 0.5, 260);
 
     const mood = moodFor(L.index % 5, f.playing ? heroX / Math.max(1, L.cols) : 0.3, f.t);
     if (osky) {
-      const skyB = (c: number[]) => dk([Math.min(1, c[0]! * 1.5 + 0.04), Math.min(1, c[1]! * 1.5 + 0.04), Math.min(1, c[2]! * 1.5 + 0.06)] as Vec3);
+      const sdim = 1 - 0.38 * WX.storm;
+      const skyB = (c: number[]) => dk([Math.min(1, (c[0]! * 1.5 + 0.04) * sdim + WX.flash * 0.5), Math.min(1, (c[1]! * 1.5 + 0.04) * sdim + WX.flash * 0.5), Math.min(1, (c[2]! * 1.5 + 0.06) * sdim + WX.flash * 0.6)] as Vec3);
       e.drawSky(skyB(osky.top), skyB(osky.mid), skyB(osky.bot), f.t, Math.min(1, 0.15 + night * 0.85), g.sky.moon, [0.7, 0.8], [owx * 0.00004, 0]);
       const fg = dk(mix3(osky.fog as Vec3, [Math.min(1, osky.bot[0]! * 1.5 + 0.05), Math.min(1, osky.bot[1]! * 1.5 + 0.05), Math.min(1, osky.bot[2]! * 1.5 + 0.07)], 0.75));
       const base = tintLight(g.light, mood, moodLight);
       const sk = mix3(dk(osky.bot as Vec3), [1, 1, 1], 0.45);
-      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night)) as Vec3, sky: sk.map((v) => v * 0.7) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7) as Vec3, fog: fg, fogNear: 14 * Q().fogK, fogFar: 40 * Q().fogK });
+      const dimK = (1 - 0.42 * WX.storm) * (1 + WX.flash * 2);
+      const fgW = WX.fog * 0.85 + WX.snow * 0.25;
+      const fgc = fgW > 0.01 ? mix3(fg, [0.8 * (1 - 0.6 * night), 0.84 * (1 - 0.6 * night), 0.9 * (1 - 0.55 * night)] as Vec3, Math.min(0.9, fgW)) : fg;
+      e.useLit({ ...base, sun: base.sun.map((v) => v * (1 - 0.6 * night) * dimK) as Vec3, sky: sk.map((v) => v * 0.7 * dimK) as Vec3, ground: dk(mix3(osky.mid as Vec3, [0.4, 0.34, 0.34], 0.4)).map((v) => v * 0.7 * dimK) as Vec3, fog: fgc, fogNear: 14 * Q().fogK * (1 - 0.62 * WX.fog - 0.2 * WX.storm), fogFar: 40 * Q().fogK * (1 - 0.5 * WX.fog - 0.15 * WX.storm) });
+      e.windT = f.t;
+      e.windK = WX.wind;
     } else {
       e.drawSky(tintSky(g.sky.top, mood), tintSky(g.sky.mid, mood), tintSky(g.sky.bot, mood), f.t, Math.min(1, g.sky.stars + mood.stars), g.sky.moon, g.sky.moonPos, [cx * 0.0006, 0]);
       e.useLit(tintLight(g.light, mood, moodLight));
@@ -536,7 +559,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       let built = 0;
       for (let j = cj0 - R; j <= cj0 + R; j++) {
         for (let i = ci0 - R; i <= ci0 + R; i++) {
-          const key = `${LV.on ? LV.realm : -1}|${i},${j}`;
+          const key = `${lvTag()}|${i},${j}`;
           let mh = openMeshes.get(key);
           if (!mh) {
             if (!natureReady() || built >= (openMeshes.size < 8 ? 25 : 2)) continue;
@@ -589,7 +612,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         for (const [k, v] of openMeshes) {
           const [tg, ij] = k.split("|");
           const [a, b] = ij!.split(",").map(Number);
-          if (tg !== String(LV.on ? LV.realm : -1) || Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
+          if (tg !== lvTag() || Math.abs(a! - ci0) > R + 2 || Math.abs(b! - cj0) > R + 2) {
             e.free(v.solid);
             e.free(v.glow);
             if (v.hall) e.free(v.hall);
@@ -634,10 +657,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     if (L.portals && oc) {
       const unlocked = f.unlocked ?? 99;
       for (const pt of L.portals) {
-        const open = pt.realm + 1 <= unlocked;
+        const open = pt.dg !== undefined || pt.realm + 1 <= unlocked;
         const px = pt.c + 0.5;
         const pb = ROWS - GROUND;
-        const hue: Vec3 = pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
+        const hue: Vec3 = pt.dg !== undefined ? dgHue(pt.dg) : pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
         const col: Vec3 = open ? hue : [0.35, 0.35, 0.4];
         const pulse = 0.85 + 0.15 * Math.sin(f.t * 3 + pt.c);
         for (let k = 0; k < 4; k++) {
@@ -655,10 +678,10 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
       const unlocked = f.unlocked ?? 99;
       for (const pt of L.portals) {
         if (!near(pt.c)) continue;
-        const open = pt.realm + 1 <= unlocked;
+        const open = pt.dg !== undefined || pt.realm + 1 <= unlocked;
         const px = pt.c + 0.5;
         const pb = ROWS - GROUND;
-        const hue: Vec3 = pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
+        const hue: Vec3 = pt.dg !== undefined ? dgHue(pt.dg) : pt.realm === 0 ? [1, 0.8, 0.4] : pt.realm < 11 ? [1, 0.3, 0.2] : pt.realm < 14 ? [0.7, 0.3, 1] : pt.realm < 21 ? [0.4, 0.8, 0.5] : [0.6, 0.85, 1];
         const col: Vec3 = open ? hue : [0.35, 0.35, 0.4];
         const pulse = 0.85 + 0.15 * Math.sin(f.t * 3 + pt.c);
         for (const sx of [-1.1, 1.1]) {
@@ -705,6 +728,11 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
         st.tint = [0.65, 0.95, 1.1];
         st.emis = [0.05, 0.25, 0.3];
       }
+      if (p.iceFx && !p.ally) { st.tint = [0.62, 0.86, 1.25]; st.emis = [0.02, 0.09, 0.16]; }
+      if (p.petFx === 1) { st.tint = [1.15, 0.5, 0.35]; st.emis = [0.3, 0.05, 0.02]; }
+      else if (p.petFx === 2) { st.tint = [1.25, 1.2, 1.0]; st.emis = [0.3, 0.28, 0.15]; }
+      else if (p.petFx === 3) { st.tint = [0.5, 0.35, 0.8]; st.emis = [0.16, 0.06, 0.3]; st.alphaMul = 0.62; }
+      if (p.soulC) st.emis = [0.28, 0.05, 0.4];
       if (p.kind === "hero" && p.hurt) {
         // pisca ao tomar dano
         if (Math.floor(f.t * 16) % 2 === 0) return;
@@ -840,6 +868,37 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
     }
     if (!oc) drawAmbientBlend(ambCtx);
     else {
+      if (oc && osky) {
+        // névoa em bolhas baixas, chuva da tempestade e neve das geleiras (poucas peças; some em qualidade baixa)
+        const qn = Q() === QPRE.alta ? 1 : Q() === QPRE.media ? 0.6 : 0.25;
+        const ex = eye[0]!, ey = eye[1]!, ez = eye[2]!;
+        const gy = ROWS - GROUND;
+        if (WX.fog > 0.05) {
+          const n = Math.round(9 * qn);
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * 6.283 + f.t * 0.03;
+            const rr = 7 + (i % 3) * 5;
+            glowSprite(ex + Math.cos(a) * rr * 0.9, gy + 0.9, ez * 0.0 + (at[2] ?? 0) + Math.sin(a) * rr * 0.7, 9, [0.82, 0.86, 0.92], 0.16 * WX.fog);
+          }
+        }
+        const pn = Math.round((WX.storm > 0.2 ? 38 : 0) * qn);
+        for (let i = 0; i < pn; i++) {
+          const hx = Math.sin(i * 12.9898) * 43758.5453; const hz = Math.sin(i * 78.233) * 12345.678;
+          const rx = (hx - Math.floor(hx) - 0.5) * 30, rz = (hz - Math.floor(hz) - 0.5) * 20;
+          const fall = ((f.t * 14 + i * 3.7) % 12);
+          m4.compose(tmpBlob, [(at[0] ?? ex) + rx + fall * 0.5, gy + 11 - fall, (at[2] ?? 0) + rz], [0, 0, 0.35], [0.012, 0.9, 0.012]);
+          e.draw(e.prims.cube, tmpBlob, { color: [0.7, 0.78, 0.9] as Vec3, unlit: true, alpha: 0.35 * Math.min(1, WX.storm * 1.5) });
+        }
+        const sn = Math.round((WX.snow > 0.1 ? 30 : 0) * qn);
+        for (let i = 0; i < sn; i++) {
+          const hx = Math.sin(i * 9.1337) * 43758.5453; const hz = Math.sin(i * 41.233) * 12345.678;
+          const rx = (hx - Math.floor(hx) - 0.5) * 28, rz = (hz - Math.floor(hz) - 0.5) * 18;
+          const fall = ((f.t * 1.6 + i * 0.77) % 10);
+          m4.compose(tmpBlob, [(at[0] ?? ex) + rx + Math.sin(f.t + i) * 0.8, gy + 9 - fall, (at[2] ?? 0) + rz], [0, 0, 0], [0.07, 0.07, 0.07]);
+          e.draw(e.prims.sphere, tmpBlob, { color: [1, 1, 1] as Vec3, unlit: true, alpha: 0.8 * WX.snow });
+        }
+        void ey;
+      }
       for (const gl2 of openGlows) glowSprite(gl2.x, gl2.y, gl2.z, gl2.s * (0.9 + 0.1 * Math.sin(f.t * 8 + gl2.x)), gl2.c, gl2.a);
       for (const tl of oc.tele) {
         const tx3 = tl.x * S;
@@ -1332,7 +1391,7 @@ export function createRenderer(canvas: HTMLCanvasElement): Renderer {
   }
 
   function heroAccent(id: HeroId) {
-    return ({ ivo: "#e0b15a", lena: "#c4373a", osso: "#9fd4d8", syl: "#d2e39a", tito: "#ff7a2a", mari: "#4ac0e0", pia: "#c0c8d4", lumen: "#ffe24a" } as Record<string, string>)[id] ?? "#e0b15a";
+    return ({ ivo: "#e0b15a", lena: "#c4373a", osso: "#9fd4d8", syl: "#d2e39a", tito: "#ff7a2a", mari: "#4ac0e0", pia: "#c0c8d4", lumen: "#ffe24a", kael: "#ffe48a", nyx: "#b488ff", brann: "#8fe8ff", skadi: "#ff7a3a" } as Record<string, string>)[id] ?? "#e0b15a";
   }
 
 

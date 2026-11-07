@@ -197,3 +197,14 @@ Quaternius (Stylized Nature MegaKit, Medieval Village MegaKit, Fantasy Props Meg
 ## Multijogador (v13)
 
 Cooperativo ponto a ponto por WebRTC, sem servidor: na tela inicial, "Multijogador (amigos)". Um jogador cria a sala e envia o código; o outro cola, gera a resposta e a devolve; o anfitrião cola a resposta e conecta. Depois os dois entram no mesmo reino e se veem. Cada aparelho simula os próprios monstros (sincronização de monstros e baús é uma etapa futura).
+
+## v17.0
+- NPCs com ofício (ferreiro martela, lenhador, camponês, vigia patrulha, bardo, padeiro, bruxa…) e recolhimento noturno.
+- Locomoção: pernas não travam mais ao atacar andando; golpe de tronco ao mover.
+- Escadas sem vão até a parede; menos baús nas casas e mais baús de recompensa pelo mapa.
+- Dungeons aleatórias (Inferno, Céu, Purgatório, Castelo, Calabouço): mapas abertos independentes, andares infinitos.
+
+## v18.0
+- 4 novos heróis: Kael (Paladino), Nyx (Ceifadora), Brann (Xamã do Gelo), Skadi (Valquíria), cada um com kit de 4 poderes.
+- Companheiros: filhote de cão do inferno (25% por local de interesse), nefelin (Senhor do 5º andar de cada dungeon), almas amarradas (conjuradores, 20 de mana) e feras submetidas (guerreiros, monstro com ≤30% de vida). Tela G: nível, mochila de 20 itens, armadura/joia/adorno. Luta a partir do nv 15, adulto no 25, renascimento em forma final, 5 cães = mundo +2 níveis.
+- Clima: vento balançando árvores/capim, névoa em manchas aleatórias e nas vilas, tempestades com relâmpagos e chuva, geleiras com neve e monstros de gelo.

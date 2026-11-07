@@ -196,6 +196,43 @@ export const REALM_THEMES: RealmTheme[] = [
   }
 })();
 
+/* ---- Dungeons (índices 50..54): mapas abertos independentes, andares infinitos ---- */
+export const DG_BASE = 50;
+export const DG_NAMES = ["Inferno", "Céu", "Purgatório", "Castelo Amaldiçoado", "Calabouço"];
+export const DG_ICON = ["🔥", "☁️", "🌫️", "🏰", "⛓️"];
+REALM_THEMES.push(
+  {
+    style: "city", amb: 2, music: 2, boss: "Lorde das Cinzas", pool: ["imp", "demon", "hound", "devil", "wraith"],
+    minis: [{ look: "devil", name: "Carrasco Incandescente" }, { look: "demon", name: "Senhor das Chamas" }, { look: "hound", name: "Cão do Abismo" }, { look: "wraith", name: "Alma Condenada" }, { look: "imp", name: "Tormentador" }],
+    rooms: ["Fosso"], entry: "Portão do Inferno", stairs: "Abismo", bossRoom: "Trono de Brasas",
+    pal: P("#1a0204", "#5a0808", "#c02a0c", "#2a0506", "#4a0c08", "#4a1410", "#240606", "#ff7a2a", "#ff2a10", "#2a0404"),
+  },
+  {
+    style: "cloud", amb: 9, music: 8, boss: "Serafim Caído", pool: ["cherub", "seraph", "knight", "golem", "wraith"],
+    minis: [{ look: "seraph", name: "Arcanjo Vigilante" }, { look: "cherub", name: "Querubim Guardião" }, { look: "knight", name: "Paladino Celeste" }, { look: "golem", name: "Colosso de Luz" }, { look: "seraph", name: "Trombeta Dourada" }],
+    rooms: ["Nuvem"], entry: "Portão Celeste", stairs: "Escada de Luz", bossRoom: "Trono das Nuvens",
+    pal: P("#6a9ad8", "#b8d4f4", "#fff0d0", "#a8c4ec", "#dce8f8", "#f0ecff", "#c8c0e8", "#ffe28a", "#fff6c0", "#d8e8ff"),
+  },
+  {
+    style: "ruin", amb: 1, music: 1, boss: "Juiz das Almas Perdidas", pool: ["shade", "wraith", "undead", "skel", "dryad"],
+    minis: [{ look: "shade", name: "Penitente Eterno" }, { look: "wraith", name: "Ceifador de Névoa" }, { look: "undead", name: "Arrependido" }, { look: "skel", name: "Guardião do Limbo" }, { look: "shade", name: "Sussurro Violeta" }],
+    rooms: ["Névoa"], entry: "Portão do Purgatório", stairs: "Degraus de Cinza", bossRoom: "Tribunal de Névoa",
+    pal: P("#120a1c", "#3a2a56", "#7a6a9a", "#1a1226", "#2e2244", "#5a5068", "#2a2236", "#c8b8ec", "#b488ff", "#1a1228"),
+  },
+  {
+    style: "mansion", amb: 0, music: 0, boss: "Rei Sem Coroa", pool: ["knight", "skel", "gargoyle", "golem", "wraith"],
+    minis: [{ look: "knight", name: "Capitão Espectral" }, { look: "gargoyle", name: "Gárgula Anciã" }, { look: "skel", name: "Rei Esquelético" }, { look: "golem", name: "Armadura Viva" }, { look: "wraith", name: "Dama Pálida" }],
+    rooms: ["Salão"], entry: "Portão do Castelo", stairs: "Escadaria", bossRoom: "Salão do Trono",
+    pal: P("#0e1018", "#252a40", "#4a5278", "#151826", "#262c44", "#4a4e60", "#22263a", "#c8d0f0", "#6a8cff", "#0c0e18"),
+  },
+  {
+    style: "cave", amb: 3, music: 3, boss: "Carcereiro Eterno", pool: ["skel", "undead", "ogre", "troll", "scorp"],
+    minis: [{ look: "ogre", name: "Carcereiro" }, { look: "troll", name: "Torturador" }, { look: "skel", name: "Prisioneiro Revoltado" }, { look: "undead", name: "Verdugo" }, { look: "scorp", name: "Rainha das Celas" }],
+    rooms: ["Cela"], entry: "Alçapão", stairs: "Poço", bossRoom: "Câmara de Tortura",
+    pal: P("#0c0a08", "#2a2218", "#5a4a30", "#16120e", "#2a2218", "#4a4034", "#241e16", "#e8a84a", "#ff9a30", "#0a0806"),
+  },
+);
+
 export function realmWorld(index: number): WorldDef {
   const t = REALM_THEMES[index] ?? REALM_THEMES[0]!;
   return { id: t.amb, name: REEL_NAMES[index] ?? "Reino", boss: t.boss, sky0: t.pal.s0, sky1: t.pal.s1, sky2: t.pal.s2, hill: t.pal.hill, hill2: t.pal.hill2, ground: t.pal.ground, groundDark: t.pal.dark, trim: t.pal.trim, accent: t.pal.accent, fog: t.pal.fog };

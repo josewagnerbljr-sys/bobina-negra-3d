@@ -12,6 +12,10 @@ export const BODY: Record<HeroId, Body> = {
   tito: { root: 1.13, hips: 1.1, waist: [1.15, 1.1], chest: [1.36, 1.2], head: 0.95, arm: 1.32, thigh: 1.2 },
   mari: { root: 0.94, hips: 1.14, waist: [0.76, 0.82], chest: [0.9, 0.95], head: 1.09, arm: 0.8, thigh: 1.06 },
   pia: { root: 0.88, hips: 1.2, waist: [1.1, 1.1], chest: [1.42, 1.25], head: 1.12, arm: 1.36, thigh: 1.26 },
+  kael: { root: 1.06, hips: 1.0, waist: [1.0, 1.0], chest: [1.2, 1.12], head: 0.98, arm: 1.12, thigh: 1.06 },
+  nyx: { root: 1.0, hips: 1.0, waist: [0.72, 0.78], chest: [0.84, 0.88], head: 1.06, arm: 0.78, thigh: 0.9 },
+  brann: { root: 1.18, hips: 1.12, waist: [1.2, 1.14], chest: [1.34, 1.2], head: 0.94, arm: 1.3, thigh: 1.16 },
+  skadi: { root: 1.04, hips: 1.1, waist: [0.84, 0.88], chest: [1.04, 1.02], head: 1.0, arm: 1.0, thigh: 1.06 },
   lumen: { root: 1.07, hips: 0.9, waist: [0.84, 0.84], chest: [0.92, 0.9], head: 1.0, arm: 0.78, thigh: 0.8 },
 };
 

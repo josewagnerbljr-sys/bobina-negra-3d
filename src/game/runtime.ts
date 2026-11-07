@@ -29,13 +29,15 @@ import {
 import { buildLevel } from "./maps";
 import { createNet } from "./net";
 import { COMBOS, HERO_KITS, combosKnown, SPELLS, SPELL_MAX_LV, spellUpCost, type SpellDef } from "./spells";
-import { REALM_THEMES } from "./realms";
+import { DG_NAMES, REALM_THEMES } from "./realms";
+import { FORCE } from "./weather";
+import { ACTIVE_MAX, ADULT_LV, BAG_MAX, FIGHT_LV, HOUND_MAX, LV_MAX, PET_NAMES, SERV_MAX, SOUL_HEROES, canFight, houndCount, isAdult, isHound, petDmg, petMaxHp, petNeed, petScale, petSlotFor, petStatBonus, petUid, petsFive, servCount, type Pet } from "./pets";
 import type { BaseDef } from "./items";
 import { BASES, BASE_BY_ID } from "./items";
 import { allocSupreme, forgeFuse, forgeUpgrade, socketGem, baseOf, bagUsed, canFit, compareItem, countPotions, equipKeyFor, itemName, itemSize, makeItem, modText, peekUid, rewardItem, rollDrops, RARITY_COLOR, SLOT_NAME } from "./items";
 import { derive, derivedLines, totalStats, type Derived } from "./stats";
 import type { GearLook } from "../engine/models";
-import { CH, LV, OW_ORIGIN_X, floorElev, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, levelPortal, poolsNear, setLevel, styleOf, wallsNear, type Prop, type Spawn } from "./openworld";
+import { CH, DG, LV, OW_ORIGIN_X, diffOf, glacier, setDungeon, floorElev, PORTALS_W, POOL_NAME, biomeAt, blockersNear, chunkAt, levelPortal, poolsNear, setLevel, styleOf, wallsNear, type Prop, type Spawn } from "./openworld";
 import { createRenderer, type Fx, type LootPaint, type Paint, type Spark } from "./render3d";
 import { G_FALL, G_RISE, JUMP_V, TERM, moveBody, stepInfo, overlaps, touchesSpike, type Body } from "./physics";
 import { clearSave, emptySave, loadMute, loadSave, writeMute, writeSave, type Save } from "./save";
@@ -83,6 +85,18 @@ type Actor = Body & {
   body?: HeroId;
   outfit?: GearLook;
   home?: { x: number; z: number; tx: number; tz: number };
+  /** rotina de trabalho do NPC */
+  jb?: { k: string; st: number; t: number; wp: { x: number; z: number }[]; hit: number };
+  /** companheiro: id do Pet; efeito visual (1 inferno, 2 nefelin, 3 sombra) */
+  pet?: string;
+  pfx?: number;
+  petCd?: number;
+  /** alma: tipo do monstro; tempo de vida; monstro portador de alma; recarga da submissão */
+  soulKind?: Kind;
+  life?: number;
+  soulC?: boolean;
+  ice?: boolean;
+  subCd?: number;
   vz?: number;
   room?: number;
   look?: Kind;
@@ -131,7 +145,7 @@ type Shot = Body & {
 };
 
 /** elemento de cada herói: define o visual dos tiros e poderes */
-const ELEMENT: Record<string, string> = { ivo: "lunar", lena: "blood", osso: "spirit", syl: "nature", tito: "fire", mari: "water", pia: "stone", lumen: "lightning" };
+const ELEMENT: Record<string, string> = { ivo: "lunar", lena: "blood", osso: "spirit", syl: "nature", tito: "fire", mari: "water", pia: "stone", lumen: "lightning", kael: "lunar", nyx: "spirit", brann: "water", skadi: "fire" };
 
 export type Runtime = {
   gl: boolean;
@@ -158,6 +172,13 @@ export type Runtime = {
   advanceDialogue: () => void;
   skipDialogue: () => void;
   openChar: () => void;
+  openPets: () => void;
+  closePets: () => void;
+  petToggle: (id: string) => void;
+  petStore: (id: string, uid: number) => void;
+  petTake: (id: string, uid: number) => void;
+  petEquip: (id: string, uid: number) => void;
+  petUnequip: (id: string, slot: number) => void;
   closeChar: () => void;
   allocate: (id: StatKey, n?: number) => void;
   respec: () => void;
@@ -219,6 +240,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   let iframe = 0;
   let shotCd = 0;
   let atkT = 0;
+  let swingT = 0;
   let formT = 0;
   let formCd = 0;
   let airJumps = 0;
@@ -372,8 +394,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
 
   /* ---- atributos / buffs ---- */
+  /** dificuldade efetiva: com 5 cães o mundo sobe 2 níveis acima do herói */
+  const dEff = (r: number) => diffOf(r) + (petsFive(save.pets) ? 4 : 0);
   function D(): Derived {
-    return derive(totalStats(save.hero, save.alloc, save.equip), save.level);
+    return derive(totalStats(save.hero, save.alloc, save.equip, petStatBonus(save.pets)), save.level);
   }
   const hasBuff = (k: BuffKind) => buffs.some((b) => b.kind === k && b.left > 0);
   function dmgPhys() {
@@ -732,7 +756,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       mana,
       maxMana: maxMana(),
       reel: level ? level.index + 1 : 0,
-      reelName: level?.name ?? "",
+      reelName: DG.on ? DG_NAMES[DG.kind]! : level?.name ?? "",
       npc: screen === "npc" ? npcHud() : undefined,
       open: level?.open
         ? (() => {
@@ -771,7 +795,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
               night: ow.night,
               hazard: ow.hz,
               target: tname,
-              talk: ow.talk?.npc ? `${ow.talk.npc.name}` : undefined,
+              talk: ow.talk?.npc ? `${ow.talk.npc.name}` : ow.sub ? "fera" : undefined,
+              talkLabel: ow.talk?.npc ? (ow.talk.npc.role === "pup" ? "Adotar" : ow.talk.npc.role === "soul" ? "Amarrar alma" : "Conversar") : ow.sub ? "Submeter" : undefined,
               gold: save.gold,
               parts: LV.on ? partsGot(LV.realm) : 0,
               map,
@@ -780,7 +805,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
             };
           })()
         : undefined,
-      worldName: level ? (level.open ? (LV.on ? `Reino ${LV.realm + 1}: ${REEL_NAMES[LV.realm] ?? ""}` : "Mundo Aberto") : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
+      worldName: level ? (level.open ? (DG.on ? `${DG_NAMES[DG.kind]} · Andar ${DG.floor}` : LV.on ? `Reino ${LV.realm + 1}: ${REEL_NAMES[LV.realm] ?? ""}` : "Mundo Aberto") : !level.bonus && level.index < MAIN_LEVELS ? (REGIONS.find((r) => level!.index >= r.from && level!.index <= r.to)?.name ?? world.name) : world.name) : "",
       bonus: Boolean(level?.bonus),
       bossAlive: Boolean(boss),
       bossName: nb && boss ? (nb.boss ? (level && level.index < MAIN_LEVELS ? REALM_THEMES[level.index]!.boss : world.boss) : (nb.name ?? MINI_NAMES[level?.world ?? 0] ?? "Mini-chefe")) : "",
@@ -803,6 +828,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       progress: level ? Math.max(0, Math.min(1, (player.x + player.w) / (level.cols * TILE))) : 0,
       skills: SKILLS[save.hero].map((sd, i) => { const sp = slotSpell(i); const kt = HERO_KITS[save.hero]?.[i]; return sp ? { name: sp.name, kind: sp.tag, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: sp.cd * (1 - d.cdr), lv: save.spells[sp.id]!, unlocked: true, icon: "📜", color: sp.color } : { name: kt?.name ?? sd.name, kind: kt?.tag ?? SKILL_KINDS[i]!, key: SKILL_KEYS[i]!, cd: skillCd[i]!, cdMax: (kt?.cd ?? SKILL_CD[i]!) * (1 - d.cdr), lv: SKILL_LV[i]!, unlocked: skillUnlocked(i), icon: kt?.icon ?? "✦", color: kt?.color ?? sd.color }; }),
       bag: save.bag,
+      pets: save.pets,
       equip: save.equip,
       bagUsed: bagUsed(save.bag),
       potions: countPotions(save.bag),
@@ -1003,14 +1029,17 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (!a.ally && !inert(a)) {
       lastKill = a.kind === "boss" ? lastKill : a.kind;
       gainXp(a.xp);
+      petsXp(a.xp);
+      if (a.soulC && level?.open) spawnSoul(g2w(a.x + a.w / 2), a.z ?? 0, a.kind, a.name ?? ENT_NAME(a.kind));
+      if (DG.on && a.oid === "dg:boss" && DG.floor % 5 === 0) grantNefelin();
       save.kills++;
-      addGold((1 + (a.room ?? 0) * 0.5 + Math.random() * 3) * (a.boss ? 20 : a.mini ? 8 : 1));
+      addGold((1 + dEff(a.room ?? 0) * 0.5 + Math.random() * 3) * (a.boss ? 20 : a.mini ? 8 : 1));
       if (a.oid === "castle:boss") grantPart(2, "guardião do castelo derrotado");
       showToast(`+${Math.round(a.xp * D().xp)} XP`);
       if (a.boss) showToast("A saída destrancou. O carimbo rangeu.");
       if (a.mini) showToast("Mini-chefe caiu! Tesouro no chão.");
       const src = a.boss ? "boss" : a.mini ? "mini" : "mob";
-      const drops = rollDrops(src, level?.open ? REALM_THEMES[a.room ?? 0]!.amb : level?.world ?? 0, D().luck * (MODES[save.mode]?.luck ?? 1), Math.random);
+      const drops = rollDrops(src, level?.open ? (DG.on ? Math.min(9, Math.floor(DG.diff / 6)) : REALM_THEMES[a.room ?? 0]!.amb) : level?.world ?? 0, D().luck * (MODES[save.mode]?.luck ?? 1), Math.random);
       if (drops.length) dropLoot(drops, a.x + a.w / 2, a.y + a.h / 2, a.z ?? 0);
     }
   }
@@ -1038,7 +1067,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.dyT = 0.25;
     opened.add(Math.round(a.x));
     if (a.oid) { ow.opened.add(a.oid); if (/^m\d+c2$/.test(a.oid)) grantPart(1, "baú no alto da mansão"); }
-    addGold(18 + (LV.on ? LV.realm * 6 : 0) + Math.random() * 20);
+    addGold(18 + (LV.on ? dEff(LV.realm) * 6 : 0) + Math.random() * 20);
     audio.chest();
     shake = 3;
     const items = rollDrops("chest", level?.world ?? 0, D().luck, Math.random);
@@ -1141,6 +1170,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
 
   function meleeAttack() {
     if (!level || screen !== "play" || meleeCd > 0) return;
+    swingT = 0.3;
     const w = save.equip.weapon;
     const id = w ? baseOf(w).id : "none";
     const base = MELEE[id] ?? MELEE.none!;
@@ -1275,7 +1305,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   type Tele = { x: number; z: number; r: number; t: number; max: number; c: string; kind: string };
   const ow = {
     offX: 0, yaw: 0, tyaw: 0, pitch: 0.5, dist: 11, look: 4, jump: 0,
-    chunks: new Set<string>(), done: new Map<string, number>(), opened: new Set<string>(), stock: new Map<string, Item[]>(), npc: null as Actor | null, talk: null as Actor | null, tele: [] as Tele[],
+    chunks: new Set<string>(), done: new Map<string, number>(), opened: new Set<string>(), stock: new Map<string, Item[]>(), npc: null as Actor | null, talk: null as Actor | null, sub: null as Actor | null, tele: [] as Tele[],
     evT: 14, dotT: 0, clock: 0, night: 0, rwx: 8, rwz: 0, scan: 0, slow: 1, shrines: new Set<string>(),
     region: 0, inside: null as { id: string; x0: number; z0: number; x1: number; z1: number } | null, msgT: 0, relIn: 0, moving: false, iy: 0, wave: 0, hz: "", nightT: 0, blk: [] as Prop[], walls: [] as { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number }[],
   };
@@ -1337,6 +1367,210 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     ow.jump++;
     aim = { x: 0, z: 1 };
     actors = [];
+  }
+
+  /* ---------------------------------------------------------------- companheiros */
+  let inGlacier = false;
+  const petDead = new Map<string, number>();
+  const petOf = (id?: string) => (id ? save.pets.find((p) => p.id === id) : undefined);
+  const ENT_NAME = (k: Kind) => (({ hound: "Cão", imp: "Diabrete", demon: "Demônio", devil: "Capeta", wraith: "Espectro", skel: "Esqueleto", undead: "Morto-vivo", ogre: "Ogro", troll: "Troll", knight: "Cavaleiro", golem: "Golem", shade: "Sombra" }) as Record<string, string>)[k] ?? "Fera";
+
+  function spawnPetActor(p: Pet) {
+    const a = spawnActor(p.look, 0, GROUND, true);
+    const sc = petScale(p);
+    a.w = Math.round(a.w * sc);
+    a.h = Math.round(a.h * sc);
+    a.pet = p.id;
+    a.pfx = p.kind === "nefelin" ? 2 : p.kind === "hell" ? 1 : 3;
+    a.maxHp = petMaxHp(p);
+    a.hp = a.maxHp;
+    a.speed = 150;
+    a.touch = 0;
+    a.x = player.x + (Math.random() - 0.5) * 80;
+    a.z = (player.z ?? 0) + 40 + Math.random() * 40;
+    a.el = pEl;
+    a.y = GROUND * TILE - a.h - a.el;
+    a.oid = `pet:${p.id}`;
+    a.name = p.name;
+    actors.push(a);
+  }
+
+  function petDeath(p: Pet, a: Actor) {
+    a.dead = true;
+    a.dyT = 0.45;
+    burst(a.x + a.w / 2, a.y + a.h / 2, "#d8c8ff", 14, 170);
+    if (!isAdult(p)) {
+      save.pets = save.pets.filter((x) => x !== p);
+      showToast(`${p.name} não resistiu. Filhotes não renascem.`);
+    } else if (!p.final) {
+      p.final = true;
+      petDead.set(p.id, 5);
+      showToast(`${p.name} caiu... e vai renascer em sua forma final!`);
+    } else {
+      petDead.set(p.id, 45);
+      showToast(`${p.name} caiu e volta em 45 s.`);
+    }
+    persist();
+    emit();
+  }
+
+  function updatePets(dt: number) {
+    if (!level?.open) return;
+    const act = new Set<string>();
+    for (const p of save.pets) if (p.active) act.add(p.id);
+    for (const a of actors) if (a.pet && !a.dead && !act.has(a.pet)) { a.dead = true; a.dyT = 0; }
+    const px = player.x + player.w / 2;
+    const pz = player.z ?? 0;
+    for (const p of [...save.pets]) {
+      if (!p.active) continue;
+      const wait = petDead.get(p.id);
+      if (wait !== undefined) {
+        if (wait - dt > 0) { petDead.set(p.id, wait - dt); continue; }
+        petDead.delete(p.id);
+      }
+      const a = actors.find((x) => x.pet === p.id && !x.dead);
+      if (!a) { spawnPetActor(p); continue; }
+      a.petCd = Math.max(0, (a.petCd ?? 0) - dt);
+      if (Math.hypot(a.x + a.w / 2 - px, (a.z ?? 0) - pz) > 1100) { a.x = player.x - 30; a.z = pz + 30; }
+      if (a.petCd <= 0) {
+        for (const f of actors) {
+          if (f.dead || f.ally || inert(f) || f.touch <= 0) continue;
+          if (Math.hypot(f.x + f.w / 2 - (a.x + a.w / 2), (f.z ?? 0) - (a.z ?? 0)) < 54) {
+            a.hp -= 3 + dEff(f.room ?? 0) * 0.9;
+            a.hurt = 0.14;
+            a.petCd = 0.8;
+            burst(a.x + a.w / 2, a.y + a.h / 2, "#ff8a8a", 6, 100);
+            break;
+          }
+        }
+      }
+      if (a.hp <= 0) petDeath(p, a);
+    }
+  }
+
+  /** 35% do XP de cada monstro vai para os companheiros ativos */
+  function petsXp(xp: number) {
+    for (const p of save.pets) {
+      if (!p.active || p.lv >= LV_MAX) continue;
+      p.xp += xp * 0.35;
+      let up = false;
+      while (p.lv < LV_MAX && p.xp >= petNeed(p.lv)) {
+        p.xp -= petNeed(p.lv);
+        p.lv += 1;
+        up = true;
+        if (isHound(p) && p.lv === FIGHT_LV) showToast(`${p.name} já pode lutar ao seu lado!`);
+        if (isHound(p) && p.lv === ADULT_LV) showToast(`${p.name} chegou à fase adulta!`);
+      }
+      if (up && p.lv % 5 === 0) { const a = actors.find((x) => x.pet === p.id); if (a) { a.dead = true; a.dyT = 0; } }
+    }
+  }
+
+  function addPet(kind: Pet["kind"], look: Kind, name: string, lv = 1): Pet {
+    const p: Pet = { id: petUid(), kind, look, name, lv, xp: 0, final: false, active: save.pets.filter((x) => x.active).length < ACTIVE_MAX, gear: [null, null, null], bag: [] };
+    save.pets.push(p);
+    audio.pickup();
+    showToast(`${name} agora é seu companheiro!`);
+    if (petsFive(save.pets)) showToast("Cinco cães! O mundo sente seu poder: monstros 2 níveis acima.");
+    persist();
+    emit();
+    return p;
+  }
+
+  function adoptPup(a: Actor) {
+    if (houndCount(save.pets) >= HOUND_MAX) { showToast("Limite de 5 cães (inferno + celestiais)."); emit(); return; }
+    const names = PET_NAMES.hell;
+    addPet("hell", "hound", names[(save.pets.length + Math.floor(Math.random() * 7)) % names.length]!);
+    if (a.oid) ow.opened.add(a.oid);
+    a.dead = true;
+    a.dyT = 0;
+    ow.talk = null;
+  }
+
+  function grantNefelin() {
+    if (save.nef & (1 << DG.kind)) return;
+    if (houndCount(save.pets) >= HOUND_MAX) { showToast("Um nefelin apareceu, mas você já tem 5 cães."); return; }
+    save.nef |= 1 << DG.kind;
+    const names = PET_NAMES.nefelin;
+    addPet("nefelin", "hound", names[houndCount(save.pets) % names.length]!);
+    showToast("Dungeon completa! Um filhote de Nefelin celestial escolheu você.");
+  }
+
+  function spawnSoul(wx: number, z: number, kind: Kind, nm: string) {
+    const a = spawnActor(kind, 0, GROUND, false);
+    a.npc = { id: `soul${Date.now()}`, role: "soul", name: `Alma de ${nm}` };
+    a.pfx = 3;
+    a.x = w2g(wx) - a.w / 2;
+    a.z = z;
+    a.el = elT(wx, z, 0);
+    a.y = GROUND * TILE - a.h - a.el;
+    a.life = 25;
+    a.hp = a.maxHp = 9999;
+    a.speed = 0;
+    a.touch = 0;
+    a.xp = 0;
+    a.behavior = "still";
+    a.oid = `soul:${a.npc.id}`;
+    actors.push(a);
+  }
+
+  function bindSoul(a: Actor) {
+    if (servCount(save.pets) >= SERV_MAX) { showToast("Limite de 5 servos."); emit(); return; }
+    if (mana < 20) { showToast("Mana insuficiente para a Amarração da Alma (20)."); emit(); return; }
+    mana -= 20;
+    const base = a.npc!.name.replace("Alma de ", "");
+    addPet("soul", a.kind, `${PET_NAMES.soul[Math.floor(Math.random() * 3)]} ${base}`, 3 + Math.floor(dEff(LV.on ? LV.realm : 0) / 3));
+    a.dead = true;
+    a.dyT = 0;
+    ow.talk = null;
+    fx.push({ kind: "pillar", x: a.x + a.w / 2, y: a.y + a.h, t: 0, max: 0.9, color: "#b488ff", r: 0, dir: 0, el: "spirit" });
+  }
+
+  function trySubmit(a: Actor) {
+    a.subCd = ow.clock + 5;
+    const ch = (a.boss ? 0.2 : a.mini ? 0.4 : 0.75) + Math.min(0.15, save.level * 0.002);
+    if (Math.random() < ch) {
+      const look: Kind = a.kind === "boss" ? (a.look ?? "ogre") : a.kind;
+      const nm = a.name ?? ENT_NAME(look);
+      addPet("tamed", look, `${PET_NAMES.tamed[Math.floor(Math.random() * 3)]} ${nm}`, Math.min(40, 2 + Math.floor(dEff(a.room ?? 0) / 2) + (a.boss ? 10 : a.mini ? 5 : 0)));
+      if (a.oid) markDone(a.oid);
+      a.dead = true;
+      a.dyT = 0.2;
+      burst(a.x + a.w / 2, a.y + a.h / 2, "#ffd07a", 14, 150);
+    } else {
+      a.hp = Math.min(a.maxHp, a.hp + a.maxHp * 0.12);
+      showToast("A fera resistiu à submissão!");
+      emit();
+    }
+  }
+
+  let dgRet: { realm: number; x: number; z: number } | null = null;
+  /** entra (ou desce) numa dungeon: mapa aberto independente do reino atual */
+  function enterDungeon(kind: number, floor: number, ret?: { realm: number; x: number; z: number }) {
+    if (ret) dgRet = ret;
+    audio.unlock();
+    setDungeon(kind, floor);
+    loadLevel(OPEN_INDEX);
+    const th = REALM_THEMES[50 + kind]!;
+    if (level) level.world = th.amb;
+    player.z = 140;
+    snapElev();
+    ow.rwx = 0;
+    ow.rwz = 140;
+    audio.setWorld(th.music, kind % 5, false);
+    screen = "play";
+    showToast(`${DG_NAMES[kind]} · Andar ${floor}${floor % 5 === 0 ? " — Senhor do Andar!" : ""}`);
+    emit();
+  }
+  function exitDungeon() {
+    const r = dgRet ?? { realm: 0, x: 0, z: 0 };
+    api.enterReel(r.realm);
+    player.x = w2g(r.x) - player.w / 2;
+    player.z = r.z + 90;
+    snapElev();
+    ow.rwx = r.x;
+    ow.rwz = r.z + 90;
+    dgRet = null;
+    emit();
   }
 
   function openAimNow(range = 560) {
@@ -1437,18 +1671,20 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.y = GROUND * TILE - a.h - a.el - (a.behavior === "fly" ? 60 : 0);
     a.oid = sp.id;
     a.room = sp.realm;
+    a.ice = sp.ice;
     a.vx = 0;
     a.vz = 0;
     if (sp.kind !== "chest" && sp.kind !== "candle") {
-      const k = 1 + 0.045 * sp.realm;
+      const k = 1 + 0.045 * dEff(sp.realm);
       a.maxHp = Math.round(a.maxHp * k);
       a.hp = a.maxHp;
-      a.xp = Math.round(a.xp * (1 + 0.06 * sp.realm));
+      a.xp = Math.round(a.xp * (1 + 0.06 * dEff(sp.realm)));
+      if (SOUL_HEROES.has(save.hero) && level?.open && !sp.mini && sp.kind !== "boss" && Math.random() < 0.07) a.soulC = true;
     }
     actors.push(a);
   }
 
-  const NPC_KIND: Record<string, Kind> = { merchant: "clerk", smith: "knight", witch: "witch", quest: "clerk", guard: "knight", villager: "clerk" };
+  const NPC_KIND: Record<string, Kind> = { merchant: "clerk", smith: "knight", witch: "witch", quest: "clerk", guard: "knight", villager: "clerk", pup: "hound", soul: "clerk" };
   const CLOTH = ["#8a5a38", "#3a5a8a", "#7a2a3a", "#4a6a3a", "#c9b27a", "#5a4a6a", "#2a2a34", "#a86a2a", "#d8d0c0", "#2f6a6a", "#8a3a8a", "#6a6a2a"];
   /** roupa própria de cada NPC: corpo, peças e cores sorteados pelo id, com tendência por ofício */
   function npcOutfit(id: string, role: string, garb: number): { body: HeroId; gear: GearLook } {
@@ -1482,7 +1718,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   }
   function spawnNpc(n: { id: string; role: string; name: string; x: number; z: number; garb?: number }, key: string) {
     const oid = `${key}:npc:${n.id}`;
-    if (actors.some((x) => x.oid === oid)) return;
+    if (actors.some((x) => x.oid === oid) || (n.role === "pup" && isDone(oid))) return;
     const a = spawnActor(NPC_KIND[n.role] ?? "clerk", 0, GROUND, false, false, undefined, n.name);
     a.x = w2g(n.x) - a.w / 2;
     a.z = n.z;
@@ -1491,15 +1727,22 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     a.oid = oid;
     a.npc = { id: n.id, role: n.role, name: n.name };
     a.garb = n.garb ?? (n.id.length * 7 + n.id.charCodeAt(n.id.length - 1)) % 12;
-    const ofit = npcOutfit(n.id, n.role, a.garb);
-    a.body = ofit.body;
-    a.outfit = ofit.gear;
+    if (n.role === "pup") {
+      a.garb = undefined;
+      a.w = Math.round(a.w * 0.55);
+      a.h = Math.round(a.h * 0.55);
+      a.pfx = 1;
+    } else {
+      const ofit = npcOutfit(n.id, n.role, a.garb!);
+      a.body = ofit.body;
+      a.outfit = ofit.gear;
+    }
     a.facing = (n.x + n.z) % 2 > 1 ? 1 : -1;
     a.behavior = "still";
     a.touch = 0;
     a.speed = 0;
     a.hp = a.maxHp = 9999;
-    if (n.role === "villager") a.speed = 34;
+    a.speed = 34;
     a.vx = 0;
     a.vz = 0;
     actors.push(a);
@@ -1590,30 +1833,94 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (shots.length > 70) shots.splice(0, shots.length - 70);
   }
 
-  /** moradores passeiam perto de casa; param quando o herói está perto ou conversando */
+  /** ofício do NPC a partir do título no nome */
+  function npcJob(a: Actor): string {
+    const n = a.npc!.name.toLowerCase();
+    if (n.startsWith("alma")) return "stall";
+    if (n.startsWith("ferreiro")) return "smith";
+    if (n.startsWith("lenhador")) return "wood";
+    if (n.startsWith("campon")) return "farm";
+    if (n.startsWith("pescador")) return "fish";
+    if (n.startsWith("vigia") || n.startsWith("guarda")) return "patrol";
+    if (n.startsWith("bardo")) return "bard";
+    if (n.startsWith("padre")) return "priest";
+    if (n.startsWith("crian") || n.startsWith("menino")) return "kid";
+    if (n.startsWith("padeiro")) return "baker";
+    if (n.startsWith("bot") || n.startsWith("bruxa")) return "potion";
+    if (n.startsWith("ca\u00e7adora") || n.startsWith("cacadora")) return "hunt";
+    const r = a.npc!.role;
+    if (r === "merchant" || r === "quest") return "stall";
+    return "stroll";
+  }
+
+  /** cada NPC tem um ofício: ferreiro martela, lenhador corta, camponês cuida da roça, vigia patrulha...
+   *  à noite todos recolhem para perto de casa */
   function npcWander(a: Actor, dt: number) {
-    const role = a.npc!.role;
-    if (role !== "villager") return;
     const az = a.z ?? 0;
     const h = (a.home ??= { x: a.x, z: az, tx: a.x, tz: az });
-    a.cd -= dt;
-    if (a.cd <= 0) {
-      const an = Math.random() * 6.28;
-      const r = 20 + Math.random() * 90;
-      h.tx = h.x + Math.cos(an) * r;
-      h.tz = h.z + Math.sin(an) * r;
-      a.cd = 3 + Math.random() * 6;
+    const j = (a.jb ??= (() => {
+      const k = npcJob(a);
+      const wp: { x: number; z: number }[] = [];
+      const ring = (n: number, r: number, off = 0) => { for (let i = 0; i < n; i++) { const an = off + (i / n) * 6.283; wp.push({ x: h.x + Math.cos(an) * r, z: h.z + Math.sin(an) * r }); } };
+      const seed = (a.npc!.id.length * 13 + a.npc!.id.charCodeAt(a.npc!.id.length - 1)) % 7;
+      if (k === "patrol") ring(4, 70, seed);
+      else if (k === "farm") { for (let i = 0; i < 3; i++) wp.push({ x: h.x + (i - 1) * 26, z: h.z + (i % 2 ? 16 : -10) }); }
+      else if (k === "wood") ring(2, 54, seed);
+      else if (k === "stroll") { wp.push({ x: h.x, z: h.z }); ring(3, 60 + seed * 8, seed); }
+      else if (k === "priest" || k === "hunt") ring(2, 46, seed);
+      else if (k === "kid") ring(5, 50, seed);
+      else wp.push({ x: h.x, z: h.z });
+      return { k, st: seed % Math.max(1, wp.length), t: 1 + seed * 0.4, wp, hit: 0 };
+    })());
+    a.atkT = Math.max(0, a.atkT - dt);
+    if (a.life !== undefined) { a.life -= dt; if (a.life <= 0) { a.dead = true; a.dyT = 0; return; } }
+    j.t -= dt;
+    j.hit -= dt;
+    const px = player.x + player.w / 2;
+    const near = Math.hypot(a.x + a.w / 2 - px, az - (player.z ?? 0)) < 90 || ow.talk === a || screen === "npc";
+    const night = ow.night > 0.6;
+    const k = j.k;
+    const still = k === "smith" || k === "baker" || k === "potion" || k === "stall" || k === "bard" || k === "fish";
+    const fast = k === "kid" ? 66 : k === "patrol" || k === "hunt" ? 42 : 34;
+    let want = 0;
+    let tx = h.x;
+    let tz = h.z;
+    let work = false;
+    if (night) {
+      want = fast;
+    } else if (still) {
+      work = true;
+    } else {
+      const w = j.wp[j.st % j.wp.length]!;
+      tx = w.x; tz = w.z;
+      const d0 = Math.hypot(tx - a.x, tz - az);
+      if (d0 <= 8) {
+        work = true;
+        if (j.t <= 0) { j.t = (k === "kid" ? 1.4 : 3.5) + Math.random() * 2; j.st++; }
+      } else if (j.t <= 0) want = fast;
+      else work = d0 < 14;
     }
-    const near = Math.hypot(a.x + a.w / 2 - (player.x + player.w / 2), az - (player.z ?? 0)) < 90 || ow.talk === a || screen === "npc";
-    const dx = h.tx - a.x;
-    const dz = h.tz - az;
+    if (near) want = 0;
+    const dx = tx - a.x;
+    const dz = tz - az;
     const d = Math.hypot(dx, dz) || 1;
-    const want = near || d < 8 ? 0 : 34;
+    if (d < 8) want = 0;
     a.vx = (dx / d) * want;
     a.vz = (dz / d) * want;
     a.x += a.vx * dt;
     a.z = az + a.vz * dt;
     pushOutOf(a, 10, (a.el ?? 0) / TILE);
+    if (work && !near && !night && j.hit <= 0 && a.atkT <= 0) {
+      const cx = a.x + a.w / 2;
+      const hy = a.y + a.h * 0.55;
+      if (k === "smith") { a.atkT = 0.42; j.hit = 1.5 + Math.random(); burst(cx + a.facing * 14, hy, "#ffb347", 7, 90); }
+      else if (k === "wood") { a.atkT = 0.42; j.hit = 1.3 + Math.random(); burst(cx + a.facing * 14, hy, "#b58a5a", 5, 70); }
+      else if (k === "farm") { a.atkT = 0.3; j.hit = 2 + Math.random() * 1.5; burst(cx, hy + 10, "#8fbf5a", 4, 40); }
+      else if (k === "bard") { j.hit = 2.2; burst(cx, hy - 20, "#ffe27a", 4, 38); }
+      else if (k === "potion") { j.hit = 3 + Math.random() * 2; burst(cx, hy - 10, "#b57aff", 3, 30); }
+      else if (k === "baker") { a.atkT = 0.3; j.hit = 2.4 + Math.random() * 2; }
+      else j.hit = 4;
+    }
     if (want > 0) a.yaw = Math.atan2(a.vx, a.vz ?? 0);
     else if (near) a.yaw = Math.atan2(player.x - a.x, (player.z ?? 0) - (a.z ?? 0));
     a.el = elT(g2w(a.x + a.w / 2), a.z ?? 0, a.el ?? 0);
@@ -1631,8 +1938,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     let tz = pz - az;
     let tgt: Actor | null = null;
     if (a.ally) {
-      const f = nearestFoe(a);
-      if (f) { tgt = f; tx = f.x + f.w / 2 - ax; tz = (f.z ?? 0) - az; } else { tx -= 50; tz -= 30; }
+      const pet = petOf(a.pet);
+      let f = pet && !canFight(pet) ? null : nearestFoe(a);
+      if (f && pet && Math.hypot(f.x + f.w / 2 - ax, (f.z ?? 0) - az) > 560) f = null;
+      if (f) { tgt = f; tx = f.x + f.w / 2 - ax; tz = (f.z ?? 0) - az; } else { tx -= pet && !canFight(pet) ? 90 : 50; tz -= 30; }
     }
     const d = Math.hypot(tx, tz) || 1;
     const nx = tx / d;
@@ -1640,13 +1949,14 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const strong = a.boss || a.mini;
     const aggro = strong ? 780 : 540 + ow.night * 120;
     const sp = a.speed * (strong ? 0.85 : 1) * (1 + ow.night * 0.12);
-    const realm = a.room ?? 0;
+    const realm = dEff(a.room ?? 0);
     const shooter = !a.ally && (a.behavior === "shoot" || a.behavior === "still" || a.kind === "golem" || a.kind === "cherub" || a.kind === "seraph" || a.kind === "witch");
     let dirx = nx;
     let dirz = nz;
     let want = 0;
     const calm = !a.ally && d > aggro;
     if (a.ally) want = d > 70 ? Math.max(90, sp) : 0;
+    if (a.pet && d > 70) want = Math.min(420, Math.max(sp, d * 2.4));
     else if (calm) {
       dirx = Math.cos(a.phase * 0.35 + a.seq * 3 + realm);
       dirz = Math.sin(a.phase * 0.31 + a.seq * 2);
@@ -1676,9 +1986,13 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         fireAt("foe", a, px, pz, 230, dmgBase, FOE_COLOR(a));
       }
     }
-    if (a.ally && tgt && a.cd <= 0 && d < 380) {
+    if (a.ally && tgt && a.cd <= 0 && d < (a.pet ? 84 : 380)) {
       a.cd = 0.8;
-      fireAt("ally", a, tgt.x + tgt.w / 2, tgt.z ?? 0, 430, 1, "#9fd4d8");
+      const pet = petOf(a.pet);
+      if (pet) {
+        a.atkT = 0.42;
+        hurtFoe(tgt, petDmg(pet, D().phys), pet.kind === "nefelin" ? "#fff0a0" : pet.kind === "hell" ? "#ff6a2a" : "#b488ff");
+      } else fireAt("ally", a, tgt.x + tgt.w / 2, tgt.z ?? 0, 430, 1, "#9fd4d8");
     }
     const k = Math.min(1, dt * 6);
     a.vx = (a.vx ?? 0) + (dirx * want - (a.vx ?? 0)) * k;
@@ -1847,7 +2161,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     ow.msgT = Math.max(0, ow.msgT - dt);
     // portais próximos (até 90 tiles)
     const near: NonNullable<Level["portals"]> = [];
-    if (LV.on) {
+    if (DG.on && LV.lay) {
+      const lp = LV.lay.portal;
+      const gx = w2g(lp.x);
+      near.push({ c: gx / TILE - 0.5, z: lp.z / TILE, realm: -1, dg: 10 });
+      const ex = LV.lay.exit!;
+      near.push({ c: w2g(ex.x) / TILE - 0.5, z: ex.z / TILE, realm: -1, dg: 11 });
+    } else if (LV.on) {
+      for (const key of ow.chunks) {
+        const [ca, cb] = key.split(",").map(Number);
+        for (const st of chunkAt(ca!, cb!).sites) {
+          if (st.kind !== "dungeon") continue;
+          const gx = w2g(st.x);
+          if (Math.abs(gx - px) < 90 * TILE && Math.abs(st.z - pz) < 90 * TILE) near.push({ c: gx / TILE - 0.5, z: st.z / TILE, realm: -1, dg: Number(st.id.split(":")[2]) });
+        }
+      }
       const lp = levelPortal();
       if (lp && LV.realm + 1 < MAIN_LEVELS) {
         const gx = w2g(lp.x);
@@ -1863,7 +2191,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const rg = biomeAt(wx, pz).a;
     if (rg !== ow.region) {
       ow.region = rg;
-      showToast(`Região: ${REEL_NAMES[rg] ?? "?"}`);
+      if (!DG.on) showToast(`Região: ${REEL_NAMES[rg] ?? "?"}`);
     }
     // NPC por perto: botão Falar
     ow.talk = null;
@@ -1875,6 +2203,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         if (d < bd) { bd = d; ow.talk = a; }
         if (d < 160) a.facing = px >= a.x + a.w / 2 ? 1 : -1;
       }
+    }
+    // guerreiros: fera enfraquecida por perto pode ser submetida
+    ow.sub = null;
+    if (screen === "play" && !ow.talk && !SOUL_HEROES.has(save.hero) && servCount(save.pets) < SERV_MAX) {
+      let bd = 95;
+      for (const a of actors) {
+        if (a.dead || a.ally || inert(a) || a.hp <= 0 || a.hp / a.maxHp > 0.3 || (a.subCd ?? 0) > ow.clock) continue;
+        const d = Math.hypot(a.x + a.w / 2 - px, (a.z ?? 0) - pz);
+        if (d < bd) { bd = d; ow.sub = a; }
+      }
+    }
+    updatePets(dt);
+    {
+      const gz = glacier(wx, pz) > 0.4;
+      if (gz !== inGlacier) { inGlacier = gz; if (gz) showToast("Geleira: monstros de gelo e frio cortante."); }
     }
     // padrão de câmera/controles
     openCamera(dt);
@@ -1897,6 +2240,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     iframe = Math.max(0, iframe - dt);
     shotCd = Math.max(0, shotCd - dt);
     atkT = Math.max(0, atkT - dt);
+    swingT = Math.max(0, swingT - dt);
     formCd = Math.max(0, formCd - dt);
     skillCd = skillCd.map((c) => Math.max(0, c - dt));
     coyote = Math.max(0, coyote - dt);
@@ -2129,7 +2473,21 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       for (const pt of level.portals) {
         if (Math.abs(pt.c * TILE + TILE / 2 - pcx) < TILE * 1.3 && Math.abs((player.z ?? 0) - pt.z * TILE) < TILE * 1.6 && player.y + player.h + pEl > (GROUND - 3) * TILE) near = pt;
       }
-      if (near && LV.on) {
+      if (near && near.dg !== undefined) {
+        if (portalT === 0) {
+          const d = near.dg;
+          showToast(d === 10 ? `Descida para o andar ${DG.floor + 1}. Fique para entrar.` : d === 11 ? "Saída: voltar ao mundo. Fique para sair." : `Entrada: ${DG_NAMES[d]}. Fique para entrar.`);
+        }
+        portalT = Math.min(portalT, 0) - dt - 0.0001;
+        if (portalT < -0.9) {
+          portalT = 0;
+          const d = near.dg;
+          if (d === 10) enterDungeon(DG.kind, DG.floor + 1);
+          else if (d === 11) exitDungeon();
+          else enterDungeon(d, 1, { realm: LV.realm, x: g2w(player.x + player.w / 2), z: player.z ?? 0 });
+          return;
+        }
+      } else if (near && LV.on) {
         const got = partsGot(LV.realm);
         if (got < 3) {
           if (portalT === 0) { showToast(`Portal selado: reúna as 3 peças do enigma (${got}/3).`); portalT = 3; }
@@ -2199,7 +2557,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         } else if (a.kind === "chest" && overlaps(player, a) && zd(a, player) < TILE * 1.4) {
           openChest(a);
         } else if (!a.ally && a.touch > 0 && iframe <= 0 && overlaps(player, a) && zd(a, player) < TILE * 0.85) {
-          hurtPlayer(a.x + a.w / 2, a.boss || a.mini ? 2 + Math.floor((a.room ?? 0) / 8) : 1 + Math.floor((a.room ?? 0) / 6));
+          hurtPlayer(a.x + a.w / 2, a.boss || a.mini ? 2 + Math.floor(dEff(a.room ?? 0) / 8) : 1 + Math.floor(dEff(a.room ?? 0) / 6));
         }
         // bote: monstro perto do herói parte para cima dele (animação de ataque)
         a.atkT = Math.max(0, a.atkT - dt);
@@ -2521,7 +2879,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     let bestD = 1e9;
     for (const o of actors) {
       if (o.dead || o.ally || inert(o) || o === a) continue;
-      const d = Math.abs(o.x - a.x);
+      const d = Math.hypot(o.x - a.x, (o.z ?? 0) - (a.z ?? 0));
       if (d < bestD) {
         bestD = d;
         best = o;
@@ -2768,7 +3126,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         // o monstro olha para onde anda (nunca de costas); chefes e parados olham para o herói
         facing: !a.boss && a.behavior !== "still" && Math.abs(a.vx) > 14 ? (a.vx > 0 ? 1 : -1) : a.facing,
         phase: a.phase,
-        kind: a.npc ? "hero" : a.mini && a.look ? a.look : a.kind,
+        kind: a.npc && a.npc.role !== "pup" && a.npc.role !== "soul" ? "hero" : a.mini && a.look ? a.look : a.kind,
         hero: a.npc && a.body ? a.body : save.hero,
         form: false,
         hurt: a.hurt > 0,
@@ -2779,7 +3137,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         dying: a.dead ? 1 - Math.max(0, a.dyT) / 0.45 : 0,
         mini: a.mini,
         garb: a.npc ? a.garb : undefined,
-        talk: a.npc ? ow.talk === a : undefined,
+        talk: a.npc || ow.sub === a ? ow.talk === a || ow.sub === a : undefined,
+        petFx: a.pfx,
+        iceFx: a.ice,
+        soulC: a.soulC,
         gear: a.npc ? a.outfit : undefined,
         yaw: level?.open ? a.yaw : undefined,
       });
@@ -2832,6 +3193,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         ally: false,
         world: level?.world ?? 0,
         attack: Math.max(0, Math.min(1, atkT / 0.18)),
+        swing: swingT > 0 ? swingT / 0.3 : 0,
+        ground: level?.open ? !(player.y + player.h + pEl < GROUND * TILE - 34) : undefined,
         yaw: level?.open ? Math.atan2(aim.x, aim.z) : undefined,
       });
     }
@@ -3106,6 +3469,11 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         e.preventDefault();
         if (screen === "char") api.closeChar();
         else api.openChar();
+      } else if (e.code === "KeyG" && !e.repeat && (screen === "play" || screen === "pause" || screen === "pets")) {
+        e.preventDefault();
+        if (screen === "pets") api.closePets(); else api.openPets();
+      } else if (e.code === "Escape" && screen === "pets") {
+        api.closePets();
       } else if (e.code === "Escape" && screen === "char") {
         api.closeChar();
       } else if ((e.code === "Enter" || e.code === "Space") && screen === "talk" && down) {
@@ -3194,7 +3562,10 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     netFinish: (code) => net.finish(code),
     netClose() { net.close(); remote = null; emit(); },
     interact() {
+      if (screen === "play" && ow.sub && !ow.talk) { trySubmit(ow.sub); return; }
       if (screen !== "play" || !ow.talk) return;
+      if (ow.talk.npc?.role === "pup") { adoptPup(ow.talk); return; }
+      if (ow.talk.npc?.role === "soul") { bindSoul(ow.talk); return; }
       // alguns aldeões estão possuídos: viram monstro ao serem abordados
       const t0 = ow.talk;
       if (t0.npc?.role === "villager" && LV.realm >= 1 && Math.random() < 0.1) {
@@ -3205,7 +3576,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
         m.el = t0.el;
         m.y = GROUND * TILE - m.h - (t0.el ?? 0);
         m.oid = `${t0.oid}:mon`;
-        const kk = 1 + 0.045 * LV.realm;
+        const kk = 1 + 0.045 * dEff(LV.realm);
         m.maxHp = m.hp = Math.round(m.maxHp * kk * 1.3);
         actors.push(m);
         actors.splice(actors.indexOf(t0), 1);
@@ -3412,6 +3783,80 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       if (screen !== "talk") return;
       lineIndex = Math.max(0, lines.length - 1);
       api.advanceDialogue();
+    },
+    openPets() {
+      if (screen === "pets") return;
+      charFrom = screen;
+      screen = "pets";
+      audio.ui();
+      emit();
+    },
+    closePets() {
+      if (screen !== "pets") return;
+      screen = charFrom === "pause" ? "pause" : "play";
+      if (screen === "play") { prevJump = true; prevForm = true; buffer = 0; }
+      audio.ui();
+      persist();
+      emit();
+    },
+    petToggle(id: string) {
+      const p = petOf(id);
+      if (!p) return;
+      if (!p.active && save.pets.filter((x) => x.active).length >= ACTIVE_MAX) { showToast(`No máximo ${ACTIVE_MAX} companheiros ativos.`); emit(); return; }
+      p.active = !p.active;
+      persist();
+      emit();
+    },
+    petStore(id: string, uid: number) {
+      const p = petOf(id);
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (!p || i < 0) return;
+      if (p.bag.length >= BAG_MAX) { showToast("A mochila do companheiro está cheia (20)."); emit(); return; }
+      p.bag.push(save.bag.splice(i, 1)[0]!);
+      audio.ui();
+      persist();
+      emit();
+    },
+    petTake(id: string, uid: number) {
+      const p = petOf(id);
+      const i = p ? p.bag.findIndex((x) => x.uid === uid) : -1;
+      if (!p || i < 0) return;
+      const it = p.bag[i]!;
+      if (!canFit(save.bag, it)) { showToast("Sem espaço na sua mochila."); emit(); return; }
+      p.bag.splice(i, 1);
+      save.bag.push(it);
+      audio.ui();
+      persist();
+      emit();
+    },
+    /** equipa no companheiro um item da mochila do herói (armadura, joia ou adorno) */
+    petEquip(id: string, uid: number) {
+      const p = petOf(id);
+      const i = save.bag.findIndex((x) => x.uid === uid);
+      if (!p || i < 0) return;
+      const it = save.bag[i]!;
+      const slot = petSlotFor(baseOf(it).slot);
+      if (slot < 0) { showToast("Esse item não serve num companheiro (use armadura, joia ou adorno)."); emit(); return; }
+      save.bag.splice(i, 1);
+      const old = p.gear[slot];
+      p.gear[slot] = it;
+      if (old) { if (canFit(save.bag, old)) save.bag.push(old); else p.bag.push(old); }
+      player.hp = Math.min(player.hp, maxHp());
+      audio.pickup();
+      persist();
+      emit();
+    },
+    petUnequip(id: string, slot: number) {
+      const p = petOf(id);
+      const it = p?.gear[slot];
+      if (!p || !it) return;
+      if (!canFit(save.bag, it)) { showToast("Sem espaço na sua mochila."); emit(); return; }
+      p.gear[slot] = null;
+      save.bag.push(it);
+      player.hp = Math.min(player.hp, maxHp());
+      audio.ui();
+      persist();
+      emit();
     },
     openChar() {
       if (screen === "char") return;
@@ -3739,6 +4184,9 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     tpWorld: (wx: number, wz: number) => { player.x = w2g(wx); player.z = wz; snapElev(); ow.chunks.clear(); actors = []; },
     setCam: (m: number) => { camMode = m; },
     strike: () => strikeEvent(),
+    wxT: (k: string, v: number) => { (FORCE as Record<string, number>)[k] = v; },
+    petT: (kind: string, lv: number) => addPet(kind as Pet["kind"], kind === "soul" ? "wraith" : "hound", "Teste", lv).id,
+    enterDungeonT: (k: number, f: number) => enterDungeon(k, f, { realm: Math.max(0, LV.realm), x: 0, z: 0 }),
     enterRealm: (k: number) => { save.next = Math.max(save.next, k + 1); api.enterReel(k); if (screen === "talk") screen = "play"; },
     th: (x: number, z: number) => floorElev(x, z, 0),
     nudge: (wx: number, wz: number) => { player.x = w2g(wx) - player.w / 2; player.z = wz; },

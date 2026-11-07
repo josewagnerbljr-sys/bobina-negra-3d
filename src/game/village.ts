@@ -23,7 +23,7 @@ export type Piece = { m: "med" | "prop" | "nat"; k: string; x: number; z: number
 export type Rect = { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number };
 /** superfície caminhável: piso (axis null) ou rampa/escada (h varia de h0 em x0/z0 até h1 em x1/z1) */
 export type Surf = { x0: number; z0: number; x1: number; z1: number; h0: number; h1: number; axis: "x" | "z" | null; vis: "slab" | "stair"; fl: number; house: string };
-export type NpcRole = "merchant" | "smith" | "witch" | "quest" | "guard" | "villager";
+export type NpcRole = "merchant" | "smith" | "witch" | "quest" | "guard" | "villager" | "pup" | "soul";
 export type NpcSpawn = { id: string; role: NpcRole; name: string; x: number; z: number; garb?: number };
 export type ChestSpot = { id: string; x: number; z: number; h: number };
 export type PlaceKind = "start" | "village" | "hamlet" | "mansion" | "castle";
@@ -36,6 +36,8 @@ export type Marker = { id: string; x: number; z: number; name: string; how: stri
 export type Layout = {
   realm: number; seed: number; R: number; places: Place[]; portal: { x: number; z: number };
   parts: Marker[]; roads: Rect[];
+  /** dungeon: saída para o mundo (início) e tipo */
+  exit?: { x: number; z: number }; dg?: number;
 };
 
 type Arch = { name: string; nw: number; nd: number; floors: number; stone: boolean; wood: boolean; tower?: boolean };
@@ -129,8 +131,8 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
   }
   // pisos e escadas (zigue-zague: esquerda sobe para +z, direita sobe para -z)
   const SW = 52;
-  const ix = hw - 9 * K;
-  const iz = hd - 9 * K;
+  const ix = hw - 7 * K;
+  const iz = hd - 7 * K;
   const RUN = Math.max(MOD * 1.2, (nd - 1) * MOD);
   const ramps: { r: { x0: number; z0: number; x1: number; z1: number }; f: number; lo: number; hi: number; axis: "x" | "z"; swap: boolean }[] = [];
   for (let f = 0; f < floors - 1; f++) {
@@ -187,7 +189,7 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     else if (kit === 2) { prop("Bed_Twin1", c, -cz0 + 24, 1.5708, f); prop("Nightstand_Shelf", c + 22, cz0 - 14, 0, f); prop("CandleStick", c + 22, cz0 - 14, 0, f); }
     else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); prop("Cauldron", c - 18, cz0 - 20, 0, f); prop("Potion_1", c + 20, cz0 - 20, 0, f); }
     const cp = L(0, (cz0 - 34) * K);
-    if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.5 : 0.8)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
+    if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.2 : 0.4)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
   }
   return { pieces, walls, surfs, rect, chests, floors };
 }
@@ -468,6 +470,26 @@ export function layoutOf(realm: number, seed: number): Layout {
   }
   roads.push({ x0: places[1]!.x, z0: places[1]!.z, x1: portal.x, z1: portal.z });
   const lay: Layout = { realm, seed, R, places, portal, parts, roads };
+  cache.set(key, lay);
+  return lay;
+}
+
+/** dungeon: mapa aberto independente, menor, com saída no início e descida para o próximo andar */
+export function dungeonLayout(kind: number, floor: number, seed: number): Layout {
+  const realm = 50 + kind;
+  const key = `dg${kind}:${floor}:${seed}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const R = 5200;
+  const places: Place[] = [];
+  const ang = hh(floor, kind, seed + 301) * Math.PI * 2;
+  const portal = { x: Math.cos(ang) * (R - 1500), z: Math.sin(ang) * (R - 1500) };
+  if (kind === 3) {
+    // castelo amaldiçoado: fortaleza no caminho da descida
+    const ca = ang + 0.9;
+    places.push(castle(realm, seed, 1, Math.cos(ca) * 2300, Math.sin(ca) * 2300));
+  }
+  const lay: Layout = { realm, seed, R, places, portal, parts: [], roads: [], exit: { x: 0, z: -70 }, dg: kind };
   cache.set(key, lay);
   return lay;
 }

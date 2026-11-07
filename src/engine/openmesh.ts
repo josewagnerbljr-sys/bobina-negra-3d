@@ -30,7 +30,8 @@ export function loadNature(base: string, q = ""): Promise<void> {
 const hasNat = (pre: string) => Boolean(NAT && NAT_BY[pre]);
 void hasNat;
 /** coloca um modelo; ang em radianos; s = tiles por unidade do modelo */
-function addM(g: Geo, set: MSet, pre: string, v: number, x: number, y: number, z: number, s: number, tint: Vec3, ang?: number) {
+const hCache = new WeakMap<object, number>();
+function addM(g: Geo, set: MSet, pre: string, v: number, x: number, y: number, z: number, s: number, tint: Vec3, ang?: number, sway = 0) {
   const list = set.by[pre];
   if (!set.d || !list) return;
   const m = set.d[list[Math.floor(v * 977) % list.length]!]!;
@@ -38,19 +39,22 @@ function addM(g: Geo, set: MSet, pre: string, v: number, x: number, y: number, z
   const ca = Math.cos(a);
   const sa = Math.sin(a);
   const base = g.pos.length / 3;
+  let mh = hCache.get(m) ?? 0;
+  if (!mh) { for (let i = 1; i < m.p.length; i += 3) mh = Math.max(mh, m.p[i]!); mh = mh || 1; hCache.set(m, mh); }
   for (let i = 0; i < m.p.length; i += 3) {
     const px = m.p[i]!;
     const pz = m.p[i + 2]!;
     g.pos.push(x + (px * ca + pz * sa) * s, y + m.p[i + 1]! * s, z + (-px * sa + pz * ca) * s);
     const nx = m.n[i]!;
     const nz = m.n[i + 2]!;
-    g.nor.push(nx * ca + nz * sa, m.n[i + 1]!, -nx * sa + nz * ca);
+    const wk = sway > 0 ? 1 + sway * Math.pow(Math.max(0, m.p[i + 1]! / mh), 1.5) - sway * 0 : 1;
+    g.nor.push((nx * ca + nz * sa) * wk, m.n[i + 1]! * wk, (-nx * sa + nz * ca) * wk);
     g.col.push(Math.min(1, m.c[i]! * tint[0]), Math.min(1, m.c[i + 1]! * tint[1]), Math.min(1, m.c[i + 2]! * tint[2]));
   }
   for (const k of m.i) g.idx.push(base + k);
 }
-function addNat(g: Geo, pre: string, v: number, x: number, y: number, z: number, s: number, tint: Vec3) {
-  addM(g, SETS.nat, pre, v, x, y, z, s, tint);
+function addNat(g: Geo, pre: string, v: number, x: number, y: number, z: number, s: number, tint: Vec3, sway = 0) {
+  addM(g, SETS.nat, pre, v, x, y, z, s, tint, undefined, sway);
 }
 const STYLE_TINT: Record<string, Vec3> = {
   garden: [0.8, 0.92, 0.72], mansion: [0.78, 0.9, 0.7], swamp: [0.7, 0.8, 0.6], cave: [0.75, 0.55, 0.6], city: [0.8, 0.75, 0.75],
@@ -65,14 +69,14 @@ function natProp(g: Geo, p: Prop, style: string): boolean {
   const t = STYLE_TINT[style] ?? [1, 1, 1];
   const bare = style === "swamp" || style === "ruin" || style === "cave" || style === "city";
   switch (p.k) {
-    case "tree": addNat(g, bare ? "DeadTree" : p.v < 0.9 ? "CommonTree" : "TwistedTree", p.v, x, GY, z, (p.v < 0.9 || bare ? 0.42 : 0.26) * s, t); return true;
-    case "pine": addNat(g, "Pine", p.v, x, GY, z, 0.46 * s, t); return true;
-    case "dead": addNat(g, "DeadTree", p.v, x, GY, z, 0.42 * s, t); return true;
+    case "tree": addNat(g, bare ? "DeadTree" : p.v < 0.9 ? "CommonTree" : "TwistedTree", p.v, x, GY, z, (p.v < 0.9 || bare ? 0.42 : 0.26) * s, t, bare ? 0.2 : 0.9); return true;
+    case "pine": addNat(g, "Pine", p.v, x, GY, z, 0.46 * s, t, 0.6); return true;
+    case "dead": addNat(g, "DeadTree", p.v, x, GY, z, 0.42 * s, t, 0.2); return true;
     case "rock": addNat(g, "Rock_Medium", p.v, x, GY, z, 0.55 * s, t); return true;
-    case "bush": addNat(g, p.v < 0.5 ? "Fern" : "Plant", p.v, x, GY, z, 0.45 * s, t); return true;
-    case "flower": addNat(g, p.v < 0.4 ? "Petal" : p.v < 0.7 ? "Clover" : "Grass_Wispy_Short", p.v, x, GY, z, 0.8 * s, t); return true;
+    case "bush": addNat(g, p.v < 0.5 ? "Fern" : "Plant", p.v, x, GY, z, 0.45 * s, t, 1.1); return true;
+    case "flower": addNat(g, p.v < 0.4 ? "Petal" : p.v < 0.7 ? "Clover" : "Grass_Wispy_Short", p.v, x, GY, z, 0.8 * s, t, 1.3); return true;
     case "pebble": addNat(g, p.v < 0.5 ? "Pebble_Round" : "Pebble_Square", p.v, x, GY, z, 1.1 * s, t); return true;
-    case "grass": addNat(g, p.v < 0.5 ? "Grass_Wispy_Short" : "Grass_Common_Short", p.v, x, GY, z, 0.8 * s, t); return true;
+    case "grass": addNat(g, p.v < 0.5 ? "Grass_Wispy_Short" : "Grass_Common_Short", p.v, x, GY, z, 0.8 * s, t, 1.5); return true;
     case "mush": addNat(g, "Mushroom_Common", p.v, x, GY, z, 0.9 * s, t); return true;
     default: return false;
   }

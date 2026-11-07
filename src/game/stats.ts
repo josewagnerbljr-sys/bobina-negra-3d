@@ -9,6 +9,10 @@ export const BASE_STATS: Record<HeroId, Stats> = {
   tito: { str: 5, int: 5, dex: 2, wis: 1, rec: 4 },
   mari: { str: 2, int: 5, dex: 4, wis: 4, rec: 3 },
   pia: { str: 7, int: 1, dex: 2, wis: 2, rec: 6 },
+  kael: { str: 5, int: 3, dex: 3, wis: 4, rec: 5 },
+  nyx: { str: 3, int: 5, dex: 5, wis: 3, rec: 2 },
+  brann: { str: 4, int: 6, dex: 1, wis: 4, rec: 5 },
+  skadi: { str: 7, int: 1, dex: 4, wis: 2, rec: 5 },
   lumen: { str: 2, int: 4, dex: 6, wis: 4, rec: 2 },
 };
 
@@ -30,11 +34,11 @@ export function sumEquip(eq: Equip): Stats {
   return out;
 }
 
-export function totalStats(hero: HeroId, alloc: Stats, eq: Equip): Stats {
+export function totalStats(hero: HeroId, alloc: Stats, eq: Equip, extra?: Stats): Stats {
   const base = BASE_STATS[hero];
   const e = sumEquip(eq);
   const out = { ...base };
-  for (const k of STAT_KEYS) out[k] = base[k] + alloc[k] + e[k];
+  for (const k of STAT_KEYS) out[k] = base[k] + alloc[k] + e[k] + (extra?.[k] ?? 0);
   return out;
 }
 

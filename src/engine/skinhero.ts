@@ -115,9 +115,9 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
   const hair = def.hair;
   const acc = def.accent;
   // rosto e cabelo de anime (herolook.ts): cada herói tem o seu
-  const STYLE: Record<HeroId, HairStyle> = { ivo: "spiky", lena: "long", osso: "bald", syl: "ponytail", tito: "pompadour", mari: "twin", pia: "bob", lumen: "wild" };
-  const IRIS: Record<HeroId, string> = { ivo: "#6a4a2a", lena: "#c4373a", osso: "#e0b15a", syl: "#3fa24a", tito: "#ffb13a", mari: "#2a9ac0", pia: "#ff9a3a", lumen: "#5fd0ff" };
-  const FEM = id === "lena" || id === "syl" || id === "mari" || id === "pia";
+  const STYLE: Record<HeroId, HairStyle> = { ivo: "spiky", lena: "long", osso: "bald", syl: "ponytail", tito: "pompadour", mari: "twin", pia: "bob", lumen: "wild", kael: "short", nyx: "long", brann: "wild", skadi: "twin" };
+  const IRIS: Record<HeroId, string> = { ivo: "#6a4a2a", lena: "#c4373a", osso: "#e0b15a", syl: "#3fa24a", tito: "#ffb13a", mari: "#2a9ac0", pia: "#ff9a3a", lumen: "#5fd0ff", kael: "#4a8ad8", nyx: "#b488ff", brann: "#8fe8ff", skadi: "#3a9a6a" };
+  const FEM = id === "lena" || id === "syl" || id === "mari" || id === "pia" || id === "nyx" || id === "skadi";
   anim.extra = anim.extra ?? [];
   addHair(add, H, STYLE[id], hair, anim);
   if (id === "osso") {
@@ -291,6 +291,68 @@ function baseMounts(id: HeroId, ctx: Ctx, anim: Anim): Mount[] {
       add(S3, wg.root, true);
       anim.wingRigs.push(wg);
     }
+  } else if (id === "kael") {
+    add(H, P("hemi", [0.34, 0.2, 0.34], "#cfd6e4", [0, 0.2, 0]));
+    add(H, P("cone", [0.05, 0.22, 0.12], "#e0b15a", [0, 0.36, -0.02], [-0.2, 0, 0]));
+    const halo = glow(P("ring", [0.34, 0.34, 0.34], "#ffe48a", [0, 0.5, 0], [Math.PI / 2, 0, 0]), 1);
+    add(H, halo);
+    anim.extra.push((t) => { halo.rot[1] = t * 0.9; });
+    for (const sx of [-1, 1]) add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("hemi", [0.2, 0.13, 0.2], "#e0b15a", [-sx * 0.06, 0.03, 0]));
+    const sh = G(0, 0, 0);
+    sh.add(P("cyl", [0.3, 0.04, 0.3], "#cfd6e4", [0, 0.05, 0.05], [Math.PI / 2, 0, 0]));
+    sh.add(glow(P("sphere", [0.07, 0.07, 0.03], "#ffe48a", [0, 0.05, 0.09]), 1));
+    add("DEF-forearm.L", sh);
+    add(S3, P("cube", [0.4, 0.5, 0.03], "#b02a2a", [0, -0.1, -0.16], [0.15, 0, 0]));
+    for (const sx of [-1, 1]) {
+      const wg = makeFeatherWing(sx, { main: "#fff8e0", shade: "#fff0c0", edge: "#ffe48a", span: 1.15, bone: "#e8dcc0" });
+      add(S3, wg.root, true);
+      (anim.wingRigs = anim.wingRigs ?? []).push(wg);
+    }
+  } else if (id === "nyx") {
+    add(H, P("hemi", [0.4, 0.3, 0.42], "#1c1628", [0, 0.13, -0.03]));
+    add(H, P("cone", [0.14, 0.3, 0.12], "#1c1628", [0, 0.08, -0.22], [-1.2, 0, 0]));
+    for (const sx of [-1, 1]) add(H, glow(P("sphere", [0.035, 0.045, 0.03], "#d8b8ff", [sx * 0.05, 0.115, 0.13]), 1), true);
+    const sc = G(0, 0, 0);
+    sc.add(P("cyl", [0.03, 0.9, 0.03], "#3a2a4a", [0, 0.3, 0]));
+    sc.add(glow(P("cone", [0.28, 0.06, 0.04], "#b488ff", [0.12, 0.74, 0], [0, 0, -1.6]), 0.9));
+    add("DEF-hand.R", sc);
+    for (let i = 0; i < 5; i++) add(HIP, P("cone", [0.09, 0.4 - i * 0.03, 0.04], "#1c1628", [-0.2 + i * 0.1, -0.15, 0.0], [0, 0, 0]));
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * 6.28; add(S3, glow(P("sphere", [0.05, 0.07, 0.05], "#b488ff", [Math.cos(a) * 0.35, 0.05, Math.sin(a) * 0.25]), 0.8), true); }
+    for (const sx of [-1, 1]) {
+      const wg = makeFeatherWing(sx, { main: "#1c1628", shade: "#3a2a4a", edge: "#b488ff", span: 1.2, bone: "#100c18" });
+      add(S3, wg.root, true);
+      (anim.wingRigs = anim.wingRigs ?? []).push(wg);
+    }
+  } else if (id === "brann") {
+    for (const sx of [-1, 1]) add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("sphere", [0.26, 0.18, 0.26], "#f2f6fa", [-sx * 0.06, 0.05, 0]));
+    for (let i = 0; i < 5; i++) { const a = (i / 5 - 0.5) * 2.2; add(H, glow(P("cone", [0.06, 0.2 + (i % 2) * 0.08, 0.06], "#8fe8ff", [Math.sin(a) * 0.2, 0.28, -0.02 - Math.abs(a) * 0.04], [0, 0, -a * 0.6]), 0.8)); }
+    const st = G(0, 0, 0);
+    st.add(P("cyl", [0.035, 0.8, 0.035], "#d8d0c0", [0, 0.3, 0]));
+    const crys = glow(P("cone", [0.12, 0.3, 0.12], "#8fe8ff", [0, 0.8, 0]), 1);
+    st.add(crys);
+    add("DEF-hand.L", st);
+    anim.flame = [crys];
+    add(S3, P("sphere", [0.4, 0.2, 0.2], "#f2f6fa", [0, 0.12, -0.1]));
+    for (const sx of [-1, 1]) add(H, glow(P("sphere", [0.035, 0.045, 0.03], "#bff4ff", [sx * 0.05, 0.115, 0.13]), 1), true);
+    for (let i = 0; i < 6; i++) add(S3, glow(P("cone", [0.08, 0.28, 0.06], "#bff4ff", [-0.3 + i * 0.12, 0.1, -0.2], [-0.5, 0, 0]), 0.8), true);
+  } else if (id === "skadi") {
+    add(H, P("hemi", [0.34, 0.22, 0.34], "#9aa0ac", [0, 0.2, 0]));
+    for (const sx of [-1, 1]) {
+      add(H, P("cone", [0.07, 0.3, 0.07], "#f0e8d0", [sx * 0.19, 0.26, 0], [0, 0, -sx * 0.9]));
+      add(H, P("cube", [0.2, 0.04, 0.02], "#e0e8f0", [sx * 0.27, 0.15, 0], [0, 0, sx * 0.4]));
+    }
+    const ax = G(0, 0, 0);
+    ax.add(P("cyl", [0.035, 0.8, 0.035], "#5a3a22", [0, 0.28, 0]));
+    ax.add(P("cube", [0.3, 0.2, 0.04], "#b8c0cc", [0.14, 0.62, 0]));
+    ax.add(glow(P("cube", [0.04, 0.2, 0.05], "#ff7a3a", [0.3, 0.62, 0]), 0.8));
+    add("DEF-hand.R", ax);
+    add(S3, P("hemi", [0.46, 0.14, 0.2], "#c8a060", [0, 0.22, 0.08], [Math.PI / 2, 0, 0]));
+    for (const sx of [-1, 1]) add(`DEF-upper_arm.${sx > 0 ? "L" : "R"}`, P("hemi", [0.18, 0.12, 0.18], "#9aa0ac", [-sx * 0.06, 0.03, 0]));
+    for (const sx of [-1, 1]) {
+      const wg = makeFeatherWing(sx, { main: "#e8e0d0", shade: "#c8a060", edge: "#ff7a3a", span: 1.2, bone: "#8a6a3a" });
+      add(S3, wg.root, true);
+      (anim.wingRigs = anim.wingRigs ?? []).push(wg);
+    }
   }
   return out;
 }
@@ -304,6 +366,10 @@ const FORM_SKIN: Record<string, string> = {
   mari: "#8fe8ee",
   pia: "#6a6e78",
   lumen: "#f4f8ff",
+  kael: "#fff0b8",
+  nyx: "#4a3a6a",
+  brann: "#e8f4ff",
+  skadi: "#e07a3a",
 };
 
 /** nomes dos clipes por situação */
@@ -424,6 +490,9 @@ export function buildSkinHero(id: HeroId): Model | null {
   let inAirT = 0;
   let landT = 0;
   let attackBusy = 0;
+  let upperT = 0;
+  let upperMax = 0.3;
+  let upperKind = 0;
   let meleeAlt = 0;
   let swingPrev = 0;
   let spPrev = 0;
@@ -461,7 +530,11 @@ export function buildSkinHero(id: HeroId): Model | null {
       }
       hurtPrev = p.hurt;
       const swing = p.swing ?? 0;
-      if (swing > 0 && swingPrev <= 0) {
+      // andando: o golpe/tiro anima só o tronco (torção e inclinação) e as pernas seguem caminhando, sem arrastar parado
+      const moving = sp > 0.22;
+      if (swing > 0 && swingPrev <= 0 && moving) { upperT = upperMax = 0.34; upperKind = 1; meleeAlt ^= 1; }
+      else if (p.attack > 0 && atkPrev <= 0 && swing <= 0 && moving) { upperT = upperMax = 0.24; upperKind = 0; meleeAlt ^= 1; }
+      else if (swing > 0 && swingPrev <= 0) {
         if (MELEE_SWORD.has(w) && w !== "") {
           rig.play(CLIP.sword, 1.9, 0.04, true);
           attackBusy = 0.5;
@@ -472,12 +545,14 @@ export function buildSkinHero(id: HeroId): Model | null {
         }
       }
       swingPrev = swing;
-      if (p.attack > 0 && atkPrev <= 0 && swing <= 0) {
+      if (p.attack > 0 && atkPrev <= 0 && swing <= 0 && !moving) {
         rig.play(CASTERS.has(w) ? CLIP.spell : CLIP.pistol, 2.0, 0.05, true);
         attackBusy = 0.3;
       }
       atkPrev = p.attack;
       attackBusy = Math.max(0, attackBusy - dt);
+      if (moving && sp > 0.3) attackBusy = 0;
+      upperT = Math.max(0, upperT - dt);
       if (air) inAirT += dt;
       else {
         if (inAirT > 0.35) landT = 0.25;
@@ -504,8 +579,10 @@ export function buildSkinHero(id: HeroId): Model | null {
       // leve inclinação e balanço extra
       rig.clearExtras();
       const lean = sp * 0.12 + (air ? -0.05 : 0);
-      rig.setExtra(jSp1, lean * 0.5, 0, 0);
-      rig.setExtra(jSp2, lean * 0.5, 0, 0);
+      const u = upperT > 0 ? Math.sin((1 - upperT / upperMax) * Math.PI) : 0;
+      const tw = u * (upperKind === 1 ? 0.95 : 0.4) * (meleeAlt ? 1 : -1);
+      rig.setExtra(jSp1, lean * 0.5 + u * 0.2, tw * 0.5, 0);
+      rig.setExtra(jSp2, lean * 0.5 + u * 0.16, tw * 0.6, 0);
       rig.setExtra(jHead, -lean * 0.6 + Math.sin(p.t * 1.3) * 0.02, Math.sin(p.t * 0.9) * 0.05, 0);
       void jHips;
       void jNeck;
