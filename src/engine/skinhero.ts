@@ -480,6 +480,7 @@ export function buildSkinHero(id: HeroId): Model | null {
         const isBow = (g.weapon.fam ?? g.weapon.base) === "bow";
         const tilt = isBow ? [0, 0, 0] : [Math.PI / 2, 0.5, 0];
         wn.rot = [tilt[0]!, tilt[1]!, tilt[2]!];
+        grip.pos = [0, 0.075, 0];
         gearMounts.push({ joint: J("DEF-hand.R"), node: grip });
         weaponGrip = grip;
       }

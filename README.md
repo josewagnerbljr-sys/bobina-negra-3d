@@ -222,3 +222,11 @@ Cooperativo ponto a ponto por WebRTC, sem servidor: na tela inicial, "Multijogad
 - Fazenda com canteiros, cercas, lanternas e caixotes como props reais.
 - Pendentes: criatura Aberration, trilha de terror, variedade de NPCs, cães do inferno.
 - Créditos: FoxDev (Victorian Study), Quaternius (CC0), Rafael Martins (Aberration).
+
+## v21.0 — rua comercial e modelos reais
+- Rua comercial no vilarejo: tendas de magias/grimórios (Arcanista), armaduras/mantos (Armeiro), armas (Ferreiro), corretor de almas (servos, cão do inferno, nefelin) e barracas de apoio.
+- Casas maiores (a partir de 3x3/4x4 módulos) com móveis sólidos (colisão) e corredor da porta livre; teste automático de alcance (tools/rooms.mjs).
+- Pacotes Medieval, Props e Natureza reconvertidos com orçamento de triângulos alto (antes eram "rasgados").
+- Conversor de FBX com esqueleto (tools/fbx2rig.py): cães do inferno agora usam o lobo da Quaternius; criatura Aberration (17 animações) nos mortos-vivos.
+- NPCs com capuz do pacote Ranger (cabeça completa) enquanto o pacote Universal Base Characters não chega.
+- Créditos: Quaternius (CC0 / Standard), Rafael Martins (Aberration), FoxDev (Victorian Study), CAPTNPHANTOM/Blind Meridian.

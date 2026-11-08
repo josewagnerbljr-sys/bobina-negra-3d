@@ -14,7 +14,8 @@ const assets = new Map<string, TexAsset>();
 let loading: Promise<boolean> | null = null;
 let dirBase = "";
 
-export const TEX_MODELS = ["imp", "puglin", "male_ranger", "female_ranger", "male_peasant", "female_peasant"];
+export const RIG_MODELS = ["witch", "wolf"];
+export const TEX_MODELS = ["imp", "puglin", "male_ranger", "female_ranger", "male_peasant", "female_peasant", "aberration", "male_peasant_hood", "female_peasant_hood"];
 
 export function texReady(name: string) {
   return assets.has(name);
@@ -47,6 +48,7 @@ export function loadUE(e: Engine): Promise<boolean> {
       for (const c of info.clips as Clip[]) clips.set(c.name, c);
       base = { names, index, parent, rot: new Int16Array(buf, 0, info.rotN), hip: new Float32Array(buf, info.hipOff, info.hipN), clips, restT, restR };
       await Promise.all(TEX_MODELS.map((n) => loadModel(n, q)));
+      await Promise.all(RIG_MODELS.map((n) => loadRig(n, q)));
       void e;
       return true;
     } catch {
@@ -131,6 +133,69 @@ async function loadModel(name: string, q: string) {
   assets.set(name, a);
 }
 
+async function loadRig(name: string, q: string) {
+  try {
+    const rb = new URL("./models/rig/", document.baseURI).href;
+    const [jr, br] = await Promise.all([fetch(rb + name + ".json" + q), fetch(rb + name + ".bin" + q)]);
+    if (!jr.ok || !br.ok) return;
+    const info = await jr.json();
+    const buf = await br.arrayBuffer();
+    const J = info.names.length as number;
+    const m = info.mesh as Record<string, number>;
+    const n = m.n!;
+    const f32 = (off: number, len: number) => new Float32Array(buf.slice(off, off + len * 4));
+    const uv = f32(m.uv!, n * 2);
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      col[i * 3] = uv[i * 2]!;
+      col[i * 3 + 1] = uv[i * 2 + 1]!;
+    }
+    const part: RawPart = {
+      n,
+      pos: f32(m.pos!, n * 3),
+      nor: f32(m.nor!, n * 3),
+      col,
+      ji: new Uint8Array(buf.slice(m.ji!, m.ji! + n * 4)),
+      w: new Uint8Array(buf.slice(m.w!, m.w! + n * 4)),
+      idx: new Uint16Array(buf.slice(m.idx!, m.idx! + m.ni! * 2)),
+      color: info.pal as string,
+      emis: null,
+      estr: 0,
+    };
+    const names = info.names as string[];
+    const clips = new Map<string, Clip>();
+    for (const c of info.clips as Clip[]) clips.set(c.name, c);
+    const a = {
+      J,
+      parent: Int16Array.from(info.parent as number[]),
+      restT: Float32Array.from(info.t as number[]),
+      restR: Float32Array.from(info.r as number[]),
+      names,
+      index: new Map(names.map((x, i) => [x, i])),
+      inv: new Float32Array(buf.slice(info.invOff, info.invOff + J * 64)),
+      rot: new Int16Array(buf.slice(info.rotOff, info.rotOff + info.rotN * 2)),
+      hip: new Float32Array(buf.slice(info.hipOff, info.hipOff + info.hipN * 4)),
+      clips,
+      mesh: null as unknown as GpuMesh,
+      raw: null as unknown as CharAsset["raw"],
+      meshes: new Map(),
+      height: info.height as number,
+      version: 1,
+      hipK: 1,
+      hipJ: info.hipJ as number,
+      parts: [part],
+      gpu: new Map(),
+    } as TexAsset;
+    const r = await fetch(rb + part.color + q);
+    const imgs = new Map<string, ImageBitmap>();
+    if (r.ok) imgs.set(part.color!, await createImageBitmap(await r.blob()));
+    (a as unknown as { imgs: Map<string, ImageBitmap> }).imgs = imgs;
+    assets.set(name, a);
+  } catch {
+    /* modelo opcional */
+  }
+}
+
 function gpuFor(e: Engine, a: TexAsset) {
   let g = a.gpu.get(e);
   if (!g) {
@@ -164,7 +229,7 @@ export type TexLook = {
   emis?: Vec3;
   ghost?: boolean;
   /** conjunto de clipes */
-  anim?: "human" | "zombie" | "imp" | "brute";
+  anim?: "human" | "zombie" | "imp" | "brute" | "aber" | "witch" | "wolf";
   caster?: boolean;
 };
 
@@ -173,6 +238,9 @@ const ANIM = {
   zombie: { idle: "Zombie_Idle_Loop", walk: "Zombie_Walk_Fwd_Loop", run: "Zombie_Walk_Fwd_Loop", atk: ["Zombie_Scratch"], hit: "Hit_Chest", death: "Death01" },
   imp: { idle: "Idle_Loop", walk: "Walk_Loop", run: "Sprint_Loop", atk: ["Punch_Jab", "Punch_Cross"], hit: "Hit_Chest", death: "Death01" },
   brute: { idle: "Idle_Loop", walk: "Walk_Loop", run: "Jog_Fwd_Loop", atk: ["Sword_Regular_A", "Sword_Regular_B"], hit: "Hit_Chest", death: "Death01" },
+  aber: { idle: "ab_idle", walk: "ab_walk_limp", run: "ab_walk_fast", atk: ["ab_attack_lunge", "ab_attack_ground"], hit: "ab_knee_hit_recover", death: "ab_fall_forward" },
+  witch: { idle: "Idle", walk: "Walk", run: "Walk", atk: ["Punch"], hit: "RecieveHit", death: "Defeat" },
+  wolf: { idle: "Idle", walk: "Walking", run: "Walking", atk: ["Walking"], hit: "Idle", death: "Idle" },
 } as const;
 
 const JOB: Record<string, string> = {
@@ -191,7 +259,7 @@ const JOB: Record<string, string> = {
 export function buildTexModel(name: string, look: TexLook, kind: Model["kind"]): Model | null {
   const a = assets.get(name);
   if (!a) return null;
-  const rig = new SkinRig(a, "Idle_Loop");
+  const rig = new SkinRig(a, a.clips.has("Idle_Loop") ? "Idle_Loop" : [...a.clips.keys()][0]!);
   const rinv: Mat4[] = Array.from({ length: a.J }, (_, j) => rinvOf(a, j));
   const anim = ANIM[look.anim ?? "human"];
   const sk: SkinPart = {

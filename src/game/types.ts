@@ -194,6 +194,7 @@ export type NpcHud = {
   stock: { i: number; label: string; price: number; color: string; info: string }[];
   sell: { uid: number; label: string; price: number; color: string }[];
   quest?: { title: string; prog: number; goal: number; ready: boolean; reward: string; active: boolean; tier: number; offers: { tier: number; label: string; title: string; reward: string; goal: number }[] };
+  spirits?: { id: string; name: string; text: string; price: number }[];
   spells?: { id: number; name: string; text: string; tag: string; lv: number; price: number; slot: number }[];
   slots?: number[];
 };

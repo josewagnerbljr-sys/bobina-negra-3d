@@ -259,7 +259,7 @@ export function Bobina() {
                 <p className="mt-3 text-base leading-relaxed text-paper/80">
                   Cinquenta reinos em mundo aberto: vilarejos, mansões, castelos e florestas para explorar. Três peças em cada reino abrem o portal para o próximo. Um contrato que ninguém leu até a cláusula final.
                 </p>
-                <p className="mt-2 text-xs text-paper/40">v20.0 · casas reais {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
+                <p className="mt-2 text-xs text-paper/40">v21.0 · rua comercial {typeof __BUILD__ === "string" ? __BUILD__ : "dev"}</p>
                 <div className="mt-5 flex flex-col gap-2">
                   {snap.hasSave && !confirmNew && (
                     <Primary onClick={() => rtRef.current?.continueGame()}>Continuar o contrato</Primary>
@@ -1493,8 +1493,8 @@ function MultiPanel({ rt, status }: { rt: Runtime | null; status: string }) {
 
 function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | null }) {
   const [tab, setTab] = useState<"buy" | "sell" | "spell">(npc.role === "witch" ? "spell" : "buy");
-  const title: Record<string, string> = { merchant: "Mercador", smith: "Ferreiro", witch: "Bruxa", quest: "Mensageiro", villager: "Aldeão", guard: "Guarda" };
-  const shop = npc.role === "merchant" || npc.role === "smith" || npc.role === "witch";
+  const title: Record<string, string> = { merchant: "Mercador", smith: "Ferreiro de armas", armorer: "Armeiro", spirit: "Corretor de almas", witch: "Arcanista", quest: "Mensageiro", villager: "Aldeão", guard: "Guarda" };
+  const shop = npc.role === "merchant" || npc.role === "smith" || npc.role === "witch" || npc.role === "armorer";
   return (
     <section className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-ink/70 p-3">
       <div className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-lg border border-brass/60 bg-panel/95 p-4 text-paper">
@@ -1534,6 +1534,16 @@ function NpcPanel({ npc, rt }: { npc: NonNullable<Snap["npc"]>; rt: Runtime | nu
               </>
             )}
           </div>
+        )}
+        {npc.spirits && (
+          <ul className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            {npc.spirits.map((sp) => (
+              <li key={sp.id} className="flex items-center justify-between gap-2 rounded-md border border-paper/15 bg-ink/50 px-2 py-1.5 text-sm">
+                <span className="min-w-0"><span className="block truncate font-bold text-brass">{sp.name}</span><span className="block text-xs text-paper/60">{sp.text}</span></span>
+                <button type="button" disabled={npc.gold < sp.price} onClick={() => rt?.spiritBuy(sp.id)} className="shrink-0 rounded-md border border-brass px-2 py-1 text-xs text-brass disabled:opacity-40">Comprar {sp.price}</button>
+              </li>
+            ))}
+          </ul>
         )}
         {shop && (
           <>

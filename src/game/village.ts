@@ -23,7 +23,7 @@ export type Piece = { m: "med" | "prop" | "nat" | "tex"; k: string; x: number; z
 export type Rect = { x0: number; z0: number; x1: number; z1: number; y0?: number; y1?: number };
 /** superfície caminhável: piso (axis null) ou rampa/escada (h varia de h0 em x0/z0 até h1 em x1/z1) */
 export type Surf = { x0: number; z0: number; x1: number; z1: number; h0: number; h1: number; axis: "x" | "z" | null; vis: "slab" | "stair"; fl: number; house: string };
-export type NpcRole = "merchant" | "smith" | "witch" | "quest" | "guard" | "villager" | "pup" | "soul";
+export type NpcRole = "merchant" | "smith" | "witch" | "armorer" | "spirit" | "quest" | "guard" | "villager" | "pup" | "soul";
 export type NpcSpawn = { id: string; role: NpcRole; name: string; x: number; z: number; garb?: number };
 export type ChestSpot = { id: string; x: number; z: number; h: number };
 export type PlaceKind = "start" | "village" | "hamlet" | "mansion" | "castle";
@@ -42,14 +42,14 @@ export type Layout = {
 
 type Arch = { name: string; nw: number; nd: number; floors: number; stone: boolean; wood: boolean; tower?: boolean };
 const ARCH = {
-  cabana: { name: "cabana", nw: 2, nd: 2, floors: 1, stone: false, wood: true },
-  casebre: { name: "casebre", nw: 2, nd: 3, floors: 1, stone: false, wood: false },
-  casa: { name: "casa", nw: 3, nd: 3, floors: 1, stone: false, wood: false },
-  casao: { name: "casa", nw: 3, nd: 4, floors: 1, stone: false, wood: true },
-  sobrado: { name: "sobrado", nw: 3, nd: 3, floors: 2, stone: false, wood: false },
-  sobrado2: { name: "sobrado", nw: 3, nd: 4, floors: 2, stone: false, wood: true },
-  estalagem: { name: "estalagem", nw: 4, nd: 5, floors: 2, stone: false, wood: false },
-  celeiro: { name: "celeiro", nw: 3, nd: 6, floors: 1, stone: false, wood: true },
+  cabana: { name: "cabana", nw: 3, nd: 3, floors: 1, stone: false, wood: true },
+  casebre: { name: "casebre", nw: 3, nd: 4, floors: 1, stone: false, wood: false },
+  casa: { name: "casa", nw: 4, nd: 4, floors: 1, stone: false, wood: false },
+  casao: { name: "casa", nw: 4, nd: 5, floors: 1, stone: false, wood: true },
+  sobrado: { name: "sobrado", nw: 4, nd: 4, floors: 2, stone: false, wood: false },
+  sobrado2: { name: "sobrado", nw: 4, nd: 5, floors: 2, stone: false, wood: true },
+  estalagem: { name: "estalagem", nw: 4, nd: 7, floors: 2, stone: false, wood: false },
+  celeiro: { name: "celeiro", nw: 4, nd: 6, floors: 1, stone: false, wood: true },
   torre: { name: "torre", nw: 2, nd: 2, floors: 4, stone: true, wood: false, tower: true },
   torre3: { name: "torre", nw: 2, nd: 2, floors: 3, stone: true, wood: false, tower: true },
   torre5: { name: "torre", nw: 2, nd: 2, floors: 5, stone: true, wood: false, tower: true },
@@ -175,24 +175,80 @@ export function buildHouse(id: string, cx: number, cz: number, ar: Arch, face: n
     }
   }
   // mobília por andar (zona central, longe das escadas)
+  // pegada (m, antes da escala) dos móveis sólidos: nada de atravessar móvel
+  const FOOT: Record<string, [number, number]> = {
+    hp_table: [2.97, 2.63], vs_chair: [0.51, 0.45], vs_fire_wall: [1.34, 0.6], vs_fire_base: [1.14, 0.78], hf_farm_harvest_crate: [0.48, 0.34], hp_stand: [1.62, 1.62],
+    hp_bed: [4.14, 3.14], hp_dress: [0.72, 0.81], Workbench: [1.9, 0.8], Barrel: [0.75, 0.75], Bookcase_2: [1.5, 0.5], Cauldron: [0.9, 0.9],
+  };
+  const solid = (k: string, p: { x: number; z: number }, r: number, f: number, sc: number) => {
+    const ft = FOOT[k];
+    if (!ft) return;
+    const a = yaw0 + r;
+    const hx = (ft[0] * sc * MS * 48) / 2;
+    const hz = (ft[1] * sc * MS * 48) / 2;
+    const ex = Math.abs(Math.cos(a)) * hx + Math.abs(Math.sin(a)) * hz;
+    const ez = Math.abs(Math.sin(a)) * hx + Math.abs(Math.cos(a)) * hz;
+    walls.push({ x0: p.x - ex, z0: p.z - ez, x1: p.x + ex, z1: p.z + ez, y0: f * FH - 0.1, y1: f * FH + FH * 0.55 });
+  };
   const prop = (k: string, lx: number, lz: number, r: number, f: number) => {
     const p = L(lx * K, lz * K);
     pieces.push({ m: "prop", k, x: p.x, z: p.z, y: f * FH + 0.03, yaw: yaw0 + r, s: MS, fl: f, hid: id });
+    solid(k, p, r, f, 1);
   };
   const tex = (k: string, lx: number, lz: number, r: number, f: number, sc = 1, up = 0) => {
     const p = L(lx * K, lz * K);
     pieces.push({ m: "tex", k, x: p.x, z: p.z, y: f * FH + 0.03 + up, yaw: yaw0 + r, s: MS * sc, fl: f, hid: id });
+    if (up === 0) solid(k, p, r, f, sc);
   };
-  const cz0 = (nd >= 4 ? hd - 38 * K : hd - 30 * K) / K;
+  // mobília em px locais (frente = +z, porta no centro da frente, fundo = -z); corredor da porta e faixas das escadas ficam livres
+  const SWB = floors > 1 ? 52 + 22 : 0;
+  const bx = hw - 7 * K - 16;
+  const bz = hd - 7 * K - 16;
+  const bxs = Math.max(30, bx - SWB);
   const chests: ChestSpot[] = [];
+  const pxp = (k: string, x: number, z: number, r: number, f: number, sc = 1, up = 0, isProp = false) => {
+    const p = L(x, z);
+    pieces.push({ m: isProp ? "prop" : "tex", k, x: p.x, z: p.z, y: f * FH + 0.03 + up, yaw: yaw0 + r, s: isProp ? MS : MS * sc, fl: f, hid: id });
+    if (up === 0) solid(k, p, r, f, isProp ? 1 : sc);
+  };
+  const PI2 = Math.PI / 2;
   for (let f = 0; f < floors; f++) {
-    const kit = (furnish + f) % 4;
-    const c = hw > 60 ? 0 : 0;
-    if (kit === 0) { tex("hp_table", c, 2, 0, f, 0.3); tex("vs_chair", c - 26, 16, 0.7, f, 1.2); tex("vs_chair", c + 26, 14, -0.7, f, 1.2); tex("vs_vase", c, 2, 0, f, 1.4, 0.55); tex("vs_fire_wall", c, -cz0 + 2, 0, f, 0.9); tex("vs_fire_base", c, -cz0 + 2, 0, f, 0.9); prop("Candle_1", c + 8, 2, 0, f); prop("Barrel", c + 30, -cz0 + 18, 0, f); }
-    else if (kit === 1) { prop("Workbench", c, -cz0 + 8, 3.1416, f); tex("hf_farm_harvest_crate", c + 22, cz0 - 12, 0.5, f, 1.8); tex("hf_farm_harvest_crate", c + 22, cz0 - 12, 0.2, f, 1.8, 0.4); prop("Bag", c - 18, cz0 - 18, 0, f); tex("hp_stand", c - 30, 4, 1.57, f, 0.4); }
-    else if (kit === 2) { tex("hp_bed", c, -cz0 + 24, 1.5708, f, 0.42); tex("hp_stand", c + 26, -cz0 + 4, 0, f, 0.4); prop("CandleStick", c + 26, -cz0 + 4, 0, f); tex("vs_mirror", c - 40, 0, 1.5708, f, 1.5, 0.55); tex("hp_dress", c + 28, cz0 - 14, 0.5, f, 0.4); }
-    else { prop("Bookcase_2", c, -cz0 + 6, 3.1416, f); tex("vs_books1", c - 30, -cz0 + 6, 0, f, 1.6, 0.5); tex("vs_viola", c + 22, cz0 - 20, 0.8, f, 1.3); prop("Cauldron", c - 18, cz0 - 20, 0, f); tex("vs_ladder", c + 34, -cz0 + 8, 3.14, f, 1.0); }
-    const cp = L(0, (cz0 - 34) * K);
+    const kit = nw < 3 ? -1 : (furnish + f) % 4;
+    if (kit === 0) {
+      // sala: lareira no fundo, mesa com cadeiras, poltronas
+      pxp("vs_fire_wall", 0, -bz + 8, 0, f, 1.15);
+      pxp("vs_fire_base", 0, -bz + 8, 0, f, 1.15);
+      pxp("hp_table", 0, -bz * 0.2, 0, f, 0.5);
+      pxp("vs_vase", 0, -bz * 0.2, 0, f, 1.4, 0.62);
+      pxp("vs_chair", -34, -bz * 0.2 + 6, 0.9, f, 1.25);
+      pxp("vs_chair", 34, -bz * 0.2 + 6, -0.9, f, 1.25);
+      pxp("Barrel", bxs, -bz + 12, 0, f, 1, 0, true);
+      pxp("Candle_1", 0, -bz * 0.2, 0, f, 1, 0.62, true);
+    } else if (kit === 1) {
+      // oficina: bancada no fundo, caixas e saco
+      pxp("Workbench", 0, -bz + 8, Math.PI, f, 1, 0, true);
+      pxp("hf_farm_harvest_crate", -bxs + 14, -bz * 0.4, 0.3, f, 1.8);
+      pxp("hf_farm_harvest_crate", -bxs + 14, -bz * 0.4, 0.1, f, 1.8, 0.45);
+      pxp("hf_farm_harvest_crate", bxs - 14, -bz * 0.4, -0.2, f, 1.8);
+      pxp("Bag", bxs - 8, 0, 0, f, 1, 0, true);
+      pxp("hp_stand", -bxs + 14, bz * 0.2, PI2, f, 0.45);
+    } else if (kit === 2) {
+      // quarto: cama no canto do fundo, criado-mudo, guarda-roupa, espelho
+      pxp("hp_bed", bxs - 30, -bz + 34, PI2, f, 0.55);
+      pxp("hp_stand", bxs - 34 - 36, -bz + 12, 0, f, 0.45);
+      pxp("CandleStick", bxs - 34 - 36, -bz + 12, 0, f, 1, 0.45, true);
+      pxp("hp_dress", -bxs + 14, -bz + 20, PI2, f, 0.5);
+      pxp("vs_mirror", -bxs + 6, 0, PI2, f, 1.6, 0.7);
+    } else {
+      // biblioteca: estantes no fundo, viola, caldeirão
+      pxp("Bookcase_2", -bxs + 30, -bz + 8, Math.PI, f, 1, 0, true);
+      pxp("Bookcase_2", bxs - 30, -bz + 8, Math.PI, f, 1, 0, true);
+      pxp("vs_books1", 0, -bz + 12, 0, f, 1.6, 0.5);
+      pxp("vs_viola", bxs - 12, bz * 0.2, 0.8, f, 1.3);
+      pxp("Cauldron", -bxs + 16, bz * 0.45, 0, f, 1, 0, true);
+      pxp("vs_ladder", 0, -bz + 6, 3.14, f, 1.0);
+    }
+    const cp = L(bxs - 10, bz * 0.1);
     if (hh(f, Math.round(cx), seed + 96) < (f === 0 ? 0.2 : 0.4)) chests.push({ id: `${id}c${f}`, x: cp.x, z: cp.z, h: f * FH });
   }
   return { pieces, walls, surfs, rect, chests, floors };
@@ -333,17 +389,26 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
   }
   addFlavor(pl, flavor, x, z, taken, idx, realm, seed);
   if (big) {
-    const stalls: [string, number, number, NpcRole, string][] = [
-      ["Stall_Empty", -62, -10, "merchant", "Mercador"],
-      ["Stall_Cart_Empty", 62, -10, "smith", "Ferreiro"],
-      ["Stall_Empty", 0, 66, "witch", "Bruxa"],
+    // rua comercial: uma tenda por tipo, em fila ao longo de uma rua calçada (norte = tendas de ofício, sul = barracas de apoio)
+    const SZ = 3.0;
+    for (let i = -6; i <= 6; i++) for (let j = -1; j <= 0; j++) pl.pieces.push({ m: "med", k: (i + j) & 1 ? "Floor_UnevenBrick" : "Floor_Brick", x: x + i * MOD * 0.98, z: z - 64 + j * MOD, y: 0.025, yaw: 0, s: MS });
+    void SZ;
+    const stalls: [string, number, number, NpcRole, string, number][] = [
+      ["Stall_Empty", -210, -92, "witch", "Arcanista", 0],
+      ["Stall_Empty", -70, -92, "armorer", "Armeiro", 0],
+      ["Stall_Cart_Empty", 70, -92, "smith", "Ferreiro de Armas", 0],
+      ["Stall_Empty", 210, -92, "spirit", "Corretor de Almas", 0],
+      ["Stall_Cart_Empty", -140, -36, "merchant", "Boticário", Math.PI],
+      ["Stall_Empty", 140, -36, "merchant", "Mercador", Math.PI],
     ];
-    stalls.forEach(([k, dx, dz, role, title], i) => {
-      pl.pieces.push({ m: "prop", k, x: x + dx, z: z + dz, yaw: Math.PI * (i === 2 ? 1 : 0), s: MS });
-      pl.npcs.push({ id: `${id}n${i}`, role, name: `${title} ${NPC_NAMES[Math.floor(hh(idx + i, realm, seed + 97) * NPC_NAMES.length)]}`, x: x + dx, z: z + dz + (i === 2 ? -28 : 28) });
-      pl.walls.push({ x0: x + dx - 22, z0: z + dz - 10, x1: x + dx + 22, z1: z + dz + 10, y0: -5, y1: 1.4 });
+    stalls.forEach(([k, dx, dz, role, title, yw], i) => {
+      pl.pieces.push({ m: "prop", k, x: x + dx, z: z + dz, yaw: yw, s: MS });
+      pl.npcs.push({ id: `${id}n${i}`, role, name: `${title} ${NPC_NAMES[Math.floor(hh(idx + i, realm, seed + 97) * NPC_NAMES.length)]}`, x: x + dx, z: z + dz + (yw ? -30 : 30) });
+      pl.walls.push({ x0: x + dx - 26, z0: z + dz - 12, x1: x + dx + 26, z1: z + dz + 12, y0: -5, y1: 1.4 });
+      pl.pieces.push({ m: "prop", k: i % 2 ? "Crate_Wooden" : "Barrel", x: x + dx + 34, z: z + dz + (yw ? -4 : 4), yaw: i, s: MS });
+      pl.lamps.push({ x: x + dx + 52, z: z + dz + 20 });
     });
-    pl.pieces.push({ m: "prop", k: "Anvil", x: x + 62, z: z - 38, yaw: 0.4, s: MS }, { m: "prop", k: "Cauldron", x: x - 24, z: z + 84, yaw: 0, s: MS }, { m: "prop", k: "Barrel", x: x - 90, z: z + 18, yaw: 0, s: MS }, { m: "prop", k: "Crate_Wooden", x: x + 92, z: z + 34, yaw: 0.3, s: MS }, { m: "prop", k: "Prop_Wagon", x: x - 40, z: z - 80, yaw: 0.6, s: MS });
+    pl.pieces.push({ m: "prop", k: "Anvil", x: x + 104, z: z - 80, yaw: 0.4, s: MS }, { m: "prop", k: "Cauldron", x: x - 250, z: z - 78, yaw: 0, s: MS }, { m: "prop", k: "Prop_Wagon", x: x - 330, z: z - 60, yaw: 0.6, s: MS });
     pl.npcs.push({ id: `${id}q`, role: "quest", name: `Mensageiro ${NPC_NAMES[Math.floor(hh(idx, realm, seed + 98) * NPC_NAMES.length)]}`, x: x + 28, z: z + 22 });
     pl.npcs.push({ id: `${id}g`, role: "villager", name: "Aldeão", x: x - 44, z: z - 40 });
     pl.npcs.push({ id: `${id}g2`, role: "guard", name: "Guarda", x: x + 90, z: z + 90 });
@@ -352,7 +417,6 @@ function village(realm: number, seed: number, idx: number, x: number, z: number,
     for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) if (Math.abs(i) + Math.abs(j) <= 5) pl.pieces.push({ m: "med", k: i + j & 1 ? "Floor_UnevenBrick" : "Floor_Brick", x: x + i * MOD, z: z + j * MOD, y: 0.02, yaw: 0, s: MS });
     pl.pieces.push({ m: "prop", k: "Bench", x: x - 110, z: z - 60, yaw: 1.57, s: MS }, { m: "prop", k: "Bench", x: x + 118, z: z + 66, yaw: -1.57, s: MS }, { m: "prop", k: "Banner_1", x: x + 150, z: z - 20, yaw: 0, s: MS }, { m: "prop", k: "Banner_2", x: x - 150, z: z + 30, yaw: 0, s: MS });
     for (let i = 0; i < 6; i++) pl.npcs.push({ id: `${id}p${i}`, role: i === 5 ? "merchant" : "villager", name: ["Aldeã", "Menino", "Andarilho", "Mulher do Poço", "Velho Sábio", "Mascate"][i]! + " " + NPC_NAMES[(i * 5 + idx) % NPC_NAMES.length]!, x: x + Math.cos(i * 1.05 + idx) * (70 + (i % 3) * 22), z: z + Math.sin(i * 1.05 + idx) * (70 + (i % 3) * 22), garb: (i * 3 + idx) % 12 });
-    fenceRing(pl, x, z, 210, 22, 4);
     // ruas: postes de luz em cruz saindo da praça
     for (let k = 1; k <= 6; k++) for (const [ux, uz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) pl.lamps.push({ x: x + ux * (200 + k * 110) + uz * 40, z: z + uz * (200 + k * 110) + ux * 40 });
   } else {

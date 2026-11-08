@@ -166,6 +166,7 @@ export type Runtime = {
   netClose: () => void;
   npcBuy: (i: number) => void;
   spellBuy: (id: number) => void;
+  spiritBuy: (id: string) => void;
   spellEquip: (id: number, slot: number) => void;
   npcSell: (uid: number) => void;
   npcQuest: (tier?: number) => void;
@@ -1851,7 +1852,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (n.startsWith("bot") || n.startsWith("bruxa")) return "potion";
     if (n.startsWith("ca\u00e7adora") || n.startsWith("cacadora")) return "hunt";
     const r = a.npc!.role;
-    if (r === "merchant" || r === "quest") return "stall";
+    if (r === "merchant" || r === "quest" || r === "armorer" || r === "spirit" || r === "smith" || r === "witch") return "stall";
     return "stroll";
   }
 
@@ -1865,8 +1866,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const r = a.npc!.role;
     if (r === "guard" || r === "hunter") return fem ? "female_ranger" : "male_ranger";
     if (r === "witch") return "female_ranger";
-    if (r === "smith") return "male_peasant";
-    return fem ? "female_peasant" : "male_peasant";
+    if (r === "smith") return "male_peasant_hood";
+    return fem ? "female_peasant_hood" : "male_peasant_hood";
   }
 
   function npcWander(a: Actor, dt: number) {
@@ -2998,12 +2999,19 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       take(by(["helmet", "pants", "gloves", "boots", "necklace", "ring"]), 0, 3);
       take(by(["weapon", "armor", "offhand"]), 1, 1);
     } else if (role === "smith") {
-      take(by(["weapon"]), 0, 2);
-      take(by(["weapon"]), 1, 1);
-      take(by(["armor", "helmet"]), 1, 2);
-      take(by(["offhand", "gloves", "boots"]), 2, 1);
+      take(by(["weapon"]), 0, 3);
+      take(by(["weapon"]), 1, 3);
+      take(by(["weapon"]), 2, 2);
+      take(by(["offhand"]), 1, 1);
+    } else if (role === "armorer") {
+      take(by(["armor", "helmet"]), 0, 3);
+      take(by(["armor", "helmet", "pants"]), 1, 3);
+      take(by(["gloves", "boots", "cape"]), 1, 2);
+      take(by(["armor", "helmet", "cape"]), 2, 2);
     } else if (role === "witch") {
-      take(by(["potion"]).filter((b) => !b.heal), 0, 5);
+      take(by(["potion"]).filter((b) => b.fam === "scroll" && !b.heal), 0, 4);
+      take(by(["potion"]).filter((b) => b.fam === "scroll" && b.spell !== undefined), 1, 3);
+      take(by(["potion"]).filter((b) => !b.heal && b.fam !== "scroll"), 0, 3);
       take(by(["ring", "necklace", "offhand", "gem"]), 2, 2);
     }
     ow.stock.set(id, out);
@@ -3012,6 +3020,8 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
   const NPC_TEXT: Record<string, string[]> = {
     merchant: ["Poções, armaduras, tudo com preço justo (para mim).", "Mais fundo no reino, mais caro. Compre agora.", "Leve o que precisar, viajante."],
     smith: ["Aço bom não se compra com conversa.", "Traga ouro e eu lhe dou fio na lâmina.", "Armas e armaduras forjadas aqui duram."],
+    armorer: ["Couraças, elmos e mantos: tudo testado em campo.", "Quem não se protege vira história triste.", "Escolha o seu manto, viajante."],
+    spirit: ["Almas menores servem bem. As maiores, melhor ainda.", "Um cão do inferno ou um nefelin? Tenho ambos, a preço de ouro.", "Eu só intermedeio. As almas é que escolhem o dono."],
     witch: ["Pergaminhos, elixires e coisas que não explico.", "O que a névoa esconde, eu vendo.", "Hihihi… quer um elixir?"],
     quest: ["Preciso de alguém corajoso. Aceita um trabalho?", "Há monstros demais por aqui.", "Pagamento garantido."],
     villager: ["Cuidado com a mansão ao longe. Ninguém volta de lá.", "A estrada leva às outras vilas. Fique nela à noite.", "Dizem que o portal só abre com três peças."],
@@ -3037,6 +3047,16 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     const m = save.parts[LV.realm] ?? 0;
     for (let i = 0; i < 3; i++) if (!(m & (1 << i))) { grantPart(i, why); return; }
   }
+  /** corretor de almas: servos (menor/maior), cão do inferno e nefelin por ouro */
+  function spiritOffers() {
+    const r = LV.on ? LV.realm : 0;
+    return [
+      { id: "minor", name: "Alma menor", text: "Servo fiel de nível baixo. Ocupa 1 vaga de servo.", price: 220 + r * 30 },
+      { id: "major", name: "Alma maior", text: "Espírito de guerreiro, nível alto. Ocupa 1 vaga de servo.", price: 900 + r * 90 },
+      { id: "hound", name: "Filhote de cão do inferno", text: "Sombra de Cérbero. Ocupa 1 das 5 vagas de cães.", price: 1400 + r * 120 },
+      { id: "nef", name: "Filhote de nefelin", text: "Lobo celestial. Ocupa 1 das 5 vagas de cães.", price: 2600 + r * 160 },
+    ];
+  }
   function npcHud(): NpcHud | undefined {
     const n = ow.npc;
     if (!n || !n.npc) return undefined;
@@ -3053,6 +3073,7 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
     if (role === "witch") {
       hud.spells = SPELLS.map((sp) => { const lv = save.spells[sp.id] ?? 0; return { id: sp.id, name: sp.name, text: sp.text, tag: sp.tag, lv, price: lv === 0 ? sp.price : lv >= SPELL_MAX_LV ? 0 : spellUpCost(sp, lv), slot: save.slot.indexOf(sp.id) }; });
     }
+    if (role === "spirit") hud.spirits = spiritOffers();
     if (role === "quest") {
       const q = save.qs[n.npc.id];
       const active = Boolean(q && q.base >= 0);
@@ -3629,6 +3650,28 @@ export function createRuntime(canvas: HTMLCanvasElement, onSnap: (s: Snap) => vo
       save.bag.push(it);
       st.splice(i, 1);
       audio.pickup();
+      persist();
+      emit();
+    },
+    spiritBuy(id: string) {
+      const n = ow.npc;
+      if (!n?.npc || n.npc.role !== "spirit" || screen !== "npc") return;
+      const o = spiritOffers().find((x) => x.id === id);
+      if (!o) return;
+      if (save.gold < o.price) { showToast("Moedas insuficientes."); emit(); return; }
+      const r = LV.on ? LV.realm : 0;
+      if (id === "minor" || id === "major") {
+        if (servCount(save.pets) >= SERV_MAX) { showToast("Limite de 5 servos."); emit(); return; }
+        save.gold -= o.price;
+        addPet("soul", "thrall", `${PET_NAMES.soul[Math.floor(Math.random() * 3)]} ${id === "major" ? "Maior" : "Menor"}`, id === "major" ? 8 + Math.floor(dEff(r) / 2) : 2 + Math.floor(dEff(r) / 4));
+      } else {
+        if (houndCount(save.pets) >= HOUND_MAX) { showToast("Limite de 5 cães."); emit(); return; }
+        save.gold -= o.price;
+        if (id === "hound") addPet("hell", "cerberus", PET_NAMES.hell[(save.pets.length + 1) % PET_NAMES.hell.length]!);
+        else addPet("nefelin", "lupin", PET_NAMES.nefelin[houndCount(save.pets) % PET_NAMES.nefelin.length]!);
+      }
+      showToast(`${o.name} adquirido!`);
+      audio.fanfare();
       persist();
       emit();
     },

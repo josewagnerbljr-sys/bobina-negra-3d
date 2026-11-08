@@ -70,6 +70,8 @@ const TEX_MON: Partial<Record<string, TexLook & { name: string }>> = {
   devil: { name: "imp", scale: 1.4, anim: "imp", tint: [0.5, 0.42, 0.62], rim: [0.45, 0.1, 0.7], emisK: 1.8 },
   ogre: { name: "puglin", scale: 2.3, anim: "brute", tint: [0.85, 0.8, 0.78], rim: [0.3, 0.08, 0.04], emisK: 1.2 },
   troll: { name: "puglin", scale: 1.9, anim: "brute", tint: [0.7, 0.85, 0.7], rim: [0.1, 0.3, 0.1], emisK: 1.2 },
+  hound: { name: "wolf", scale: 1.2, anim: "wolf", tint: [0.35, 0.32, 0.34], rim: [0.8, 0.12, 0.05], emisK: 1 },
+  undead: { name: "aberration", scale: 1.0, anim: "aber", rim: [0.35, 0.05, 0.05], emisK: 1 },
   thrall: { name: "male_ranger", scale: 1.05, anim: "zombie", ghost: true, rim: [0.35, 0.8, 1.0], emis: [0.02, 0.05, 0.08] },
 };
 

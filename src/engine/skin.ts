@@ -24,6 +24,8 @@ export type CharAsset = {
   version: number;
   /** escala da animação do quadril (modelos com pernas de comprimento diferente) */
   hipK?: number;
+  /** índice do osso que recebe a translação do quadril (padrão 1 = pelve do UAL) */
+  hipJ?: number;
 };
 
 let asset: CharAsset | null = null;
@@ -379,7 +381,7 @@ export class SkinRig {
       let tx = rt[j * 3]!;
       let ty = rt[j * 3 + 1]!;
       let tz = rt[j * 3 + 2]!;
-      if (j === 1) {
+      if (j === (a.hipJ ?? 1)) {
         const hk = a.hipK ?? 1;
         tx = hp[0]! * hk;
         ty = hp[1]! * hk;
